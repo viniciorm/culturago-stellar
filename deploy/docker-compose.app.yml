@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  nextjs-app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args:
+        - NEXT_PUBLIC_SUPABASE_URL=http://166.0.112.1:8000
+        - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+    container_name: culturago-app
+    restart: always
+    ports:
+      - "80:3080"
+    environment:
+      - NODE_ENV=production
+      - PORT=3080
