@@ -1,9 +1,10 @@
 # --- BASE IMAGE ---
-FROM node:20-alpine AS base
+FROM node:22-alpine AS base
 WORKDIR /app
 RUN apk add --no-cache libc6-compat
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm install
+
 
 # --- BUILD STAGE ---
 FROM base AS builder
@@ -23,7 +24,7 @@ ENV NODE_ENV=production
 RUN npm run build
 
 # --- RUNNER STAGE ---
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
