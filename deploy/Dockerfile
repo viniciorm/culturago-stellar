@@ -2,9 +2,9 @@
 FROM node:22-alpine AS base
 WORKDIR /app
 RUN apk add --no-cache libc6-compat
-COPY package.json package-lock.json ./
-RUN npm install
-
+RUN corepack enable && corepack prepare pnpm@latest --activate
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
 
 # --- BUILD STAGE ---
 FROM base AS builder
@@ -21,7 +21,7 @@ ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
-RUN npm run build
+RUN pnpm run build
 
 # --- RUNNER STAGE ---
 FROM node:22-alpine AS runner
