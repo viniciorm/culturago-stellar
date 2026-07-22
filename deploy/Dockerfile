@@ -45,4 +45,4 @@ USER nextjs
 
 EXPOSE 3080
 
-CMD ["npm", "start", "--", "-p", "3080"]
+CMD ["pnpm", "start", "--", "-p", "3080"]
