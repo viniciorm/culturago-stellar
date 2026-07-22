@@ -105,7 +105,9 @@ export NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY
 echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY" > deploy/.env
 
 docker compose -f deploy/docker-compose.app.yml down || true
-docker compose -f deploy/docker-compose.app.yml up -d --build
+docker compose -f deploy/docker-compose.app.yml build --no-cache
+docker compose -f deploy/docker-compose.app.yml up -d
+
 
 echo "============================================="
 echo "  ✓ ¡Despliegue de CulturaGO completado!"
