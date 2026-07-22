@@ -98,7 +98,7 @@ export default function PersonasCRUDPage() {
             type="text"
             placeholder="Buscar por nombre..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
             className="w-full pl-9 pr-4 py-2 border border-stone-200 rounded-lg outline-none text-xs focus:border-[#5C061E]"
           />
         </div>
