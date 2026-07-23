@@ -6,7 +6,6 @@ RUN corepack enable && corepack prepare pnpm@9 --activate
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install
 
-
 # --- BUILD STAGE ---
 FROM base AS builder
 WORKDIR /app
@@ -35,14 +34,13 @@ ENV HOSTNAME="0.0.0.0"
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-# Copiar archivos compilados y dependencias necesarias
+# Copiar artefactos del build standalone optimizado de Next.js
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./package.json
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
 USER nextjs
 
 EXPOSE 3080
 
-CMD ["pnpm", "start", "--", "-p", "3080"]
+CMD ["node", "server.js"]
