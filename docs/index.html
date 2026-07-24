@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Desplegando CulturaGO en un VPS de 4GB con Agentes de IA | Guía Técnica</title>
+  <title>Desplegando CulturaGO en un VPS de 4GB | Guía Técnica de Infraestructura</title>
   
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -266,8 +266,8 @@
 
   <header>
     <div class="header-badge">Caso de Estudio & Guía Técnica</div>
-    <h1>Desplegando CulturaGO en un VPS de 4GB con Agentes de IA</h1>
-    <p>De Next.js 16 y Supabase Self-Hosted a producción en Linux Ubuntu utilizando pnpm, Docker y asistencia multi-agente de Inteligencia Artificial.</p>
+    <h1>Desplegando CulturaGO en un VPS de 4GB</h1>
+    <p>De Next.js 16 y Supabase Self-Hosted a producción en Linux Ubuntu utilizando pnpm, Docker y automatización con la asistencia de Inteligencia Artificial.</p>
     <div class="meta-bar">
       <span>✍️ Por Vinicio & Antigravity AI</span>
       <span>📅 Julio 2026</span>
@@ -278,7 +278,7 @@
   <div class="container">
 
     <div class="intro-card">
-      <p><strong>Resumen Ejecutivo:</strong> Esta guía documenta la experiencia completa de arquitectura y despliegue del MVP para <strong>CulturaGO (Festival Nacional Danza del Vientre Chile 2026)</strong> en un VPS Ubuntu de 4GB RAM en Truebox. Cubre la migración del motor de paquetes a <code>pnpm</code>, la resolución de errores de Docker/TypeScript, la configuración de Supabase Self-Hosted y la interacción de desarrollo colaborativo con agentes de Inteligencia Artificial (Hermes y Antigravity).</p>
+      <p><strong>Resumen Ejecutivo:</strong> Esta guía documenta la experiencia completa de arquitectura y despliegue del MVP para <strong>CulturaGO (Festival Nacional Danza del Vientre Chile 2026)</strong> en un VPS Ubuntu de 4GB RAM en Truebox. Cubre la migración del gestor de paquetes a <code>pnpm</code>, la compilación en modo Standalone para evitar bloqueos de CPU, la configuración de Supabase Self-Hosted y la automatización de la infraestructura.</p>
     </div>
 
     <h2>1. Arquitectura del Sistema y Elección de Infraestructura</h2>
@@ -303,11 +303,11 @@
       </div>
     </div>
 
-    <h2>2. El Rol de los Agentes de IA (Hermes & Antigravity)</h2>
-    <p>Durante la construcción y el despliegue del proyecto, se utilizó un esquema de trabajo de colaboración multi-agente:</p>
+    <h2>2. Metodología de Desarrollo Asistido por IA</h2>
+    <p>Durante la construcción y el despliegue del proyecto, se utilizó un flujo de trabajo asistido por IA:</p>
     <ul>
-      <li><strong>Hermes (Agente local en el VPS)</strong>: Instalado en la sesión de usuario del VPS de Truebox para monitoreo de estado y tareas en segundo plano sin privilegios root.</li>
-      <li><strong>Antigravity (Agente Principal de Desarrollo)</strong>: Encargado de la creación de la suite de software, refactorizaciones de código, automatización de scripts de despliegue y resolución de bugs en tiempo real.</li>
+      <li><strong>Antigravity AI (Asistente Principal de Desarrollo)</strong>: Encargado de la creación de la suite de software, refactorizaciones de código, generación del mapeo de proyecto (<code>CODEMAP.md</code>), automatización de scripts de despliegue y resolución de errores de compilación en tiempo real.</li>
+      <li><strong>Ejecución SSH Directa</strong>: El despliegue de infraestructura y configuración del servidor se ejecutó directamente mediante acceso <code>root</code> en el VPS, garantizando el aislamiento y la seguridad.</li>
     </ul>
 
     <h2>3. Desafíos Técnicos Encontrados y Soluciones</h2>
@@ -334,7 +334,7 @@ const nextConfig: NextConfig = {
     <h3>Desafío C: Acceso a Supabase Studio (Puerto 8001)</h3>
     <p>Supabase Studio no cargaba externamente (<code>ERR_CONNECTION_REFUSED</code>) debido a que la plantilla oficial de Supabase Docker no expone por defecto un puerto mapeado al host para <code>studio</code> (manteniéndolo únicamente en el puerto interno 3000 de la red privada de Docker).</p>
     <div class="callout callout-success">
-      <strong>Solución:</strong> Inyectamos dinámicamente el mapeo de puertos <code>0.0.0.0:8001:3000</code> dentro del archivo <code>docker-compose.yml</code> de Supabase:
+      <strong>Solución:</strong> Inyectamos el mapeo de puertos <code>8001:3000</code> explícito en el servicio <code>studio</code> del archivo <code>docker-compose.yml</code>:
       <pre><code>sed -i '/container_name: supabase-studio/a \    ports:\n      - "8001:3000"' docker-compose.yml
 docker compose up -d studio</code></pre>
     </div>
