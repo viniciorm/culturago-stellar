@@ -84,14 +84,22 @@ sed -i "s|ANON_KEY=.*|ANON_KEY=$ANON_KEY|g" .env
 sed -i "s|SERVICE_ROLE_KEY=.*|SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY|g" .env
 sed -i "s|POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$POSTGRES_PASSWORD|g" .env
 
-# Evitar conflicto de puertos: Mapear Dashboard Studio al puerto 8002 si fuera necesario
-# Por defecto lo dejaremos en el 8000 para la API (Kong) y Studio en el 8001
+# Evitar conflicto de puertos y permitir acceso público externo desde la IP del VPS
 sed -i "s|STUDIO_PORT=3000|STUDIO_PORT=8001|g" .env
+sed -i "s|127.0.0.1:\${STUDIO_PORT}|0.0.0.0:\${STUDIO_PORT}|g" docker-compose.yml || true
+sed -i "s|127.0.0.1:\${KONG_HTTP_PORT}|0.0.0.0:\${KONG_HTTP_PORT}|g" docker-compose.yml || true
+sed -i "s|127.0.0.1:8000|0.0.0.0:8000|g" docker-compose.yml || true
+sed -i "s|127.0.0.1:8001|0.0.0.0:8001|g" docker-compose.yml || true
+
+# Habilitar puertos en el firewall de Ubuntu si estuviera activo
+sudo ufw allow 8000/tcp || true
+sudo ufw allow 8001/tcp || true
 
 # Levantar Supabase Docker
 echo "Iniciando contenedores de Supabase..."
 docker compose pull
 docker compose up -d
+
 
 cd ../.. # Regresar a la raíz de culturago-stellar
 
