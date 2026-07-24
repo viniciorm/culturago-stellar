@@ -84,12 +84,14 @@ sed -i "s|ANON_KEY=.*|ANON_KEY=$ANON_KEY|g" .env
 sed -i "s|SERVICE_ROLE_KEY=.*|SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY|g" .env
 sed -i "s|POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$POSTGRES_PASSWORD|g" .env
 
-# Evitar conflicto de puertos y permitir acceso público externo desde la IP del VPS
+# Evitar conflicto de puertos y mapear Studio directamente al puerto 8001 en el host
 sed -i "s|STUDIO_PORT=3000|STUDIO_PORT=8001|g" .env
-sed -i "s|127.0.0.1:\${STUDIO_PORT}|0.0.0.0:\${STUDIO_PORT}|g" docker-compose.yml || true
+sed -i 's|- 127.0.0.1:${STUDIO_PORT:-3000}:3000|- 0.0.0.0:8001:3000|g' docker-compose.yml || true
+sed -i 's|- ${STUDIO_PORT:-3000}:3000|- 0.0.0.0:8001:3000|g' docker-compose.yml || true
+sed -i 's|- ${STUDIO_PORT}:3000|- 0.0.0.0:8001:3000|g' docker-compose.yml || true
+sed -i 's|- 127.0.0.1:3000:3000|- 0.0.0.0:8001:3000|g' docker-compose.yml || true
 sed -i "s|127.0.0.1:\${KONG_HTTP_PORT}|0.0.0.0:\${KONG_HTTP_PORT}|g" docker-compose.yml || true
 sed -i "s|127.0.0.1:8000|0.0.0.0:8000|g" docker-compose.yml || true
-sed -i "s|127.0.0.1:8001|0.0.0.0:8001|g" docker-compose.yml || true
 
 # Habilitar puertos en el firewall de Ubuntu si estuviera activo
 sudo ufw allow 8000/tcp || true
