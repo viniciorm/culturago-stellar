@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Search, Award, ShieldCheck, Calendar, ArrowRight, UserCheck, Sparkles } from 'lucide-react';
 import { PublicLayout } from '../components/PublicLayout';
-import { db, Entity, isSupabaseConfigured } from '../lib/db';
+import { db, Entity } from '../lib/db';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 

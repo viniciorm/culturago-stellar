@@ -2,8 +2,9 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Award, ShieldCheck, CheckCircle2, XCircle, Clock, Database, Globe, Calendar, FileCode } from 'lucide-react';
+import { ArrowLeft, Award, ShieldCheck, CheckCircle2, XCircle, Clock, Database, Calendar, FileCode } from 'lucide-react';
 import { PublicLayout } from '../../../components/PublicLayout';
+import { StellarVerificationLinks } from '../../../components/StellarVerificationLinks';
 import { db, PopulatedCredential, Entity } from '../../../lib/db';
 import { QRCodeBlock } from '../../../components/ui/QRCodeBlock';
 import { CredentialCard } from '../../../components/CredentialCard';
@@ -153,15 +154,7 @@ export default function CredentialValidationPage() {
                 {credential.stellar_tx ? (
                   <div className="flex items-center justify-between gap-1.5 font-mono text-[10px] bg-stone-150 p-2 rounded break-all select-all border border-stone-200 text-stone-600">
                     <span className="truncate">{credential.stellar_tx}</span>
-                    <a 
-                      href={`https://stellar.expert/explorer/testnet/tx/${credential.stellar_tx}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-[#5C061E] hover:underline flex items-center gap-0.5 flex-shrink-0"
-                    >
-                      <Globe className="w-3.5 h-3.5" />
-                      Explorador
-                    </a>
+                    <StellarVerificationLinks txHash={credential.stellar_tx} />
                   </div>
                 ) : (
                   <span className="text-stone-400 italic">

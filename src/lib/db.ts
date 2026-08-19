@@ -1,4 +1,10 @@
-import { createClient } from '@supabase/supabase-js';
+// ============================================================================
+// DEMO-ONLY DATA LAYER
+// This module backs the local demo mode (localStorage/memory). It is NOT the
+// production persistence path: real data flows exclusively through
+// Server Actions -> use cases -> PostgreSQLDatabaseGateway (server-only).
+// The browser NEVER receives DATABASE_URL nor executes SQL.
+// ============================================================================
 
 // ============================================================================
 // TYPES & INTERFACES
@@ -158,7 +164,6 @@ export interface Wallet {
   updated_at: string;
 }
 
-// Complete Populated types for easier UI usage
 export type PopulatedRelationship = Relationship & {
   fromEntity: Entity;
   toEntity: Entity;
@@ -171,26 +176,7 @@ export type PopulatedCredential = Credential & {
 };
 
 // ============================================================================
-// DUAL-MODE ENGINE INITIALIZATION
-// ============================================================================
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-export const isSupabaseConfigured = !!(supabaseUrl && supabaseAnonKey);
-
-export const supabase = isSupabaseConfigured
-  ? createClient(supabaseUrl!, supabaseAnonKey!)
-  : null;
-
-console.log(
-  `[CulturaGO DB] Inicializando en modo: ${
-    isSupabaseConfigured ? 'SUPABASE REAL' : 'MOCK LOCAL (LocalStorage/Memoria)'
-  }`
-);
-
-// ============================================================================
-// SEED DATA FOR MOCK ENGINE
+// SEED DATA FOR DEMO MODE
 // ============================================================================
 
 const SEED_ENTITIES: Entity[] = [
@@ -636,53 +622,27 @@ class MockDatabase {
 export const mockDb = new MockDatabase();
 
 // ============================================================================
-// UNIFIED DATA ACCESS METHODS (db)
+// DEMO DATA ACCESS METHODS (db) — mock engine only
 // ============================================================================
 
 export const db = {
   // --- GENERAL ENTITIES ---
   async getEntities(): Promise<Entity[]> {
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase!.from('entities').select('*').order('created_at', { ascending: false });
-      if (error) throw error;
-      return data || [];
-    }
     return mockDb.entities;
   },
 
   async getEntityBySlug(slug: string): Promise<Entity | null> {
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase!.from('entities').select('*').eq('slug', slug).maybeSingle();
-      if (error) throw error;
-      return data;
-    }
     return mockDb.entities.find((e) => e.slug === slug) || null;
   },
 
   async getEntityById(id: string): Promise<Entity | null> {
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase!.from('entities').select('*').eq('id', id).maybeSingle();
-      if (error) throw error;
-      return data;
-    }
     return mockDb.entities.find((e) => e.id === id) || null;
   },
 
   async createEntity(entity: Omit<Entity, 'id' | 'created_at' | 'updated_at'>): Promise<Entity> {
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
-    const newEntity: Entity = {
-      ...entity,
-      id,
-      created_at: now,
-      updated_at: now,
-    };
-
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase!.from('entities').insert(newEntity).select().single();
-      if (error) throw error;
-      return data;
-    }
+    const newEntity: Entity = { ...entity, id, created_at: now, updated_at: now };
 
     const current = mockDb.entities;
     current.push(newEntity);
@@ -692,18 +652,6 @@ export const db = {
 
   async updateEntity(id: string, updates: Partial<Entity>): Promise<Entity> {
     const now = new Date().toISOString();
-
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase!
-        .from('entities')
-        .update({ ...updates, updated_at: now })
-        .eq('id', id)
-        .select()
-        .single();
-      if (error) throw error;
-      return data;
-    }
-
     const current = mockDb.entities;
     const index = current.findIndex((e) => e.id === id);
     if (index === -1) throw new Error(`Entity not found: ${id}`);
@@ -714,12 +662,6 @@ export const db = {
   },
 
   async deleteEntity(id: string): Promise<boolean> {
-    if (isSupabaseConfigured) {
-      const { error } = await supabase!.from('entities').delete().eq('id', id);
-      if (error) throw error;
-      return true;
-    }
-
     mockDb.entities = mockDb.entities.filter((e) => e.id !== id);
     mockDb.people = mockDb.people.filter((p) => p.entity_id !== id);
     mockDb.organizations = mockDb.organizations.filter((o) => o.entity_id !== id);
@@ -733,14 +675,6 @@ export const db = {
 
   // --- PEOPLE ---
   async getPeople(): Promise<(Person & { entity: Entity })[]> {
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase!
-        .from('people')
-        .select('*, entity:entities(*)');
-      if (error) throw error;
-      return data || [];
-    }
-
     return mockDb.people.map((p) => {
       const entity = mockDb.entities.find((e) => e.id === p.entity_id)!;
       return { ...p, entity };
@@ -750,31 +684,11 @@ export const db = {
   async getPersonByEntitySlug(slug: string): Promise<(Person & { entity: Entity }) | null> {
     const entity = await this.getEntityBySlug(slug);
     if (!entity) return null;
-
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase!
-        .from('people')
-        .select('*')
-        .eq('entity_id', entity.id)
-        .maybeSingle();
-      if (error) throw error;
-      return data ? { ...data, entity } : null;
-    }
-
     const person = mockDb.people.find((p) => p.entity_id === entity.id);
     return person ? { ...person, entity } : null;
   },
 
   async getPersonByEntityId(entityId: string): Promise<Person | null> {
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase!
-        .from('people')
-        .select('*')
-        .eq('entity_id', entityId)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
-    }
     return mockDb.people.find((p) => p.entity_id === entityId) || null;
   },
 
@@ -782,10 +696,7 @@ export const db = {
     entity: Omit<Entity, 'id' | 'type' | 'created_at' | 'updated_at'>,
     person: Omit<Person, 'id' | 'entity_id' | 'created_at' | 'updated_at'>
   ): Promise<Person & { entity: Entity }> {
-    const newEntity = await this.createEntity({
-      ...entity,
-      type: 'person',
-    });
+    const newEntity = await this.createEntity({ ...entity, type: 'person' });
 
     const now = new Date().toISOString();
     const newPerson: Person = {
@@ -795,12 +706,6 @@ export const db = {
       created_at: now,
       updated_at: now,
     };
-
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase!.from('people').insert(newPerson).select().single();
-      if (error) throw error;
-      return { ...data, entity: newEntity };
-    }
 
     const current = mockDb.people;
     current.push(newPerson);
@@ -816,17 +721,6 @@ export const db = {
     const updatedEntity = await this.updateEntity(entityId, entityUpdates);
     const now = new Date().toISOString();
 
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase!
-        .from('people')
-        .update({ ...personUpdates, updated_at: now })
-        .eq('entity_id', entityId)
-        .select()
-        .single();
-      if (error) throw error;
-      return { ...data, entity: updatedEntity };
-    }
-
     const current = mockDb.people;
     const index = current.findIndex((p) => p.entity_id === entityId);
     if (index === -1) throw new Error(`Person not found for entity: ${entityId}`);
@@ -838,14 +732,6 @@ export const db = {
 
   // --- ORGANIZATIONS ---
   async getOrganizations(): Promise<(Organization & { entity: Entity })[]> {
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase!
-        .from('organizations')
-        .select('*, entity:entities(*)');
-      if (error) throw error;
-      return data || [];
-    }
-
     return mockDb.organizations.map((org) => {
       const entity = mockDb.entities.find((e) => e.id === org.entity_id)!;
       return { ...org, entity };
@@ -855,31 +741,11 @@ export const db = {
   async getOrganizationByEntitySlug(slug: string): Promise<(Organization & { entity: Entity }) | null> {
     const entity = await this.getEntityBySlug(slug);
     if (!entity) return null;
-
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase!
-        .from('organizations')
-        .select('*')
-        .eq('entity_id', entity.id)
-        .maybeSingle();
-      if (error) throw error;
-      return data ? { ...data, entity } : null;
-    }
-
     const org = mockDb.organizations.find((o) => o.entity_id === entity.id);
     return org ? { ...org, entity } : null;
   },
 
   async getOrganizationByEntityId(entityId: string): Promise<Organization | null> {
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase!
-        .from('organizations')
-        .select('*')
-        .eq('entity_id', entityId)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
-    }
     return mockDb.organizations.find((o) => o.entity_id === entityId) || null;
   },
 
@@ -887,10 +753,7 @@ export const db = {
     entity: Omit<Entity, 'id' | 'type' | 'created_at' | 'updated_at'>,
     org: Omit<Organization, 'id' | 'entity_id' | 'created_at' | 'updated_at'>
   ): Promise<Organization & { entity: Entity }> {
-    const newEntity = await this.createEntity({
-      ...entity,
-      type: 'organization',
-    });
+    const newEntity = await this.createEntity({ ...entity, type: 'organization' });
 
     const now = new Date().toISOString();
     const newOrg: Organization = {
@@ -900,12 +763,6 @@ export const db = {
       created_at: now,
       updated_at: now,
     };
-
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase!.from('organizations').insert(newOrg).select().single();
-      if (error) throw error;
-      return { ...data, entity: newEntity };
-    }
 
     const current = mockDb.organizations;
     current.push(newOrg);
@@ -921,17 +778,6 @@ export const db = {
     const updatedEntity = await this.updateEntity(entityId, entityUpdates);
     const now = new Date().toISOString();
 
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase!
-        .from('organizations')
-        .update({ ...orgUpdates, updated_at: now })
-        .eq('entity_id', entityId)
-        .select()
-        .single();
-      if (error) throw error;
-      return { ...data, entity: updatedEntity };
-    }
-
     const current = mockDb.organizations;
     const index = current.findIndex((o) => o.entity_id === entityId);
     if (index === -1) throw new Error(`Organization not found for entity: ${entityId}`);
@@ -943,14 +789,6 @@ export const db = {
 
   // --- PROVIDERS ---
   async getProviders(): Promise<(Provider & { entity: Entity })[]> {
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase!
-        .from('providers')
-        .select('*, entity:entities(*)');
-      if (error) throw error;
-      return data || [];
-    }
-
     return mockDb.providers.map((p) => {
       const entity = mockDb.entities.find((e) => e.id === p.entity_id)!;
       return { ...p, entity };
@@ -960,31 +798,11 @@ export const db = {
   async getProviderByEntitySlug(slug: string): Promise<(Provider & { entity: Entity }) | null> {
     const entity = await this.getEntityBySlug(slug);
     if (!entity) return null;
-
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase!
-        .from('providers')
-        .select('*')
-        .eq('entity_id', entity.id)
-        .maybeSingle();
-      if (error) throw error;
-      return data ? { ...data, entity } : null;
-    }
-
     const provider = mockDb.providers.find((p) => p.entity_id === entity.id);
     return provider ? { ...provider, entity } : null;
   },
 
   async getProviderByEntityId(entityId: string): Promise<Provider | null> {
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase!
-        .from('providers')
-        .select('*')
-        .eq('entity_id', entityId)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
-    }
     return mockDb.providers.find((p) => p.entity_id === entityId) || null;
   },
 
@@ -992,10 +810,7 @@ export const db = {
     entity: Omit<Entity, 'id' | 'type' | 'created_at' | 'updated_at'>,
     provider: Omit<Provider, 'id' | 'entity_id' | 'created_at' | 'updated_at'>
   ): Promise<Provider & { entity: Entity }> {
-    const newEntity = await this.createEntity({
-      ...entity,
-      type: 'provider',
-    });
+    const newEntity = await this.createEntity({ ...entity, type: 'provider' });
 
     const now = new Date().toISOString();
     const newProvider: Provider = {
@@ -1005,12 +820,6 @@ export const db = {
       created_at: now,
       updated_at: now,
     };
-
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase!.from('providers').insert(newProvider).select().single();
-      if (error) throw error;
-      return { ...data, entity: newEntity };
-    }
 
     const current = mockDb.providers;
     current.push(newProvider);
@@ -1026,17 +835,6 @@ export const db = {
     const updatedEntity = await this.updateEntity(entityId, entityUpdates);
     const now = new Date().toISOString();
 
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase!
-        .from('providers')
-        .update({ ...providerUpdates, updated_at: now })
-        .eq('entity_id', entityId)
-        .select()
-        .single();
-      if (error) throw error;
-      return { ...data, entity: updatedEntity };
-    }
-
     const current = mockDb.providers;
     const index = current.findIndex((p) => p.entity_id === entityId);
     if (index === -1) throw new Error(`Provider not found for entity: ${entityId}`);
@@ -1048,14 +846,6 @@ export const db = {
 
   // --- EVENTS ---
   async getEvents(): Promise<(Event & { entity: Entity })[]> {
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase!
-        .from('events')
-        .select('*, entity:entities(*)');
-      if (error) throw error;
-      return data || [];
-    }
-
     return mockDb.events.map((ev) => {
       const entity = mockDb.entities.find((e) => e.id === ev.entity_id)!;
       return { ...ev, entity };
@@ -1063,16 +853,6 @@ export const db = {
   },
 
   async getEventBySlug(slug: string): Promise<(Event & { entity: Entity }) | null> {
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase!
-        .from('events')
-        .select('*, entity:entities(*)')
-        .eq('slug', slug)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
-    }
-
     const event = mockDb.events.find((ev) => ev.slug === slug);
     if (!event) return null;
     const entity = mockDb.entities.find((e) => e.id === event.entity_id)!;
@@ -1081,14 +861,6 @@ export const db = {
 
   // --- RELATIONSHIPS ---
   async getRelationships(): Promise<PopulatedRelationship[]> {
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase!
-        .from('relationships')
-        .select('*, fromEntity:entities!relationships_from_entity_id_fkey(*), toEntity:entities!relationships_to_entity_id_fkey(*)');
-      if (error) throw error;
-      return data || [];
-    }
-
     return mockDb.relationships.map((r) => {
       const fromEntity = mockDb.entities.find((e) => e.id === r.from_entity_id)!;
       const toEntity = mockDb.entities.find((e) => e.id === r.to_entity_id)!;
@@ -1101,18 +873,7 @@ export const db = {
   ): Promise<Relationship> {
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
-    const newRel: Relationship = {
-      ...relationship,
-      id,
-      created_at: now,
-      updated_at: now,
-    };
-
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase!.from('relationships').insert(newRel).select().single();
-      if (error) throw error;
-      return data;
-    }
+    const newRel: Relationship = { ...relationship, id, created_at: now, updated_at: now };
 
     const current = mockDb.relationships;
     current.push(newRel);
@@ -1121,26 +882,12 @@ export const db = {
   },
 
   async deleteRelationship(id: string): Promise<boolean> {
-    if (isSupabaseConfigured) {
-      const { error } = await supabase!.from('relationships').delete().eq('id', id);
-      if (error) throw error;
-      return true;
-    }
-
     mockDb.relationships = mockDb.relationships.filter((r) => r.id !== id);
     return true;
   },
 
   // --- CREDENTIALS ---
   async getCredentials(): Promise<PopulatedCredential[]> {
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase!
-        .from('credentials')
-        .select('*, issuerEntity:entities!credentials_issuer_entity_id_fkey(*), subjectEntity:entities!credentials_subject_entity_id_fkey(*), event:events(*)');
-      if (error) throw error;
-      return data || [];
-    }
-
     return mockDb.credentials.map((c) => {
       const issuerEntity = mockDb.entities.find((e) => e.id === c.issuer_entity_id)!;
       const subjectEntity = mockDb.entities.find((e) => e.id === c.subject_entity_id)!;
@@ -1150,16 +897,6 @@ export const db = {
   },
 
   async getCredentialByCode(code: string): Promise<PopulatedCredential | null> {
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase!
-        .from('credentials')
-        .select('*, issuerEntity:entities!credentials_issuer_entity_id_fkey(*), subjectEntity:entities!credentials_subject_entity_id_fkey(*), event:events(*)')
-        .eq('credential_code', code)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
-    }
-
     const cred = mockDb.credentials.find((c) => c.credential_code === code);
     if (!cred) return null;
     const issuerEntity = mockDb.entities.find((e) => e.id === cred.issuer_entity_id)!;
@@ -1173,18 +910,7 @@ export const db = {
   ): Promise<Credential> {
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
-    const newCred: Credential = {
-      ...credential,
-      id,
-      created_at: now,
-      updated_at: now,
-    };
-
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase!.from('credentials').insert(newCred).select().single();
-      if (error) throw error;
-      return data;
-    }
+    const newCred: Credential = { ...credential, id, created_at: now, updated_at: now };
 
     const current = mockDb.credentials;
     current.push(newCred);
@@ -1194,18 +920,6 @@ export const db = {
 
   async updateCredential(id: string, updates: Partial<Credential>): Promise<Credential> {
     const now = new Date().toISOString();
-
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase!
-        .from('credentials')
-        .update({ ...updates, updated_at: now })
-        .eq('id', id)
-        .select()
-        .single();
-      if (error) throw error;
-      return data;
-    }
-
     const current = mockDb.credentials;
     const index = current.findIndex((c) => c.id === id);
     if (index === -1) throw new Error(`Credential not found: ${id}`);
@@ -1217,15 +931,6 @@ export const db = {
 
   // --- WALLETS ---
   async getWalletByEntityId(entityId: string): Promise<Wallet | null> {
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase!
-        .from('wallets')
-        .select('*')
-        .eq('entity_id', entityId)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
-    }
     return mockDb.wallets.find((w) => w.entity_id === entityId) || null;
   },
 
@@ -1234,43 +939,24 @@ export const db = {
     const existing = await this.getWalletByEntityId(entityId);
 
     if (existing) {
-      if (isSupabaseConfigured) {
-        const { data, error } = await supabase!
-          .from('wallets')
-          .update({ ...wallet, updated_at: now })
-          .eq('id', existing.id)
-          .select()
-          .single();
-        if (error) throw error;
-        return data;
-      }
-
       const current = mockDb.wallets;
       const index = current.findIndex((w) => w.id === existing.id);
       const updated = { ...current[index], ...wallet, updated_at: now };
       current[index] = updated;
       mockDb.wallets = current;
       return updated;
-    } else {
-      const id = crypto.randomUUID();
-      const newWallet: Wallet = {
-        ...wallet,
-        id,
-        entity_id: entityId,
-        created_at: now,
-        updated_at: now,
-      };
-
-      if (isSupabaseConfigured) {
-        const { data, error } = await supabase!.from('wallets').insert(newWallet).select().single();
-        if (error) throw error;
-        return data;
-      }
-
-      const current = mockDb.wallets;
-      current.push(newWallet);
-      mockDb.wallets = current;
-      return newWallet;
     }
+
+    const newWallet: Wallet = {
+      ...wallet,
+      id: crypto.randomUUID(),
+      entity_id: entityId,
+      created_at: now,
+      updated_at: now,
+    };
+    const current = mockDb.wallets;
+    current.push(newWallet);
+    mockDb.wallets = current;
+    return newWallet;
   },
 };

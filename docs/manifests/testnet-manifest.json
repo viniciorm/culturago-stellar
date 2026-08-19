@@ -1,0 +1,37 @@
+{
+  "environment": "testnet",
+  "generatedAt": "2026-08-19T21:50:00.000Z",
+  "network": {
+    "passphrase": "Test SDF Network ; September 2015",
+    "rpcUrl": "https://soroban-testnet.stellar.org"
+  },
+  "contracts": {
+    "cultural_entity_registry": {
+      "wasmSha256": "76f229bf36817460e7eff531e8cc8b7967d3d419365edc2d8bd630298443a941",
+      "sizeBytes": 15840,
+      "ledger": null,
+      "contractId": null
+    },
+    "cultural_credential_registry": {
+      "wasmSha256": "6c1d1a64d48afd8e3be11f14036f44dbcdbdf2b7253eb82ec1b7833e00982d2b",
+      "sizeBytes": 15981,
+      "ledger": null,
+      "contractId": null
+    }
+  },
+  "smartWallet": {
+    "wasmHashAllowlist": [],
+    "implementation": "passkey-kit",
+    "version": "0.16.5"
+  },
+  "tools": {
+    "stellarCli": "installed (see `stellar --version`)",
+    "rust": "1.9x (via rustup)",
+    "node": ">=22.0.0",
+    "pnpm": "10.0.0"
+  },
+  "notes": [
+    "No secretos, seeds, claves privadas o passkeys en este manifiesto.",
+    "contractId y ledger se completan solo después del despliegue real aprobado en Testnet."
+  ]
+}

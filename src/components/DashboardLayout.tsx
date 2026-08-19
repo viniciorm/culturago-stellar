@@ -18,7 +18,7 @@ import {
   RefreshCw,
   Globe
 } from 'lucide-react';
-import { isSupabaseConfigured, mockDb } from '../lib/db';
+import { mockDb } from '../lib/db';
 import { Button } from './ui/Button';
 
 interface DashboardLayoutProps {
@@ -36,11 +36,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
   }, []);
 
   const handleLogout = () => {
-    // Standard mock logout
-    if (typeof window !== 'undefined') {
-      sessionStorage.removeItem('culturago_admin_logged');
-    }
-    router.push('/login');
+    router.push('/');
   };
 
   const handleResetMockDb = () => {
@@ -78,9 +74,9 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
           <div className="px-4 py-3 mx-4 mt-4 rounded-lg bg-stone-50 border border-stone-200 flex flex-col gap-2">
             <div className="flex items-center gap-2 text-xs font-semibold text-stone-600">
               <Database className="w-3.5 h-3.5 text-[#C5A880]" />
-              Motor: {isSupabaseConfigured ? 'Supabase Real' : 'Local Mock'}
+              Motor: Demo local
             </div>
-            {!isSupabaseConfigured && (
+            {(
               <button 
                 onClick={handleResetMockDb}
                 className="text-[10px] text-[#5C061E] hover:underline flex items-center gap-1 font-medium text-left self-start mt-1"

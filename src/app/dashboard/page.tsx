@@ -13,7 +13,7 @@ import {
   ShieldAlert
 } from 'lucide-react';
 import { EventSummaryCards } from '../../components/EventSummaryCards';
-import { db, Entity, isSupabaseConfigured } from '../../lib/db';
+import { db, Entity } from '../../lib/db';
 import { Button } from '../../components/ui/Button';
 
 export default function DashboardHome() {

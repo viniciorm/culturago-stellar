@@ -2,29 +2,47 @@
   "name": "culturago-stellar",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.0.0",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=10.0.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "migrate": "node database/migrate.mjs",
+    "contracts:test": "cargo test --workspace --manifest-path contracts/Cargo.toml",
+    "contracts:lint": "cargo fmt --all --check --manifest-path contracts/Cargo.toml && cargo clippy --workspace --all-targets --manifest-path contracts/Cargo.toml",
+    "contracts:build": "stellar contract build --manifest-path contracts/Cargo.toml"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.110.5",
+    "@simplewebauthn/browser": "^13.3.0",
+    "@simplewebauthn/server": "^13.3.2",
+    "@stellar/stellar-sdk": "^16.2.0",
     "lucide-react": "^1.24.0",
     "next": "16.2.10",
+    "passkey-kit": "^0.16.5",
+    "pg": "8.23.0",
     "qrcode": "^1.5.4",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "server-only": "0.0.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/pg": "8.23.1",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "4.1.10"
   }
 }

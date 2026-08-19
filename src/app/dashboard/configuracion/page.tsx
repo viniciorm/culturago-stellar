@@ -1,20 +1,17 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { 
-  Settings, 
-  Database, 
-  RefreshCw, 
-  Link2, 
-  HelpCircle,
-  ShieldCheck,
+import {
+  Settings,
+  Database,
+  RefreshCw,
+  Link2,
   AlertTriangle,
   FolderOpen
 } from 'lucide-react';
-import { 
-  db, 
-  isSupabaseConfigured, 
-  mockDb, 
+import {
+  db,
+  mockDb,
   Entity
 } from '../../../lib/db';
 import { Button } from '../../../components/ui/Button';
@@ -39,29 +36,16 @@ export default function ConfiguracionPage() {
       const entData = await db.getEntities();
       setEntities(entData);
 
-      // Extract statistics
-      if (isSupabaseConfigured) {
-        // Query real supabase counts (since we can read from mock db in mock mode)
-        setStats({
-          entities: entData.length,
-          people: (await db.getPeople()).length,
-          organizations: (await db.getOrganizations()).length,
-          providers: (await db.getProviders()).length,
-          relationships: (await db.getRelationships()).length,
-          credentials: (await db.getCredentials()).length,
-          wallets: 0, // Mock wallets length
-        });
-      } else {
-        setStats({
-          entities: mockDb.entities.length,
-          people: mockDb.people.length,
-          organizations: mockDb.organizations.length,
-          providers: mockDb.providers.length,
-          relationships: mockDb.relationships.length,
-          credentials: mockDb.credentials.length,
-          wallets: mockDb.wallets.length,
-        });
-      }
+      // Extract statistics from the demo engine
+      setStats({
+        entities: mockDb.entities.length,
+        people: mockDb.people.length,
+        organizations: mockDb.organizations.length,
+        providers: mockDb.providers.length,
+        relationships: mockDb.relationships.length,
+        credentials: mockDb.credentials.length,
+        wallets: mockDb.wallets.length,
+      });
     } catch (e) {
       console.error(e);
     } finally {
@@ -101,45 +85,31 @@ export default function ConfiguracionPage() {
               Estado del Motor de Datos
             </h3>
 
-            {isSupabaseConfigured ? (
-              <div className="p-3 bg-emerald-50 text-emerald-800 border border-emerald-100 rounded-lg text-xs space-y-2">
-                <div className="flex items-center gap-1.5 font-bold">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                  Conexión Supabase Activa
-                </div>
-                <p className="leading-relaxed opacity-95">
-                  El sistema está conectado a Supabase en la nube. Las operaciones CRUD se guardan directamente en tu base de datos relacional PostgreSQL.
-                </p>
+            <div className="p-3 bg-amber-50 text-amber-800 border border-amber-100 rounded-lg text-xs space-y-2">
+              <div className="flex items-center gap-1.5 font-bold">
+                <AlertTriangle className="w-4 h-4 text-amber-600" />
+                Modo Demo Local Activo
               </div>
-            ) : (
-              <div className="p-3 bg-amber-50 text-amber-800 border border-amber-100 rounded-lg text-xs space-y-2">
-                <div className="flex items-center gap-1.5 font-bold">
-                  <AlertTriangle className="w-4 h-4 text-amber-600" />
-                  Modo Local Mock Activo
-                </div>
-                <p className="leading-relaxed opacity-95">
-                  No se detectaron variables de entorno de Supabase en tu archivo <code className="font-mono bg-amber-100 px-1 rounded">.env.local</code>. El sistema está corriendo localmente con persistencia en <code className="font-mono bg-amber-100 px-1 rounded">localStorage</code>.
-                </p>
-              </div>
-            )}
+              <p className="leading-relaxed opacity-95">
+                El sistema corre localmente con persistencia en <code className="font-mono bg-amber-100 px-1 rounded">localStorage</code>. La persistencia real se realiza vía backend con PostgreSQL privado (server-only).
+              </p>
+            </div>
 
             {/* Actions for local db */}
-            {!isSupabaseConfigured && (
-              <div className="pt-2 text-xs">
-                <span className="text-stone-400 block mb-2 leading-relaxed">
-                  Puedes resetear los datos a los valores semilla preestablecidos de la danza oriental en Chile.
-                </span>
-                <Button 
-                  variant="secondary" 
-                  size="sm" 
-                  className="w-full justify-center text-xs font-semibold"
-                  onClick={handleResetDb}
-                >
-                  <RefreshCw className="w-3.5 h-3.5 mr-1" />
-                  Restablecer Datos Semilla
-                </Button>
-              </div>
-            )}
+            <div className="pt-2 text-xs">
+              <span className="text-stone-400 block mb-2 leading-relaxed">
+                Puedes resetear los datos a los valores semilla preestablecidos de la danza oriental en Chile.
+              </span>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="w-full justify-center text-xs font-semibold"
+                onClick={handleResetDb}
+              >
+                <RefreshCw className="w-3.5 h-3.5 mr-1" />
+                Restablecer Datos Semilla
+              </Button>
+            </div>
           </div>
 
           {/* Table Counts */}
