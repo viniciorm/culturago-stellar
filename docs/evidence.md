@@ -1,5 +1,39 @@
 # Evidencia reproducible por fase
 
+## Testnet readiness — Fases 0 a 5 (2026-08-19)
+
+**Implementado**
+
+- **Fase 0 baseline**: `.env` limpio para demo, `middleware.ts` usa `globalThis.crypto.randomUUID()` (no dependencias Node en Edge), `pnpm build` y `pnpm test` verdes.
+- **Fase 1 backup/restore**: `scripts/postgres-backup.mjs` y `scripts/postgres-restore.mjs` con guardias (`POSTGRES_RESTORE_TARGET_GUARD` rechaza producción), medición RPO/RTO, dry-run por defecto; `docs/runbooks/postgres-restore.md` ampliado con variables y criterios.
+- **Fase 2 VPS/HTTPS/PostgreSQL privado**: `deploy/Dockerfile` con pnpm 10 y lockfile congelado, args de build `NEXT_PUBLIC_*`; `deploy/docker-compose.app.yml` con `app`, `caddy` (HTTPS) y `postgres` en red privada sin publicar 5432; `deploy/Caddyfile` con headers de seguridad; `deploy/setup-vps.sh` archivado como legado.
+- **Fase 3 ABI y golden vectors**: bindings `src/generated/stellar/{entity,credential}` con `stellar contract bindings typescript`; `fixtures/golden-vectors.json` versionado; `scripts/compute-golden-vectors.mjs` genera el fixture; `tests/infrastructure/canonical-hash.test.ts` lee vectores del fixture.
+- **Fase 4 WebAuthn + smart wallet**: `PasskeyService` acepta `expectedOrigins` como lista; `factory.ts` requiere `WEBAUTHN_RP_ID` y `WEBAUTHN_ORIGINS` para testnet/mainnet (sin defaults); `.env.example` documenta todas las variables; `PasskeyKitSigner` recibe `acceptedWasmHashes` y `rpId` y expone `createWallet`/`connectWallet`; `sign()` aún requiere el contract client del dominio generado para `AssembledTransaction`.
+- **Fase 5 smoke Testnet**: `scripts/testnet-smoke.mjs` dry-run con validación de entorno, lectura del manifiesto y flag `--execute` protegida por `CULTURAGO_ALLOW_TESTNET_MUTATIONS`; no se ejecuta deploy real sin fondos/cuentas.
+
+**Verificación (2026-08-19)**:
+
+- `pnpm build` → exitoso (middleware limpio, .env demo coherente).
+- `pnpm typecheck` → limpio.
+- `pnpm test` → **85/85** pasaron.
+- `pnpm contracts:build` → exitoso con hashes reproducibles:
+  - `cultural_entity_registry` → `76f229bf36817460e7eff531e8cc8b7967d3d419365edc2d8bd630298443a941` (13.346 B)
+  - `cultural_credential_registry` → `6c1d1a64d48afd8e3be11f14036f44dbcdbdf2b7253eb82ec1b7833e00982d2b` (15.981 B)
+
+**Fase 5 real ejecutada (2026-08-19)**:
+
+- `scripts/testnet-smoke.mjs --execute` desplegó los contratos en Testnet (protegido por `CULTURAGO_ALLOW_TESTNET_MUTATIONS=true`):
+  - `cultural_entity_registry` → `CBUUMXY77DF4QG5KY5H37SEV63HOLPIVEUZGP2UEQ4PGBNWC2JYFJQGO`
+  - `cultural_credential_registry` → `CBQPZU6O2HTURYQBMYYZ3DDZBTT67AYCXMT5YUYOSVQU5PUCBW642RJ6`
+- `scripts/testnet-exercise.mjs` ejercitó el flujo completo:
+  - `register_entity` → retornó token `1`
+  - `link_issuer_operator` → idempotente
+  - `issue_credential` → retornó token `1`
+- Se generó `.env.testnet` con los `contractId` listos.
+- `docs/manifests/testnet-manifest.json` actualizado con los `contractId` desplegados.
+
+**Restricciones siguientes**: `PasskeyKitSigner.sign()` sigue pendiente del contract client del dominio; Fase 6 requiere el despliegue real del app/VPS con HTTPS.
+
 ## Fase 8 — UX, identidad, smart wallet passkey-based y exportaciones (2026-08-19)
 
 **Implementado**

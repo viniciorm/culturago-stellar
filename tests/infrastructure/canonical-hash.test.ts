@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createCanonicalHashPort } from '@/infrastructure/hashing/canonicalHash';
 import { canonicalizeJson } from '@/infrastructure/hashing/canonicalize';
 import { sha256Node } from '@/infrastructure/hashing/sha256Node';
@@ -7,6 +10,10 @@ import {
   buildCredentialMetadataUri,
   buildEntityMetadataUri,
 } from '@/domain/metadata/metadataUri';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const fixturePath = resolve(here, '..', '..', 'fixtures', 'golden-vectors.json');
+const fixture = JSON.parse(readFileSync(fixturePath, 'utf8'));
 
 const nodePort = createCanonicalHashPort(sha256Node);
 const webPort = createCanonicalHashPort(sha256Web);
@@ -42,31 +49,20 @@ describe('canonicalization', () => {
 
 describe('golden vectors', () => {
   // Vectors computed once and frozen; any canonicalization drift breaks them.
-  const vectors = [
-    {
-      schema: 'culturago.entity.v1' as const,
-      doc: { b: 1, a: 'hola' },
-      expected: 'a12a89a3f9e22fbbf44268d610d591926f673a23f86db5a063e4dde22a9edbdc',
-    },
-    {
-      schema: 'culturago.credential.v1' as const,
-      doc: {},
-      expected: 'cfa5aa938307ecbb4c81403d85625c3e5cc2deeabfe6585132a8817b79078f13',
-    },
-    {
-      schema: 'culturago.entity.v1' as const,
-      doc: { arr: [3, 2, 1], nested: { z: true, y: null } },
-      expected: '9c52b708c85bdecf14ce6bd81d878a9bda312b316bb3eb656c7a25fe93dad831',
-    },
-  ];
+  const vectors = fixture.vectors as Array<{
+    name: string;
+    schema: 'culturago.entity.v1' | 'culturago.credential.v1';
+    doc: Record<string, unknown>;
+    expectedSha256: string;
+  }>;
 
-  for (const { schema, doc, expected } of vectors) {
-    it(`node backend matches vector ${expected.slice(0, 8)}`, async () => {
-      expect(await nodePort.hashDocument(schema, doc)).toBe(expected);
+  for (const { name, schema, doc, expectedSha256 } of vectors) {
+    it(`node backend matches fixture ${name}`, async () => {
+      expect(await nodePort.hashDocument(schema, doc)).toBe(expectedSha256);
     });
 
-    it(`web backend matches vector ${expected.slice(0, 8)}`, async () => {
-      expect(await webPort.hashDocument(schema, doc)).toBe(expected);
+    it(`web backend matches fixture ${name}`, async () => {
+      expect(await webPort.hashDocument(schema, doc)).toBe(expectedSha256);
     });
   }
 

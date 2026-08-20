@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "algorithm": "sha256",
+  "encoding": "hex",
+  "digestPrefix": "CULTURAGO\\0<schema>\\0<canonical-json>",
+  "generatedAt": "2026-08-20T00:10:11.635Z",
+  "vectors": [
+    {
+      "name": "v1",
+      "schema": "culturago.entity.v1",
+      "doc": {
+        "b": 1,
+        "a": "hola"
+      },
+      "canonical": "{\"a\":\"hola\",\"b\":1}",
+      "digestInputHex": "43554c54555241474f0063756c74757261676f2e656e746974792e7631007b2261223a22686f6c61222c2262223a317d",
+      "expectedSha256": "a12a89a3f9e22fbbf44268d610d591926f673a23f86db5a063e4dde22a9edbdc"
+    },
+    {
+      "name": "v2",
+      "schema": "culturago.credential.v1",
+      "doc": {},
+      "canonical": "{}",
+      "digestInputHex": "43554c54555241474f0063756c74757261676f2e63726564656e7469616c2e7631007b7d",
+      "expectedSha256": "cfa5aa938307ecbb4c81403d85625c3e5cc2deeabfe6585132a8817b79078f13"
+    },
+    {
+      "name": "v3",
+      "schema": "culturago.entity.v1",
+      "doc": {
+        "arr": [
+          3,
+          2,
+          1
+        ],
+        "nested": {
+          "z": true,
+          "y": null
+        }
+      },
+      "canonical": "{\"arr\":[3,2,1],\"nested\":{\"y\":null,\"z\":true}}",
+      "digestInputHex": "43554c54555241474f0063756c74757261676f2e656e746974792e7631007b22617272223a5b332c322c315d2c226e6573746564223a7b2279223a6e756c6c2c227a223a747275657d7d",
+      "expectedSha256": "9c52b708c85bdecf14ce6bd81d878a9bda312b316bb3eb656c7a25fe93dad831"
+    }
+  ]
+}

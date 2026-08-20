@@ -1,6 +1,6 @@
 {
   "environment": "testnet",
-  "generatedAt": "2026-08-19T21:50:00.000Z",
+  "generatedAt": "2026-08-20T01:51:19.010Z",
   "network": {
     "passphrase": "Test SDF Network ; September 2015",
     "rpcUrl": "https://soroban-testnet.stellar.org"
@@ -8,16 +8,28 @@
   "contracts": {
     "cultural_entity_registry": {
       "wasmSha256": "76f229bf36817460e7eff531e8cc8b7967d3d419365edc2d8bd630298443a941",
-      "sizeBytes": 15840,
+      "sizeBytes": 13346,
       "ledger": null,
-      "contractId": null
+      "contractId": "CBUUMXY77DF4QG5KY5H37SEV63HOLPIVEUZGP2UEQ4PGBNWC2JYFJQGO"
     },
     "cultural_credential_registry": {
       "wasmSha256": "6c1d1a64d48afd8e3be11f14036f44dbcdbdf2b7253eb82ec1b7833e00982d2b",
       "sizeBytes": 15981,
       "ledger": null,
-      "contractId": null
+      "contractId": "CBQPZU6O2HTURYQBMYYZ3DDZBTT67AYCXMT5YUYOSVQU5PUCBW642RJ6"
     }
+  },
+  "bindings": {
+    "generator": "stellar contract bindings typescript",
+    "stellarCli": "27.1.0",
+    "sourceWasmHashes": {
+      "cultural_entity_registry": "76f229bf36817460e7eff531e8cc8b7967d3d419365edc2d8bd630298443a941",
+      "cultural_credential_registry": "6c1d1a64d48afd8e3be11f14036f44dbcdbdf2b7253eb82ec1b7833e00982d2b"
+    },
+    "outputPaths": [
+      "src/generated/stellar/entity",
+      "src/generated/stellar/credential"
+    ]
   },
   "smartWallet": {
     "wasmHashAllowlist": [],
@@ -25,7 +37,8 @@
     "version": "0.16.5"
   },
   "tools": {
-    "stellarCli": "installed (see `stellar --version`)",
+    "stellarCli": "27.1.0",
+    "stellarXdr": "27.0.0",
     "rust": "1.9x (via rustup)",
     "node": ">=22.0.0",
     "pnpm": "10.0.0"

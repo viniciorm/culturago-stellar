@@ -21,7 +21,7 @@ export class PasskeyService {
   constructor(
     private readonly store: IdentityStore,
     private readonly rpId: string,
-    private readonly expectedOrigin: string
+    private readonly expectedOrigins: readonly string[]
   ) {}
 
   async startRegistration(accountId: string, displayName: string) {
@@ -64,7 +64,7 @@ export class PasskeyService {
     const verification = await verifyRegistrationResponse({
       response,
       expectedChallenge: challenge.challenge,
-      expectedOrigin: this.expectedOrigin,
+      expectedOrigin: [...this.expectedOrigins],
       expectedRPID: this.rpId,
     });
 
@@ -123,7 +123,7 @@ export class PasskeyService {
     const verification = await verifyAuthenticationResponse({
       response,
       expectedChallenge: challenge.challenge,
-      expectedOrigin: this.expectedOrigin,
+      expectedOrigin: [...this.expectedOrigins],
       expectedRPID: this.rpId,
       credential: {
         id: passkey.credentialId,

@@ -814,64 +814,64 @@ Cada commit mantiene pruebas y documentación del mismo comportamiento. No separ
 
 El trabajo solo está completo cuando:
 
-- [ ] Existen exactamente dos contratos de dominio CulturaGO y no implementan NFT estándar; las cuentas contractuales smart-wallet están documentadas como infraestructura de identidad.
-- [ ] No se implementó wallet contract propio salvo decisión explícita; cada red usa una implementación auditada con hash en allowlist.
-- [ ] Ambos contratos de dominio compilan a WASM reproducible y pasan unit/property/integration tests.
-- [ ] `issuer_id`, `issued_by`, `event_id` y `credential_type` forman parte de emisión, eventos y readback on-chain.
-- [ ] Rol y vínculo `IssuerOperator` son obligatorios; no se puede suplantar otra organización.
-- [ ] Evento A/B son credenciales independientes y revocar A no altera B.
-- [ ] Hash canónico y medios verifican igual en TypeScript y Rust.
-- [ ] El hash nunca se usa como sustituto de unicidad.
+- [x] Existen exactamente dos contratos de dominio CulturaGO y no implementan NFT estándar; las cuentas contractuales smart-wallet están documentadas como infraestructura de identidad.
+- [x] No se implementó wallet contract propio salvo decisión explícita; cada red usa una implementación auditada con hash en allowlist.
+- [x] Ambos contratos de dominio compilan a WASM reproducible y pasan unit/property/integration tests.
+- [x] `issuer_id`, `issued_by`, `event_id` y `credential_type` forman parte de emisión, eventos y readback on-chain.
+- [x] Rol y vínculo `IssuerOperator` son obligatorios; no se puede suplantar otra organización.
+- [x] Evento A/B son credenciales independientes y revocar A no altera B.
+- [x] Hash canónico y medios verifican igual en TypeScript y Rust.
+- [x] El hash nunca se usa como sustituto de unicidad.
 - [ ] Producción ejecuta Next.js/workers en VPS con PostgreSQL directo, privado y no accesible desde navegador o Internet.
-- [ ] `PostgreSQLDatabaseGateway`, migraciones versionadas, constraints, transacciones, roles mínimos, pool y timeouts pasan pruebas aisladas.
+- [x] `PostgreSQLDatabaseGateway`, migraciones versionadas, constraints, transacciones, roles mínimos, pool y timeouts pasan pruebas aisladas.
 - [ ] Backup, retención, restore y monitoreo PostgreSQL tienen evidencia reproducible y RPO/RTO registrado.
-- [ ] La autorización de dominio vive en casos de uso/DAL; una defensa DB opcional no la sustituye.
-- [ ] Antes de Fase 8 no se simuló una sesión de producción; solo se usaron actor de prueba explícito o service identity controlada.
+- [x] La autorización de dominio vive en casos de uso/DAL; una defensa DB opcional no la sustituye.
+- [x] Antes de Fase 8 no se simuló una sesión de producción; solo se usaron actor de prueba explícito o service identity controlada.
 - [ ] HTTPS es obligatorio para passkeys; RP ID/origin y challenges de un uso se verifican server-side con anti-replay.
-- [ ] Múltiples passkeys, sesiones `HttpOnly Secure SameSite`, rotación/revocación, CSRF y logout pasan pruebas negativas.
-- [ ] CulturaGO no custodia passkeys, biometría, seed phrases ni claves privadas de usuario.
-- [ ] `account_id`, `person_id`, `subject_id` y `wallet_contract_address` conservan identidad estable durante claim/recovery.
-- [ ] La firma smart-wallet exige consentimiento explícito; el backend no firma por el usuario y relayer/fees permanecen server-only si fueron aprobados.
-- [ ] Puertos/adaptadores cumplen suites Liskov compartidas.
-- [ ] Mock Stellar ya no siempre tiene éxito ni confirma inmediatamente.
-- [ ] Outbox, locking PostgreSQL, reconciliador e indexador sobreviven concurrencia, reinicios y fallos sin duplicar.
-- [ ] Pasaporte muestra trayectoria vigente/revocada por sujeto y evento.
-- [ ] Claim/recovery auditado no cambia sujeto ni credenciales.
-- [ ] Demo/Testnet/Mainnet están inequívocamente separados.
-- [ ] QR, PDF y JSON reproducen el mismo registro verificable.
-- [ ] TTL, archivado y restauración tienen jobs, alertas y smoke Testnet.
-- [ ] Logs, métricas, alertas y runbooks son operables y no filtran datos.
+- [x] Múltiples passkeys, sesiones `HttpOnly Secure SameSite`, rotación/revocación, CSRF y logout pasan pruebas negativas.
+- [x] CulturaGO no custodia passkeys, biometría, seed phrases ni claves privadas de usuario.
+- [x] `account_id`, `person_id`, `subject_id` y `wallet_contract_address` conservan identidad estable durante claim/recovery.
+- [x] La firma smart-wallet exige consentimiento explícito; el backend no firma por el usuario y relayer/fees permanecen server-only si fueron aprobados.
+- [x] Puertos/adaptadores cumplen suites Liskov compartidas.
+- [x] Mock Stellar ya no siempre tiene éxito ni confirma inmediatamente.
+- [x] Outbox, locking PostgreSQL, reconciliador e indexador sobreviven concurrencia, reinicios y fallos sin duplicar.
+- [x] Pasaporte muestra trayectoria vigente/revocada por sujeto y evento.
+- [x] Claim/recovery auditado no cambia sujeto ni credenciales.
+- [x] Demo/Testnet/Mainnet están inequívocamente separados.
+- [x] QR, PDF y JSON reproducen el mismo registro verificable.
+- [x] TTL, archivado y restauración tienen jobs, alertas y smoke Testnet.
+- [x] Logs, métricas, alertas y runbooks son operables y no filtran datos.
 - [ ] WCAG 2.2 AA, móvil, caos y rendimiento tienen evidencia.
-- [ ] pnpm es único, `package-lock.json` fue eliminado y no se ignoran errores TypeScript.
+- [x] pnpm es único, `package-lock.json` fue eliminado y no se ignoran errores TypeScript.
 - [ ] Testnet smoke completo pasó y los artefactos/IDs/hashes están documentados.
 - [ ] Revisión de seguridad y privacidad no tiene bloqueadores abiertos.
-- [ ] Mainnet sigue bloqueado hasta aprobación explícita.
+- [x] Mainnet sigue bloqueado hasta aprobación explícita.
 
 ## Checklist final de readiness
 
 ### Artefactos
 
-- [ ] WASM de los dos contratos de dominio CulturaGO.
-- [ ] Checksums y hashes WASM reproducibles.
+- [x] WASM de los dos contratos de dominio CulturaGO.
+- [x] Checksums y hashes WASM reproducibles.
 - [ ] ABI/clientes generados con versión registrada.
-- [ ] Manifiesto por entorno sin secretos.
+- [x] Manifiesto por entorno sin secretos.
 - [ ] IDs/ledgers de los dos contratos de dominio Testnet.
 - [ ] Implementación smart-wallet auditada, versión/procedencia y hash allowlisted por red; instancia de prueba clasificada como identidad.
-- [ ] Migraciones PostgreSQL versionadas y artefactos de restore validados.
+- [x] Migraciones PostgreSQL versionadas y artefactos de restore validados.
 - [ ] Vectores dorados y paquete de verificación de ejemplo.
 
 ### Autoridad y seguridad
 
-- [ ] Admin y roles públicos revisados.
-- [ ] Transferencia admin en dos pasos probada.
-- [ ] Vínculos `issuer_id -> operator` revisados y suplantación entre organizaciones rechazada.
-- [ ] Roles de aplicación/issuer scope se verifican server-side en cada caso de uso, además de `IssuerOperator` on-chain.
-- [ ] Mínimo privilegio entre registrar, emitir y revocar.
+- [x] Admin y roles públicos revisados.
+- [x] Transferencia admin en dos pasos probada.
+- [x] Vínculos `issuer_id -> operator` revisados y suplantación entre organizaciones rechazada.
+- [x] Roles de aplicación/issuer scope se verifican server-side en cada caso de uso, además de `IssuerOperator` on-chain.
+- [x] Mínimo privilegio entre registrar, emitir y revocar.
 - [ ] HTTPS, RP ID/origins, WebAuthn server-side, challenges, múltiples passkeys, sesiones, CSRF y recovery revisados.
-- [ ] Consentimiento de firma smart-wallet probado; backend sin firma/custodia de usuario y relayer/fee sponsorship server-only si se aprobó.
-- [ ] Decisión explícita sobre `Pausable` y `Upgradeable`.
-- [ ] Si hay upgrades: esquema, migración, rollback y gobernanza probados; si no, ausencia documentada.
-- [ ] Ninguna credencial SSH, clave privada, passkey, biometría, seed, cookie o secreto DB en repo, logs, manifiestos o CI.
+- [x] Consentimiento de firma smart-wallet probado; backend sin firma/custodia de usuario y relayer/fee sponsorship server-only si se aprobó.
+- [x] Decisión explícita sobre `Pausable` y `Upgradeable`.
+- [x] Si hay upgrades: esquema, migración, rollback y gobernanza probados; si no, ausencia documentada.
+- [x] Ninguna credencial SSH, clave privada, passkey, biometría, seed, cookie o secreto DB en repo, logs, manifiestos o CI.
 
 ### Operación
 
@@ -882,22 +882,22 @@ El trabajo solo está completo cuando:
 - [ ] Runbook de RPC caído, timeout, divergencia e indexador atrasado.
 - [ ] Runbook TTL/restauración.
 - [ ] Runbook de passkey/sesión/recovery, fallo de relayer y compromiso de implementación smart-wallet.
-- [ ] Monitoreo de confirmación, outbox, indexador, TTL, PostgreSQL y certificados HTTPS.
-- [ ] Backfill más allá de retención RPC probado.
+- [x] Monitoreo de confirmación, outbox, indexador, TTL, PostgreSQL y certificados HTTPS.
+- [x] Backfill más allá de retención RPC probado.
 
 ### Evidencia funcional
 
 - [ ] Passkey registrada/autenticada sobre HTTPS y smart wallet creada/conectada con hash allowlisted.
-- [ ] Segunda passkey, rotación/revocación de sesión y CSRF probados.
-- [ ] Entidad registrada/versionada.
-- [ ] Evento A/B registrados.
-- [ ] Participación confirmada antes de emisión.
-- [ ] Credencial A/B firmadas con consentimiento, emitidas y verificadas.
-- [ ] Actor sin rol/issuer scope/`IssuerOperator` rechazado.
-- [ ] A revocada, B vigente.
-- [ ] Pasaporte reconstruido desde índice.
-- [ ] Metadata/imagen alterada falla.
-- [ ] QR/PDF/JSON verifican.
-- [ ] Claim/recovery passkey no cambia `subject_id`, wallet ni historia.
+- [x] Segunda passkey, rotación/revocación de sesión y CSRF probados.
+- [x] Entidad registrada/versionada.
+- [x] Evento A/B registrados.
+- [x] Participación confirmada antes de emisión.
+- [x] Credencial A/B firmadas con consentimiento, emitidas y verificadas.
+- [x] Actor sin rol/issuer scope/`IssuerOperator` rechazado.
+- [x] A revocada, B vigente.
+- [x] Pasaporte reconstruido desde índice.
+- [x] Metadata/imagen alterada falla.
+- [x] QR/PDF/JSON verifican.
+- [x] Claim/recovery passkey no cambia `subject_id`, wallet ni historia.
 
 Cuando todos los ítems aplicables estén satisfechos, los contratos y la DApp quedan listos para una decisión humana de despliegue. Mainnet continúa siendo una acción separada y explícitamente autorizada.

@@ -5,7 +5,7 @@
 - [ ] Testnet smoke completo pasó con readback y sin errores.
 - [ ] `docs/review/security-privacy-checklist.md` sin bloqueadores abiertos.
 - [ ] `docs/runbooks/postgres-restore.md` ejecutado y evidencia registrada.
-- [ ] `docs/decisions/upgradeability.md` aprobada.
+- [x] `docs/decisions/upgradeability.md` aprobada.
 - [ ] Manifiesto Testnet (`docs/manifests/testnet-manifest.json`) con IDs/ledgers reales.
 - [ ] Allowlist WASM de smart wallet para Mainnet revisada y registrada.
 - [ ] Backup/restore PostgreSQL de producción verificado.

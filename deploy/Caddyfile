@@ -1,0 +1,11 @@
+{$CULTURAGO_DOMAIN:localhost} {
+  reverse_proxy app:3080
+  tls {$ACME_EMAIL:internal}
+
+  header {
+    X-Frame-Options DENY
+    X-Content-Type-Options nosniff
+    Referrer-Policy strict-origin-when-cross-origin
+    Permissions-Policy "geolocation=(), microphone=(), camera=()"
+  }
+}

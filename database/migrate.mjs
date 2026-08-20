@@ -12,9 +12,9 @@ const { Client } = pg;
 const here = dirname(fileURLToPath(import.meta.url));
 const migrationsDir = join(here, 'migrations');
 
-const url = process.env.DATABASE_URL;
+const url = process.env.DATABASE_MIGRATION_URL || process.env.DATABASE_URL;
 if (!url) {
-  console.error('DATABASE_URL is required');
+  console.error('DATABASE_MIGRATION_URL or DATABASE_URL is required');
   process.exit(1);
 }
 

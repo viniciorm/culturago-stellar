@@ -1,17 +1,73 @@
 version: '3.8'
 
 services:
-  nextjs-app:
+  app:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
       args:
-        - NEXT_PUBLIC_SUPABASE_URL=http://166.0.112.1:8000
-        - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+        NEXT_PUBLIC_CULTURAGO_ENV: ${NEXT_PUBLIC_CULTURAGO_ENV:-testnet}
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
+        NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE: ${NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE}
+        NEXT_PUBLIC_STELLAR_RPC_URL: ${NEXT_PUBLIC_STELLAR_RPC_URL}
+        NEXT_PUBLIC_ENTITY_REGISTRY_CONTRACT_ID: ${NEXT_PUBLIC_ENTITY_REGISTRY_CONTRACT_ID}
+        NEXT_PUBLIC_CREDENTIAL_REGISTRY_CONTRACT_ID: ${NEXT_PUBLIC_CREDENTIAL_REGISTRY_CONTRACT_ID}
+        NEXT_PUBLIC_STELLAR_EXPLORER_BASE: ${NEXT_PUBLIC_STELLAR_EXPLORER_BASE}
+        NEXT_PUBLIC_SMART_WALLET_WASM_HASH: ${NEXT_PUBLIC_SMART_WALLET_WASM_HASH}
+        NEXT_PUBLIC_SMART_WALLET_ACCEPTED_WASM_HASHES: ${NEXT_PUBLIC_SMART_WALLET_ACCEPTED_WASM_HASHES}
     container_name: culturago-app
-    restart: always
-    ports:
-      - "80:3080"
+    restart: unless-stopped
+    env_file:
+      - ../.env
     environment:
       - NODE_ENV=production
       - PORT=3080
+      - HOSTNAME=0.0.0.0
+    networks:
+      - culturago
+    depends_on:
+      - postgres
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: culturago-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - CULTURAGO_DOMAIN=${CULTURAGO_DOMAIN:-localhost}
+      - ACME_EMAIL=${ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - culturago
+    depends_on:
+      - app
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: culturago-postgres
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-culturago_app}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-dev}
+      - POSTGRES_DB=${POSTGRES_DB:-culturago}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - culturago
+    # PostgreSQL intentionally not published to the host; accessible only on the private network.
+
+networks:
+  culturago:
+    driver: bridge
+
+volumes:
+  pg_data:
+  caddy_data:
+  caddy_config:
