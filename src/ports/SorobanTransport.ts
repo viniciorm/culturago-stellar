@@ -20,6 +20,8 @@ export interface ContractCallSpec {
   args: readonly ContractArgValue[];
   /** Address whose auth the method requires (operator/registrar). */
   actorAddress: string;
+  /** Optional fee-paying source account; defaults to actorAddress. Smart wallets need a separate funded G account. */
+  feePayerAddress?: string;
 }
 
 export interface SimulationOutcome {

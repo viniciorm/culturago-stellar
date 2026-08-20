@@ -13,6 +13,7 @@ import { PreparedTransactionPayload, SignedTransactionPayload, SignerPort } from
 export class PasskeyKitSigner implements SignerPort {
   private keyId: string | undefined;
   private contractId: string | undefined;
+  private kit: import('passkey-kit').PasskeyKit | undefined;
 
   constructor(
     private readonly rpcUrl: string,
@@ -22,44 +23,57 @@ export class PasskeyKitSigner implements SignerPort {
     private readonly rpId: string | undefined = undefined
   ) {}
 
-  async createWallet(appName: string, userName: string): Promise<{ keyId: string; contractId: string; signedTx: string }> {
+  private async buildKit(): Promise<import('passkey-kit').PasskeyKit> {
     const { PasskeyKit } = await import('passkey-kit');
-    const kit = new PasskeyKit({
+    return new PasskeyKit({
       rpcUrl: this.rpcUrl,
       networkPassphrase: this.networkPassphrase,
       walletWasmHash: this.walletWasmHash,
       acceptedWasmHashes: [...this.acceptedWasmHashes],
       rpId: this.rpId,
     });
-    const { keyIdBase64, contractId, signedTx } = await kit.createWallet(appName, userName);
+  }
+
+  async createWallet(appName: string, userName: string): Promise<{ keyId: string; contractId: string; signedTx: string }> {
+    this.kit = await this.buildKit();
+    const { keyIdBase64, contractId, signedTx } = await this.kit.createWallet(appName, userName);
     this.keyId = keyIdBase64;
     this.contractId = contractId;
+    // createWallet no conecta el kit; la conexión se confirma vía connectWallet
     return { keyId: keyIdBase64, contractId, signedTx };
   }
 
   async connectWallet(keyIdBase64: string): Promise<string> {
-    const { PasskeyKit } = await import('passkey-kit');
-    const kit = new PasskeyKit({
-      rpcUrl: this.rpcUrl,
-      networkPassphrase: this.networkPassphrase,
-      walletWasmHash: this.walletWasmHash,
-      acceptedWasmHashes: [...this.acceptedWasmHashes],
-      rpId: this.rpId,
-    });
-    const { contractId } = await kit.connectWallet({ keyId: keyIdBase64 });
+    this.kit = await this.buildKit();
+    const { contractId } = await this.kit.connectWallet({ keyId: keyIdBase64 });
     this.keyId = keyIdBase64;
     this.contractId = contractId;
     return contractId;
   }
 
   async sign(prepared: PreparedTransactionPayload): Promise<SignedTransactionPayload> {
-    if (!this.keyId || !this.contractId) {
+    if (!this.kit || !this.keyId || !this.contractId) {
       throw domainError('INVALID_STATE_TRANSITION', 'Wallet must be created or connected before signing');
     }
-    void prepared;
-    throw domainError(
-      'INTERNAL',
-      'Smart wallet signing requires a generated domain contract client to build the AssembledTransaction from the prepared XDR.'
-    );
+    if (prepared.networkPassphrase !== this.networkPassphrase) {
+      throw domainError('INVALID_INPUT', 'Prepared payload targets a different network');
+    }
+
+    // Asegurar que el kit tiene el wallet conectado antes de firmar
+    if (!this.kit.wallet) {
+      await this.kit.connectWallet({ keyId: this.keyId });
+    }
+    const wallet = this.kit.wallet!;
+
+    // Reconstruir el AssembledTransaction desde el XDR preparado
+    const assembled = wallet.txFromXDR!(prepared.unsignedXdr) as { toXDR(): string };
+    const signed = await this.kit.sign(assembled as unknown as Parameters<typeof this.kit.sign>[0]);
+    const signedXdr = (signed as unknown as { toXDR(): string }).toXDR();
+
+    return {
+      operationId: prepared.operationId,
+      signedXdr,
+      signerAddress: this.contractId,
+    };
   }
 }

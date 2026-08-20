@@ -17,6 +17,8 @@ export interface StellarNetworkConfig {
   /** Future allowlist of approved smart-wallet WASM hashes. Empty until
    *  Phase 8 deploys a wallet contract. */
   smartWalletWasmAllowlist: readonly string[];
+  /** Funded G-account that pays fees when the actor is a smart-wallet contract. */
+  feePayerAddress: string | null;
 }
 
 export function getStellarNetworkConfig(): StellarNetworkConfig {
@@ -41,6 +43,11 @@ export function getStellarNetworkConfig(): StellarNetworkConfig {
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
 
+  const feePayer =
+    process.env.STELLAR_FEEPAYER_ADDRESS ??
+    process.env.STELLAR_TESTNET_ADMIN_ADDRESS ??
+    null;
+
   return {
     environment: publicConfig.environment,
     networkPassphrase: publicConfig.stellarNetworkPassphrase!,
@@ -49,6 +56,7 @@ export function getStellarNetworkConfig(): StellarNetworkConfig {
     credentialRegistryContractId: publicConfig.credentialRegistryContractId,
     explorerBase: publicConfig.stellarExplorerBase,
     smartWalletWasmAllowlist: allowlist,
+    feePayerAddress: feePayer && feePayer.trim() !== '' ? feePayer.trim() : null,
   };
 }
 

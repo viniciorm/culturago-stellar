@@ -14,6 +14,7 @@ const DEMO_CONFIG: StellarNetworkConfig = {
   credentialRegistryContractId: 'CDEMO_CREDENTIAL_REGISTRY',
   explorerBase: null,
   smartWalletWasmAllowlist: [],
+  feePayerAddress: null,
 };
 
 /**

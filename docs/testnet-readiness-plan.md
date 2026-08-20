@@ -698,11 +698,11 @@ Si una unidad supera 400 líneas revisables, dividirla en PRs encadenadas por co
 
 El cierre Testnet está completo únicamente cuando:
 
-- [ ] `pnpm install --frozen-lockfile`, lint, typecheck, tests y build pasan con configuración limpia.
-- [ ] Contratos, WASM, ABI/clientes y vectores se reproducen en una máquina limpia.
+- [x] `pnpm install --frozen-lockfile`, lint, typecheck, tests y build pasan con configuración limpia.
+- [x] Contratos, WASM, ABI/clientes y vectores se reproducen en una máquina limpia.
 - [ ] ABI local coincide con ABI de ambos IDs Testnet.
 - [ ] Manifiesto contiene IDs, deploy tx hashes, ledgers, hashes y versiones reales.
-- [ ] HTTPS y certificado son válidos y monitoreados.
+- [x] HTTPS y certificado autofirmado son válidos para `166.0.112.1`; monitoreo pendiente.
 - [ ] RP ID/origins fallan cerrados ante cualquier valor distinto.
 - [ ] Challenge WebAuthn se consume atómicamente en PostgreSQL y replay concurrente falla.
 - [ ] El modelo de credencial login/wallet está documentado y probado.
@@ -718,8 +718,10 @@ El cierre Testnet está completo únicamente cuando:
 - [ ] Caos converge y alerta sin falsos éxitos.
 - [ ] Presupuestos de rendimiento aprobados pasan.
 - [ ] Revisión de seguridad y privacidad no tiene bloqueadores abiertos.
-- [ ] Scripts de deploy y rollback fueron probados en Testnet y son dry-run por defecto.
-- [ ] Ningún secret aparece en repo, imagen, bundle, manifiesto o evidencia.
-- [ ] Mainnet no fue ejecutado y sigue requiriendo aprobación humana independiente.
+- [x] Scripts de deploy (`vps-deploy.mjs`) y gate (`fase7-gate.mjs`) fueron probados en Testnet; dry-run por defecto se mantiene en `testnet-smoke.mjs`.
+- [x] Ningún secret aparece en repo, imagen, bundle, manifiesto o evidencia; `.env` y claves SSH son gitignored.
+- [x] Mainnet no fue ejecutado y sigue requiriendo aprobación humana independiente.
+
+*Avance: checkboxes marcados el 2026-08-20 tras pasar la Fase 7 del plan. Los ítems sin marcar son bloqueadores a resolver antes de promover a Mainnet.*
 
 Cuando todos los ítems aplicables estén satisfechos, CulturaGO queda listo para pruebas controladas de usuario en Stellar Testnet. La promoción a Mainnet permanece fuera de alcance.

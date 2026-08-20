@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
-import { createMockStellarGateway } from '@/infrastructure/stellar/MockStellarGateway';
+import { createStellarGateway } from '@/infrastructure/stellar/createStellarGateway';
 import { isDomainError } from '@/domain/errors';
 
 export async function POST(request: Request) {
   try {
     const { operationId, signedXdr, signerAddress } = await request.json();
-    const bundle = createMockStellarGateway({ signer: null });
+    const bundle = createStellarGateway();
     const state = await bundle.gateway.submitSigned(operationId, signedXdr, signerAddress);
     return NextResponse.json({ operation: state });
   } catch (error) {

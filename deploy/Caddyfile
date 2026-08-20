@@ -1,6 +1,10 @@
+{
+  auto_https disable_redirects
+}
+
 {$CULTURAGO_DOMAIN:localhost} {
   reverse_proxy app:3080
-  tls {$ACME_EMAIL:internal}
+  tls internal
 
   header {
     X-Frame-Options DENY

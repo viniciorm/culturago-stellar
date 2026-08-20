@@ -315,6 +315,7 @@ export class SorobanStellarGateway implements StellarGateway {
       method: op.intent.kind === 'register_entity' ? 'get_entity' : 'get_credential',
       args: [bytes32(op.intent.subjectKey)],
       actorAddress: op.intent.actorAddress,
+      feePayerAddress: this.config.feePayerAddress ?? undefined,
     };
   }
 
@@ -332,6 +333,7 @@ export class SorobanStellarGateway implements StellarGateway {
           method: 'register_entity',
           args: [addr(c.actorAddress), bytes32(c.entityId), bytes32(c.metadataHash), u32(c.hashSchema)],
           actorAddress: c.actorAddress,
+          feePayerAddress: this.config.feePayerAddress ?? undefined,
         };
       }
       case 'issue_credential': {
@@ -355,6 +357,7 @@ export class SorobanStellarGateway implements StellarGateway {
             u32(c.hashSchema),
           ],
           actorAddress: c.actorAddress,
+          feePayerAddress: this.config.feePayerAddress ?? undefined,
         };
       }
       case 'revoke_credential': {
@@ -370,6 +373,7 @@ export class SorobanStellarGateway implements StellarGateway {
             { kind: 'optional_bytes32', hex: c.reasonHash },
           ],
           actorAddress: c.actorAddress,
+          feePayerAddress: this.config.feePayerAddress ?? undefined,
         };
       }
     }

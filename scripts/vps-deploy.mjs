@@ -85,7 +85,8 @@ function buildRemoteEnv() {
   ];
 
   merged.CULTURAGO_HTTP_PORT ||= '8080';
-  merged.CULTURAGO_HTTPS_PORT ||= '8443';
+  merged.CULTURAGO_HTTPS_PORT ||= '8444';
+  merged.CULTURAGO_DOMAIN ||= host;
 
   const out = [];
   for (const key of safeVars) {
@@ -167,9 +168,24 @@ async function main() {
 
   console.log(green(`Connected to ${host} as ${user}`));
 
+  console.log('\nOpening firewall ports...');
+  await exec(conn, '(ufw allow 22/tcp && ufw allow 8080/tcp && ufw allow 8444/tcp && ufw reload) 2>/dev/null || true');
+  await exec(conn, 'iptables -C INPUT -p tcp --dport 8080 -j ACCEPT 2>/dev/null || iptables -I INPUT -p tcp --dport 8080 -j ACCEPT');
+  await exec(conn, 'iptables -C INPUT -p tcp --dport 8444 -j ACCEPT 2>/dev/null || iptables -I INPUT -p tcp --dport 8444 -j ACCEPT');
+
+  console.log('\n=== Firewall status ===');
+  const ufwStatus = await exec(conn, 'ufw status verbose 2>/dev/null || echo "ufw not available"');
+  console.log(ufwStatus.out);
+  const iptablesStatus = await exec(conn, 'iptables -L INPUT -n --line-numbers 2>/dev/null | head -20');
+  console.log(iptablesStatus.out);
+  console.log('\n=== Listening ports ===');
+  const listening = await exec(conn, 'ss -tlnp 2>/dev/null | grep -E "8080|8444" || netstat -tlnp 2>/dev/null | grep -E "8080|8444"');
+  console.log(listening.out);
+
   console.log('\nChecking Docker...');
-  const dockerCheck = await exec(conn, 'docker -v && docker compose version');
-  if (dockerCheck.exit !== 0) {
+  await exec(conn, 'docker compose version || docker-compose --version');
+  const docker = await exec(conn, 'docker --version');
+  if (!docker.out.includes('Docker version')) {
     console.log('Docker not found, installing...');
     const install = await exec(conn, 'apt-get update && apt-get install -y docker.io docker-compose-v2');
     if (install.exit !== 0) {
@@ -185,6 +201,9 @@ async function main() {
   console.log('\nUploading deploy config...');
   const composeLocal = readFileSync(resolve(__dirname, '..', 'deploy/docker-compose.app.yml'), 'utf8');
   await uploadFile(conn, `${deployDir}/deploy/docker-compose.app.yml`, composeLocal);
+
+  const caddyLocal = readFileSync(resolve(__dirname, '..', 'deploy/Caddyfile'), 'utf8');
+  await uploadFile(conn, `${deployDir}/deploy/Caddyfile`, caddyLocal);
 
   const remoteEnv = buildRemoteEnv();
   console.log('\nUploading .env to VPS...');
@@ -216,8 +235,12 @@ async function main() {
   console.log('\nContainer status:');
   await exec(conn, `docker ps --filter name=culturago-`);
 
+  const publicHttp = process.env.CULTURAGO_HTTP_PORT || '8080';
+  const publicHttps = process.env.CULTURAGO_HTTPS_PORT || '8444';
+  const publicHost = process.env.CULTURAGO_DOMAIN || host;
   console.log(green('\nDeploy command finished. Run "docker logs culturago-app -f" on the VPS to watch startup.'));
-  console.log(`Caddy/HTTPS: https://${process.env.CULTURAGO_DOMAIN || host}`);
+  console.log(`HTTP:  http://${publicHost}:${publicHttp}`);
+  console.log(`HTTPS: https://${publicHost}:${publicHttps}`);
   conn.end();
 }
 

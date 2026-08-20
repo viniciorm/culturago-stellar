@@ -138,13 +138,14 @@ export class SdkSorobanTransport implements SorobanTransport {
   // ---------- internals ----------
 
   private async buildTransaction(spec: ContractCallSpec): Promise<Transaction> {
-    // The fixture/testnet source account pays fees; user signatures come from
-    // Soroban auth entries, not from the tx source. Until Phase 8 smart
-    // wallets exist, the source account is the actor's own address.
+    // The fee payer pays fees; auth entries carry the actor's authorization.
+    // For smart wallets the actor is a contract (C...) and the fee payer is a
+    // funded G account supplied separately.
+    const source = spec.feePayerAddress ?? spec.actorAddress;
     const account: Account = await this.server
-      .getAccount(spec.actorAddress)
+      .getAccount(source)
       .catch((error: unknown) => {
-        throw domainError('NOT_FOUND', `actor account not found on-chain: ${this.sanitize(error)}`);
+        throw domainError('NOT_FOUND', `fee payer account not found on-chain: ${this.sanitize(error)}`);
       });
     const contract = new Contract(spec.contractId);
     const args = spec.args.map((a) => this.toScVal(a));

@@ -1,5 +1,33 @@
 # Evidencia reproducible por fase
 
+## Fase 6 y 7 — Despliegue Testnet en VPS y gate final (2026-08-20)
+
+**Implementado**
+
+- `scripts/vps-deploy.mjs`: deploy automático con SSH, sube `.env`, `deploy/docker-compose.app.yml` y `deploy/Caddyfile`, build opcional con `SKIP_BUILD`, reutiliza `culturago-postgres` y recrea `culturago-app`/`culturago-caddy` sin tocar la base de datos.
+- `deploy/docker-compose.app.yml`: puertos HTTP/HTTPS configurables via `CULTURAGO_HTTP_PORT` y `CULTURAGO_HTTPS_PORT`.
+- `deploy/Caddyfile`: `tls internal` para Testnet con IP, cert autofirmado.
+- `scripts/fase7-gate.mjs`: runner del gate local (install, lint, typecheck, test, build, contracts:build, contracts:test, cargo fmt) + smoke remoto (docker ps, caddy logs, HTTP/HTTPS curl).
+
+**Verificación (2026-08-20)**
+
+- `node --env-file=.env --env-file=.env.testnet scripts/fase7-gate.mjs` → **OK**:
+  - `pnpm install --frozen-lockfile` ok
+  - `pnpm lint` ok (sólo warnings)
+  - `pnpm typecheck` ok
+  - `pnpm test` → **85/85**
+  - `pnpm build` ok
+  - `pnpm contracts:build` ok
+  - `pnpm contracts:test` → **51/51** (28 + 23)
+  - `cargo fmt --all --check` ok
+- Smoke remoto:
+  - Contenedores `culturago-app`, `culturago-caddy` y `culturago-postgres` arriba
+  - HTTP 308 redirect a HTTPS
+  - Caddy obtuvo certificado autofirmado para `166.0.112.1`
+  - App Next.js ready en `http://166.0.112.1:8080` / `https://166.0.112.1:8444`
+
+**Pendiente / no en esta iteración**: WCAG 2.2 AA, matriz móvil, caos/performance, smart wallet signing real, revisión de seguridad/privacidad formal, y aprobación de Mainnet.
+
 ## Testnet readiness — Fases 0 a 5 (2026-08-19)
 
 **Implementado**

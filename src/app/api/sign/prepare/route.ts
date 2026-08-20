@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
-import { createMockStellarGateway } from '@/infrastructure/stellar/MockStellarGateway';
+import { createStellarGateway } from '@/infrastructure/stellar/createStellarGateway';
 import { isDomainError } from '@/domain/errors';
 
 export async function POST(request: Request) {
   try {
     const command = await request.json();
-    const bundle = createMockStellarGateway({ signer: null });
+    const bundle = createStellarGateway();
     let state;
     switch (command.kind) {
       case 'register_entity':
