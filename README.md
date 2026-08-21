@@ -1,70 +1,122 @@
-# CulturaGO Stellar — Pasaportes Culturales Verificables
+# CulturaGO — Pasaportes Culturales Verificables
 
-MVP técnico de **CulturaGO** para el **Festival Nacional Danza del Vientre Chile 2026 (FDVC 2026)**.
+MVP de CulturaGO para el **Festival Nacional Danza del Vientre Chile 2026 (FDVC 2026)**.
 
-CulturaGO permite registrar entidades culturales —personas, escuelas, organizaciones, eventos y proveedores— y emitir credenciales verificables con QR. La experiencia pública evita fricción cripto: las bailarinas, escuelas y proveedores ven un **Pasaporte Cultural**, una **Credencial verificable** y un estado de validación; la capa Stellar/Soroban funciona como respaldo técnico de autenticidad.
+CulturaGO es una plataforma de pasaportes culturales digitales verificables para artistas, escuelas, profesoras, organizaciones, eventos y proveedores culturales. El objetivo del MVP es registrar entidades culturales, vincularlas al evento, emitir credenciales verificables y preparar la integración con Stellar/Soroban y passkeys sin exponer datos personales sensibles en cadena.
 
-> Estado actual: MVP web + base de datos + contratos Soroban + preparación de smart wallets/passkeys. Mainnet queda fuera de alcance hasta una aprobación humana separada.
-
----
-
-## Alcance del MVP FDVC 2026
-
-El MVP está pensado para operar un piloto real en el festival:
-
-- Panel de administración para el evento FDVC 2026.
-- Registro de personas: bailarinas, profesoras, directoras, invitadas y staff.
-- Registro de organizaciones: festival, escuelas, academias, compañías y productoras.
-- Registro de proveedores culturales: teatro/sede, fotógrafos, camarógrafos, foodtrucks, sonido, iluminación, auspiciadores, seguridad, vestuario, maquillaje y otros aliados.
-- Relaciones entre entidades: escuela participante, bailarina de escuela, solista, profesora/directora, proveedor oficial, sede, sponsor, etc.
-- Pasaportes públicos con URL y QR.
-- Credenciales verificables con estado: vigente, pendiente, registrada, fallida o revocada.
-- Preparación para anclar entidades y credenciales en Stellar/Soroban mediante hashes, sin publicar PII on-chain.
-- Flujo de smart wallet/passkey en preparación para que una persona pueda activar su pasaporte sin usar una wallet tradicional.
+> Estado actual: MVP con aplicación Next.js, PostgreSQL directo, contratos Soroban en Rust, preparación para Testnet, smart wallet/passkey signer y capa demo local separada.
 
 ---
 
-## Stack
+## Principios del proyecto
 
-- **Frontend / Backend:** Next.js 16 App Router
-- **Lenguaje:** TypeScript
-- **UI:** Tailwind CSS v4 + componentes propios tipo shadcn/ui
-- **DB:** PostgreSQL directo con migraciones SQL
-- **Modo demo:** motor local/mock para desarrollo sin infraestructura
-- **Blockchain:** Stellar / Soroban
-- **Contratos:** Rust, workspace Cargo
-- **Wallet UX:** Passkey Kit + SimpleWebAuthn en fase Testnet
-- **QR:** `qrcode`
-- **Deploy:** Docker standalone + Caddy + scripts VPS
-- **Package manager:** pnpm 10
-- **Node:** >= 22
+- La app no debe sentirse como una app cripto.
+- El público debe ver conceptos simples: **Pasaporte Cultural**, **Credencial verificable**, **Verificado por FDVC**, **Registro Stellar pendiente/verificado**.
+- No usar públicamente conceptos como gas, seed phrase, NFT, token o smart contract en la UX principal.
+- Los datos personales y la operación viven off-chain.
+- Stellar/Soroban se usa como capa de verificación: hashes, estados, credenciales y pruebas verificables.
+- Mainnet queda bloqueado hasta una aprobación humana separada.
 
 ---
 
-## Estructura principal
+## Stack actual
+
+- **Frontend / App:** Next.js 16 App Router + React 19.
+- **Lenguaje:** TypeScript.
+- **UI:** Tailwind CSS v4 + componentes propios inspirados en shadcn/ui.
+- **Persistencia principal:** PostgreSQL directo mediante `pg` y `DATABASE_URL` server-only.
+- **Migraciones:** SQL versionado en `database/migrations/*.sql` con runner `database/migrate.mjs`.
+- **Demo local:** `src/lib/db.ts` con memoria/localStorage. Solo demo/offline; no es la ruta productiva.
+- **Blockchain:** Stellar / Soroban en Testnet.
+- **Contratos:** Rust / Soroban.
+- **Smart wallet / passkeys:** `passkey-kit` + SimpleWebAuthn, encapsulado detrás de puertos/adapters.
+- **Deploy:** Next.js standalone, Docker, Caddy/VPS.
+- **Package manager:** pnpm 10.
+- **Runtime:** Node.js >= 22.
+
+El proyecto declara estas versiones en `package.json`:
+
+```json
+{
+  "packageManager": "pnpm@10.0.0",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=10.0.0"
+  }
+}
+```
+
+---
+
+## Arquitectura resumida
 
 ```text
-.
-├── contracts/                         # Workspace Rust/Soroban
-│   ├── cultural-entity-registry/        # Registro versionado de entidades culturales
-│   └── cultural-credential-registry/    # Credenciales/atestaciones no transferibles
-├── database/
-│   ├── migrate.mjs                     # Runner de migraciones PostgreSQL
-│   └── migrations/                     # Migraciones SQL versionadas
-├── deploy/                             # Docker, Caddy y compose de aplicación
-├── docs/                               # Arquitectura, readiness, evidencia y runbooks
-├── scripts/                            # Gates, smoke Testnet, backup/restore y deploy VPS
-├── src/
-│   ├── app/                            # Rutas públicas, dashboard y API routes
-│   ├── components/                     # Componentes UI y de dominio
-│   ├── domain/                         # Errores e invariantes de dominio
-│   ├── infrastructure/                 # Adaptadores concretos
-│   ├── lib/                            # Utilidades legacy/mocks y smart wallet signer
-│   └── ports/                          # Interfaces/puertos de arquitectura
-├── .env.example
-├── CODEMAP.md
-└── package.json
+Cliente / navegador
+  ├─ Vistas públicas mobile-first
+  ├─ Dashboard admin
+  └─ Passkey/WebAuthn ceremonies
+
+Next.js 16 App Router
+  ├─ Server Actions
+  ├─ Route Handlers
+  ├─ Use cases de aplicación
+  ├─ Ports / adapters
+  └─ Demo local opcional: src/lib/db.ts
+
+Persistencia productiva
+  └─ PostgreSQL directo vía pg / DATABASE_URL
+
+Stellar / Soroban Testnet
+  ├─ CulturalEntityRegistry
+  ├─ CulturalCredentialRegistry
+  └─ Smart wallet / passkeys
 ```
+
+### Importante sobre Supabase
+
+Esta versión **no usa Supabase como arquitectura principal**.
+
+Puede existir una carpeta histórica o experimental llamada `supabase-docker/`, pero no forma parte del flujo principal del MVP actual. La persistencia productiva debe ir por PostgreSQL directo mediante `PostgreSQLDatabaseGateway`, `pg` y variables server-only.
+
+`src/lib/db.ts` es solo una capa demo local/offline. El propio archivo lo declara como `DEMO-ONLY DATA LAYER`: la persistencia real debe fluir por Server Actions, casos de uso y `PostgreSQLDatabaseGateway`.
+
+---
+
+## Funcionalidades del MVP
+
+- Dashboard administrativo para el evento FDVC 2026.
+- Registro de entidades culturales:
+  - Personas: bailarinas, profesoras, directoras, jurado, invitadas, staff.
+  - Organizaciones: festival, escuelas, academias, compañías, asociaciones, productoras.
+  - Proveedores culturales: teatro, pub, fotógrafos, camarógrafos, foodtrucks, sonido, iluminación, auspiciadores, streaming, seguridad, maquillaje, vestuario, ticketing, transporte, etc.
+  - Eventos.
+- Relaciones entre entidades:
+  - `organizer_of`
+  - `participant_of`
+  - `member_of`
+  - `teacher_at`
+  - `director_of`
+  - `founder_of`
+  - `provider_of`
+  - `venue_of`
+  - `sponsor_of`
+  - `official_photographer_of`
+  - `official_videographer_of`
+  - `technical_partner_of`
+  - `food_partner_of`
+  - `media_partner_of`
+- Pasaportes públicos con QR.
+- Credenciales públicas verificables.
+- Estados Stellar preparados:
+  - `not_registered`
+  - `pending`
+  - `registered`
+  - `failed`
+- Estados de wallet preparados:
+  - `none`
+  - `reserved`
+  - `claimed`
+- Preparación para activación de pasaporte con passkey.
 
 ---
 
@@ -72,48 +124,143 @@ El MVP está pensado para operar un piloto real en el festival:
 
 ### Públicas
 
-- `/` — landing pública, búsqueda rápida y validador.
-- `/evento/[slug]` — página pública del evento.
-- `/p/[slug]` — Pasaporte Cultural de persona.
-- `/o/[slug]` — Pasaporte Cultural de organización/escuela.
-- `/proveedor/[slug]` — perfil público de proveedor cultural.
-- `/credencial/[credentialCode]` — página pública de validación de credencial.
-- `/verify` — flujo de verificación.
-- `/passport` — flujo de pasaporte.
-- `/smart-wallet` — flujo de smart wallet/passkey.
+- `/` — landing pública, búsqueda y validación.
+- `/evento/[slug]` — perfil público de evento.
+- `/p/[slug]` — pasaporte cultural de persona.
+- `/o/[slug]` — pasaporte cultural de organización/escuela.
+- `/proveedor/[slug]` — pasaporte cultural de proveedor.
+- `/credencial/[credentialCode]` — credencial verificable pública.
+- `/verify/...` — rutas de verificación, si aplican.
+- `/passport/...` — rutas adicionales de pasaporte, si aplican.
+- `/smart-wallet/...` — flujos de smart wallet/passkey, si aplican.
 
-### Admin
+### Privadas / admin
 
-- `/login` — acceso administrador.
-- `/dashboard` — home del panel.
+- `/login` — acceso admin.
+- `/dashboard` — home administrativo.
 - `/dashboard/eventos/[eventId]` — panel principal del evento.
-- `/dashboard/personas`
-- `/dashboard/organizaciones`
-- `/dashboard/proveedores`
-- `/dashboard/credenciales`
-- `/dashboard/configuracion`
+- `/dashboard/personas` — CRUD de personas.
+- `/dashboard/organizaciones` — CRUD de organizaciones.
+- `/dashboard/proveedores` — CRUD de proveedores.
+- `/dashboard/credenciales` — gestión de credenciales.
+- `/dashboard/configuracion` — configuración/diagnóstico.
+
+---
+
+## Estructura del repositorio
+
+```text
+culturago-stellar/
+  src/
+    app/                    # Rutas Next.js App Router
+    application/            # Casos de uso / lógica de aplicación
+    components/             # Componentes de UI y dominio
+    domain/                 # Tipos, errores e invariantes de dominio
+    infrastructure/         # Adapters reales: PostgreSQL, Stellar, auth, config, hashing
+      database/
+        PostgreSQLDatabaseGateway.ts
+        pool.ts
+      stellar/
+      auth/
+      config/
+      hashing/
+      observability/
+    lib/                    # Utilidades y demo local
+      db.ts                 # DEMO-ONLY localStorage/memory
+      hashes.ts
+      stellar.ts            # Mock/abstracción legacy útil para demo
+      smartWallet/
+        PasskeyKitSigner.ts
+    ports/                  # Puertos/interfaces de arquitectura hexagonal
+    generated/              # Código generado, ignorado por lint
+
+  contracts/
+    Cargo.toml
+    cultural-entity-registry/
+    cultural-credential-registry/
+
+  database/
+    migrate.mjs
+    migrations/
+      0001_core_schema.sql
+      0002_identity_prep.sql
+      0003_outbox_indexer_reconciliation.sql
+      0004_observability.sql
+
+  deploy/
+    Dockerfile
+    Caddyfile
+    docker-compose.app.yml
+    setup-vps.legacy.sh
+
+  scripts/
+    compute-golden-vectors.mjs
+    fase7-gate.mjs
+    postgres-backup.mjs
+    postgres-restore.mjs
+    testnet-exercise.mjs
+    testnet-smoke.mjs
+    vps-deploy.mjs
+    vps-probe.mjs
+    vps-restore-firewall.mjs
+
+  docs/
+    architecture.md
+    soroban-contract-architecture.md
+    stellar-integration.md
+    testnet-readiness-plan.md
+    supabase-schema.sql       # Histórico/legacy; no fuente principal actual
+    ...
+```
+
+---
+
+## Modelo de datos principal
+
+La aplicación trabaja con las siguientes entidades relacionales:
+
+- `entities`
+- `people`
+- `organizations`
+- `providers`
+- `events`
+- `relationships`
+- `credentials`
+- `wallets`
+- `stellar_transactions`
+
+La tabla `entities` es la raíz polimórfica para persona, organización, proveedor y evento. Las tablas específicas contienen los campos propios de cada tipo.
+
+Campos relevantes para integración Stellar:
+
+- `metadata_hash`
+- `stellar_status`
+- `stellar_tx`
+- `wallet_address`
+- `wallet_status`
 
 ---
 
 ## Contratos Soroban
 
-El repositorio incluye dos contratos de dominio en Rust/Soroban.
+El repo incluye dos contratos de dominio en Rust/Soroban.
 
-### `CulturalEntityRegistry`
+### 1. `CulturalEntityRegistry`
 
-Contrato para registrar entidades culturales mediante IDs opacos y hashes de metadata.
+Contrato para registrar hashes versionados de entidades culturales.
 
 Características:
 
 - No almacena PII.
-- Registro versionado de entidades.
-- Control de rol `registrar`.
-- Esquemas de hash permitidos.
-- Desactivación sin borrar historial.
-- Verificación pública por `entity_id`, versión, hash y esquema.
-- Eventos: `EntityRegistered`, `EntityVersioned`, `EntityDeactivated`.
+- Usa `BytesN<32>` para IDs y hashes.
+- Maneja versiones de entidad.
+- Permite desactivar sin borrar historial.
+- Usa rol `REGISTRAR`.
+- Valida esquemas de hash admitidos.
+- Extiende TTL de storage persistente e instance storage.
+- Publica eventos de registro, versionado y desactivación.
 
-Funciones relevantes:
+Funciones principales:
 
 - `register_entity`
 - `version_entity`
@@ -127,23 +274,22 @@ Funciones relevantes:
 - `transfer_admin`
 - `accept_admin_transfer`
 
-### `CulturalCredentialRegistry`
+### 2. `CulturalCredentialRegistry`
 
-Contrato para emitir credenciales culturales no transferibles.
-
-Importante: **no es un NFT**. No tiene `owner`, `balance`, `approve`, `transfer`, `burn` ni URI pública. Funciona como registro de atestaciones verificables.
+Contrato para emitir atestaciones culturales no transferibles.
 
 Características:
 
-- Roles `issuer` y `revoker`.
-- Vínculo institucional `IssuerOperator` para evitar suplantación de emisores.
-- Idempotencia por clave de negocio `issuer | subject | event | type`.
-- Revocación preservando el registro.
-- Verificación pública por `credential_id`, hash y esquema.
-- Catálogo v1 de tipos de credencial con códigos `1..=6`.
-- Eventos: `CredentialIssued`, `CredentialRevoked`, `IssuerOperatorLinked`, `IssuerOperatorUnlinked`.
+- No es NFT.
+- No tiene `owner`, `balance`, `approve`, `transfer`, `burn` ni URI pública.
+- Emite credenciales verificables por `credential_id` y `token_id` interno.
+- Usa roles `ISSUER` y `REVOKER`.
+- Exige vínculo institucional `IssuerOperator` para evitar suplantación de emisores.
+- La emisión es idempotente por clave de negocio.
+- La revocación preserva el registro.
+- Valida catálogo de tipos de credencial.
 
-Funciones relevantes:
+Funciones principales:
 
 - `issue_credential`
 - `revoke_credential`
@@ -157,42 +303,123 @@ Funciones relevantes:
 - `revoke_issuer`
 - `grant_revoker`
 - `revoke_revoker`
+- `allow_hash_schema`
+- `transfer_admin`
+- `accept_admin_transfer`
 
 ---
 
-## Smart wallets y passkeys
+## Smart wallet y passkeys
 
-El repo ya incluye una primera implementación cliente en:
+La integración de passkeys vive en:
 
 ```text
 src/lib/smartWallet/PasskeyKitSigner.ts
 ```
 
-La intención es que el servidor prepare transacciones y el navegador solicite autorización mediante passkey. El servidor no debe firmar por el usuario.
+Responsabilidades:
 
-Estado actual:
+- El servidor prepara la transacción.
+- El navegador solicita autorización mediante passkey.
+- El servidor nunca firma en nombre del usuario.
+- El signer valida red, `walletWasmHash`, allowlist de hashes aceptados y RP ID.
+- Permite crear/conectar wallets mediante Passkey Kit.
 
-- Usa `passkey-kit` en cliente.
-- Permite crear y conectar wallet mediante `createWallet` / `connectWallet`.
-- Valida `networkPassphrase` al firmar.
-- Usa allowlist de hashes WASM para la smart wallet.
-- Requiere revisar RP ID, origins HTTPS y riesgo de implementación antes de un piloto Testnet real.
+Estado recomendado:
+
+- Usar en Testnet.
+- Mantener fondos/autoridad mínimos.
+- No usar en Mainnet sin revisión adicional, evidencia y aprobación humana.
+
+---
+
+## Variables de entorno
+
+Partir desde `.env.example`.
+
+### Aplicación
+
+```env
+NEXT_PUBLIC_CULTURAGO_ENV=demo
+NEXT_PUBLIC_APP_URL=
+```
+
+Valores válidos de entorno:
+
+- `demo`
+- `testnet`
+- `mainnet`
+
+### PostgreSQL
+
+```env
+DATABASE_URL=
+DATABASE_MIGRATION_URL=
+DATABASE_BACKUP_URL=
+DATABASE_RESTORE_URL=
+POSTGRES_BACKUP_DIR=./backups
+POSTGRES_BACKUP_RETENTION_DAYS=7
+POSTGRES_RPO_SECONDS=86400
+POSTGRES_RTO_SECONDS=3600
+POSTGRES_RESTORE_TARGET_GUARD=
+```
+
+Reglas:
+
+- `DATABASE_URL` es server-only.
+- Nunca usar `NEXT_PUBLIC_DATABASE_URL`.
+- Nunca loguear URLs de conexión.
+- `DATABASE_MIGRATION_URL` debe tener privilegios suficientes para DDL.
+- El usuario runtime debe tener privilegios mínimos.
+
+### Stellar / Soroban
+
+```env
+NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE=
+NEXT_PUBLIC_STELLAR_RPC_URL=
+NEXT_PUBLIC_ENTITY_REGISTRY_CONTRACT_ID=
+NEXT_PUBLIC_CREDENTIAL_REGISTRY_CONTRACT_ID=
+NEXT_PUBLIC_STELLAR_EXPLORER_BASE=
+```
+
+### Smart wallet / WebAuthn
+
+```env
+NEXT_PUBLIC_SMART_WALLET_WASM_HASH=
+NEXT_PUBLIC_SMART_WALLET_ACCEPTED_WASM_HASHES=
+SMART_WALLET_WASM_HASH=
+SMART_WALLET_ACCEPTED_WASM_HASHES=
+SMART_WALLET_RELAYER_BASE_URL=
+SMART_WALLET_RELAYER_API_KEY=
+WEBAUTHN_RP_ID=
+WEBAUTHN_ORIGINS=
+```
+
+### Testnet / despliegue
+
+```env
+CULTURAGO_ALLOW_TESTNET_MUTATIONS=false
+STELLAR_TESTNET_DEPLOYER_SECRET=
+STELLAR_TESTNET_ADMIN_ADDRESS=
+STELLAR_TESTNET_REGISTRAR_ADDRESS=
+STELLAR_TESTNET_ISSUER_OPERATOR_ADDRESS=
+TESTNET_MANIFEST_PATH=docs/manifests/testnet-manifest.json
+TESTNET_SMOKE_RUN_ID=
+TESTNET_POLL_TIMEOUT_SECONDS=120
+```
+
+Mainnet debe permanecer bloqueado hasta aprobación humana separada.
 
 ---
 
 ## Instalación local
 
-Requisitos:
-
-- Node.js >= 22
-- pnpm >= 10
-- Rust + Cargo, si se trabajará con contratos
-- Stellar CLI, si se compilan/despliegan contratos Soroban
-
 ```bash
 git clone https://github.com/viniciorm/culturago-stellar.git
 cd culturago-stellar
-pnpm install
+corepack enable
+corepack prepare pnpm@10.0.0 --activate
+pnpm install --frozen-lockfile
 pnpm dev
 ```
 
@@ -204,98 +431,38 @@ http://localhost:3000
 
 ---
 
-## Variables de entorno
+## Migraciones PostgreSQL
 
-Copia la plantilla:
+El runner aplica todos los SQL en `database/migrations/*.sql` en orden y registra los archivos aplicados en `schema_migrations`.
 
 ```bash
-cp .env.example .env.local
+DATABASE_MIGRATION_URL="postgres://usuario:password@host:5432/culturago" pnpm migrate
 ```
 
-Modo demo:
+También puede usar `DATABASE_URL` si no existe `DATABASE_MIGRATION_URL`.
 
-```env
-NEXT_PUBLIC_CULTURAGO_ENV=demo
+```bash
+DATABASE_URL="postgres://usuario:password@host:5432/culturago" pnpm migrate
 ```
-
-En modo `demo`, las variables Stellar pueden quedar vacías y la app no debe generar claims reales.
-
-Para Testnet, completar solo con valores públicos o secretos según corresponda. No commitear `.env.local`, llaves, secrets, URLs privadas ni credenciales VPS.
-
-Variables clave:
-
-- `DATABASE_URL`
-- `DATABASE_MIGRATION_URL`
-- `NEXT_PUBLIC_CULTURAGO_ENV`
-- `NEXT_PUBLIC_APP_URL`
-- `NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE`
-- `NEXT_PUBLIC_STELLAR_RPC_URL`
-- `NEXT_PUBLIC_ENTITY_REGISTRY_CONTRACT_ID`
-- `NEXT_PUBLIC_CREDENTIAL_REGISTRY_CONTRACT_ID`
-- `NEXT_PUBLIC_SMART_WALLET_WASM_HASH`
-- `NEXT_PUBLIC_SMART_WALLET_ACCEPTED_WASM_HASHES`
-- `WEBAUTHN_RP_ID`
-- `WEBAUTHN_ORIGINS`
-- `STELLAR_TESTNET_DEPLOYER_SECRET`
 
 ---
 
-## Base de datos
-
-El repo usa migraciones SQL versionadas en:
-
-```text
-database/migrations/
-```
-
-Para aplicar migraciones sobre PostgreSQL:
+## Scripts principales
 
 ```bash
-DATABASE_URL="postgres://..." pnpm migrate
+pnpm dev              # Servidor local Next.js
+pnpm build            # Build Next.js standalone
+pnpm start            # Ejecuta build de producción
+pnpm lint             # ESLint
+pnpm typecheck        # TypeScript sin emitir archivos
+pnpm test             # Vitest
+pnpm migrate          # Migraciones PostgreSQL
+pnpm contracts:test   # Tests Rust/Soroban
+pnpm contracts:lint   # fmt + clippy en contratos
+pnpm contracts:build  # Build WASM contratos Soroban
 ```
 
-El runner crea/usa `schema_migrations` y aplica archivos `.sql` en orden.
-
-Migraciones actuales:
-
-- `0001_core_schema.sql`
-- `0002_identity_prep.sql`
-- `0003_outbox_indexer_reconciliation.sql`
-- `0004_observability.sql`
-
----
-
-## Scripts útiles
-
-```bash
-pnpm dev                # Desarrollo local
-pnpm build              # Build Next.js
-pnpm start              # Servidor producción
-pnpm lint               # ESLint
-pnpm test               # Vitest
-pnpm typecheck          # TypeScript sin emitir
-pnpm migrate            # Migraciones PostgreSQL
-pnpm contracts:test     # Tests Rust/Soroban
-pnpm contracts:lint     # fmt + clippy contratos
-pnpm contracts:build    # Build contratos con Stellar CLI
-```
-
-Scripts adicionales en `scripts/`:
-
-- `fase7-gate.mjs` — gate local/remoto de calidad.
-- `testnet-smoke.mjs` — smoke Testnet.
-- `testnet-exercise.mjs` — ejercicios Testnet.
-- `vps-deploy.mjs` — despliegue por SSH.
-- `vps-probe.mjs` — prueba de VPS.
-- `postgres-backup.mjs` — backup PostgreSQL.
-- `postgres-restore.mjs` — restore PostgreSQL.
-- `compute-golden-vectors.mjs` — vectores de hash/canonicalización.
-
----
-
-## Gates recomendados antes de integrar con el MVP visual
-
-Ejecutar al menos:
+Gates recomendados antes de merge o deploy:
 
 ```bash
 pnpm install --frozen-lockfile
@@ -307,55 +474,75 @@ pnpm contracts:test
 pnpm contracts:build
 ```
 
-Para Testnet real, seguir `docs/testnet-readiness-plan.md`. No considerar exitoso un hash de transacción hasta tener ledger confirmado y readback contractual.
+---
+
+## Deploy / VPS
+
+La estrategia actual usa Docker con Next.js standalone.
+
+Archivos relevantes:
+
+- `deploy/Dockerfile`
+- `deploy/docker-compose.app.yml`
+- `deploy/Caddyfile`
+- `scripts/vps-deploy.mjs`
+- `scripts/vps-probe.mjs`
+- `scripts/vps-restore-firewall.mjs`
+
+El Dockerfile:
+
+- Usa Node 22 Alpine.
+- Activa `pnpm@10.0.0`.
+- Instala con lockfile congelado.
+- Compila `pnpm run build`.
+- Copia `.next/standalone`.
+- Ejecuta la app como usuario no-root `nextjs`.
+- Expone el puerto `3080`.
+
+`deploy/setup-vps.legacy.sh` debe tratarse como legado si no coincide con el flujo actual.
 
 ---
 
-## Documentación relevante
+## Estado de documentación
 
-- `CODEMAP.md` — mapa rápido de rutas, componentes y carpetas.
-- `docs/architecture.md` — arquitectura general.
-- `docs/soroban-contract-architecture.md` — diseño e invariantes de contratos.
-- `docs/testnet-readiness-plan.md` — plan operativo para cerrar Testnet.
-- `docs/kimi3-implementation-plan.md` — plan detallado de implementación.
-- `docs/stellar-integration.md` — guía inicial de integración; parte de su contenido es histórico y debe leerse junto con los contratos actuales.
-- `docs/manifests/` — manifiestos operativos.
-- `docs/runbooks/` — procedimientos de operación.
+Documentos clave:
 
----
+- `docs/architecture.md`
+- `docs/soroban-contract-architecture.md`
+- `docs/testnet-readiness-plan.md`
+- `CODEMAP.md`
 
-## Seguridad y privacidad
+Documentos con posible contenido histórico/legacy:
 
-Principios obligatorios:
+- `docs/stellar-integration.md`
+- `docs/supabase-schema.sql`
+- referencias a Supabase self-hosted, Kong, PostgREST o `@supabase/supabase-js`
 
-- No publicar datos personales completos on-chain.
-- Anclar solo IDs opacos, hashes, estados y referencias verificables.
-- No registrar ni persistir secrets Stellar, credenciales de relayer, cookies, challenges WebAuthn, respuestas WebAuthn, URLs privadas o PII sensible en logs.
-- Mainnet permanece bloqueado hasta aprobación humana explícita.
-- Passkey Kit debe tratarse como infraestructura de Testnet hasta revisar riesgos, hashes WASM, RP ID y origins HTTPS.
-- El rollback de la app no revierte estado on-chain; cualquier corrección on-chain debe hacerse con operaciones compensatorias o redeploy Testnet documentado.
+Si hay contradicción entre documentos, la fuente de verdad actual es:
 
----
-
-## Próximos pasos sugeridos
-
-1. Ejecutar gates locales y contratos.
-2. Completar manifiesto Testnet con contract IDs, hashes WASM y ledgers reales.
-3. Integrar los clientes TypeScript generados desde ABI Soroban.
-4. Conectar el MVP visual de CulturaGO con los puertos `StellarGateway`, `SignerPort`, `WalletGateway` y `OperationStore`.
-5. Validar WebAuthn en dominio HTTPS real.
-6. Cargar un piloto FDVC 2026 con festival, escuela, bailarina, profesora y proveedor.
-7. Emitir credencial Testnet y verificar readback desde contrato.
+1. Código actual.
+2. `database/migrations/*.sql`.
+3. Contratos en `contracts/`.
+4. `docs/soroban-contract-architecture.md`.
+5. `docs/testnet-readiness-plan.md`.
 
 ---
 
-## Nota de producto
+## Estado del proyecto
 
-La app debe mantener una experiencia cultural e institucional. Evitar en la interfaz pública términos como `gas`, `seed phrase`, `NFT`, `smart contract` o `token`. Usar lenguaje simple:
+- App MVP creada.
+- PostgreSQL directo definido como persistencia productiva.
+- Demo local/offline separada.
+- Contratos Soroban de entidades y credenciales implementados.
+- Passkey signer inicial implementado.
+- Testnet readiness plan documentado.
+- Mainnet bloqueado.
 
-- Pasaporte Cultural
-- Credencial verificable
-- Verificado por FDVC
-- Registro Stellar pendiente
-- Registro Stellar verificado
-- Pasaporte reclamado
+Pendientes principales:
+
+- Ejecutar gates completos en entorno limpio.
+- Cerrar ambigüedades legacy en documentación.
+- Confirmar variables reales de PostgreSQL en VPS.
+- Confirmar deploy actual contra PostgreSQL directo.
+- Completar smoke Testnet con contratos reales desplegados.
+- Validar WebAuthn/passkeys con dominio HTTPS real.
