@@ -4,80 +4,124 @@ CulturaGO es una plataforma de pasaportes culturales digitales verificables para
 
 ---
 
+## 🏛️ Arquitectura del Sistema
+
+```mermaid
+graph TD
+    subgraph Cliente / Navegador
+        Public[Vistas Públicas Mobile-First /p/ /o/ /credencial/]
+        AdminUI[Dashboard Admin /dashboard/eventos/fdvc-2026]
+    end
+
+    subgraph VPS Ubuntu 24.04 LTS (IP: 166.0.112.1)
+        subgraph Docker App (Puerto 80)
+            NextApp[Next.js 16 Standalone Container / Node 22 + pnpm v9]
+        end
+
+        subgraph Docker Supabase Self-Hosted Stack
+            Kong[Kong API Gateway - Puerto 8000]
+            Studio[Supabase Studio UI - Puerto 8001]
+            Auth[GoTrue Auth Service]
+            REST[PostgREST Engine]
+            PostgreSQL[(PostgreSQL 17 DB - Puerto 5432)]
+        end
+      
+        subgraph Capa Blockchain (Simulador / Soroban)
+            Hashes[SHA-256 Metadata Generator lib/hashes.ts]
+            StellarModule[Stellar / Soroban Abstraction lib/stellar.ts]
+        end
+    end
+
+    Public --> NextApp
+    AdminUI --> NextApp
+    NextApp -->|@supabase/supabase-js| Kong
+    Kong --> REST
+    Kong --> Auth
+    REST --> PostgreSQL
+    Studio --> PostgreSQL
+    AdminUI --> Hashes
+    AdminUI --> StellarModule
+```
+
+### Componentes de la Arquitectura:
+1. **Core Web Engine**: Next.js 16.2 (App Router) empaquetado en modo `output: "standalone"` para ejecuciones ultraligeras en producción de bajo consumo RAM.
+2. **Base de Datos Dual (`src/lib/db.ts`)**:
+   - **Producción**: PostgreSQL 17 + Supabase Self-Hosted (Kong, PostgREST, Auth, Storage y Studio).
+   - **Desarrollo / Offline**: Motor en memoria con respaldo en `localStorage` cargado con datos semilla iniciales.
+3. **Capa Blockchain & Simulación Stellar**:
+   - `src/lib/hashes.ts`: Generación determinística de hashes SHA-256.
+   - `src/lib/stellar.ts`: Módulo mock para Soroban Rust y Passkeys WebAuthn.
+4. **Infraestructura VPS**: Servidor Ubuntu 24.04 LTS orquestado con Docker & Docker Compose y empaquetado optimizado con `pnpm v9`.
+
+---
+
 ## 🚀 Características del MVP
-1.  **Dashboard de Eventos:** Panel principal completo en `/dashboard/eventos/fdvc-2026` con 8 pestañas interactivas de administración (Resumen, Escuelas, Bailarinas, Profesoras, Proveedores, Credenciales, Pendientes, QR de Entrada).
-2.  **CRUDs de Entidades:** Interfaces para agregar, modificar y eliminar Artistas, Organizaciones y Proveedores Técnicos de manera ágil.
-3.  **Generación de Códigos QR Dinámicos:** Códigos QR interactivos autogenerados para pasaportes personales, perfiles de academias, de proveedores y credenciales individuales, enlazados a sus respectivas URLs públicas.
-4.  **Emisión de Credenciales Verificables:** Emisión de certificados oficiales firmados (como "Escuela Participante" o "Fotógrafo Oficial") con estados vigentes, pendientes o revocados.
-5.  **Motor de Base de Datos Dual:** Funciona localmente mediante un mock de almacenamiento local (`localStorage`) cargado con datos semilla iniciales, o conectado a **Supabase** en la nube si se proveen las llaves API correspondientes.
-6.  **Capa Mock de Stellar & Soroban:** Módulo de transacciones blockchain simuladas listo en `src/lib/stellar.ts`, ideal para que Danilo conecte contratos Rust reales y wallets passkeys.
+1. **Dashboard de Eventos:** Panel principal completo en `/dashboard/eventos/fdvc-2026` con 8 pestañas interactivas de administración (Resumen, Escuelas, Bailarinas, Profesoras, Proveedores, Credenciales, Pendientes, QR de Entrada).
+2. **CRUDs de Entidades:** Interfaces para agregar, modificar y eliminar Artistas, Organizaciones y Proveedores Técnicos.
+3. **Códigos QR Dinámicos:** QR interactivos autogenerados para pasaportes personales, academias y credenciales.
+4. **Credenciales Verificables:** Certificados oficiales firmados con estados de validez (vigente, pendiente, revocado).
+5. **Motor de Datos Híbrido:** LocalStorage Mock u opción de conexión instantánea a Supabase en VPS/Nube.
 
 ---
 
 ## 🛠️ Tecnologías Utilizadas
-*   **Core:** [Next.js 16 (App Router)](https://nextjs.org/)
-*   **Lenguaje:** [TypeScript](https://www.typescriptlang.org/)
-*   **Estilos (CSS):** [Tailwind CSS v4](https://tailwindcss.com/)
-*   **Base de datos / Auth:** [Supabase Client](https://supabase.com/)
-*   **Iconos:** [Lucide React](https://lucide.dev/)
-*   **Generador QR:** [QRCode (npm)](https://www.npmjs.com/package/qrcode)
+* **Core:** Next.js 16.2 (App Router)
+* **Lenguaje:** TypeScript
+* **Estilos (CSS):** Tailwind CSS v4
+* **Base de datos / Auth:** Supabase Client + PostgreSQL 17
+* **Gestor de Paquetes:** `pnpm v9` (via Corepack)
+* **Iconos:** Lucide React
+* **Generador QR:** QRCode (npm)
 
 ---
 
-## 📂 Estructura del Proyecto
+## 🗄️ Acceso a la Base de Datos (PostgreSQL / Supabase)
 
-*   `src/app/` - Rutas de Next.js (públicas y privadas).
-*   `src/components/` - Layouts globales (`PublicLayout`, `DashboardLayout`) y componentes interactivos (`PassportCard`, `CredentialCard`, `RelationshipManager`).
-*   `src/components/ui/` - Librería de componentes visuales adaptada (Button, Input, Select, Dialog, Tabs, Table, Badges).
-*   `src/lib/` - Lógica del sistema:
-    *   `db.ts` - Motor de datos dual (Supabase + LocalStorage Mock).
-    *   `stellar.ts` - Funciones mock preparadas para Danilo.
-    *   `hashes.ts` - Utilidad de generación de hashes SHA-256 determinísticos.
-*   `docs/` - Documentación técnica detallada:
-    *   `architecture.md` - Decisiones de diseño de software y base de datos.
-    *   `stellar-integration.md` - Especificación de contratos Rust y SDK de Stellar.
-    *   `supabase-schema.sql` - Script SQL con las tablas y datos semilla.
+### Usuarios de la Base de Datos:
+* **`postgres`**: Usuario estándar de administración de la base de datos PostgreSQL.
+* **`supabase_admin`**: Superadministrador interno de PostgreSQL dentro del contenedor Docker.
+
+### ¿Cómo ingresar a la Base de Datos?
+
+#### 1. Vía Consola Interactiva (en la terminal del VPS):
+```bash
+# Conectarse como usuario postgres:
+docker exec -it supabase-db psql -U postgres -d postgres
+
+# Conectarse como superadministrador:
+docker exec -it supabase-db psql -U supabase_admin -d postgres
+```
+
+#### 2. Vía Panel Gráfico Web (Supabase Studio):
+1. Abre **`http://166.0.112.1:8001`** en tu navegador.
+2. Ve al **Table Editor** o **SQL Editor** para consultar y administrar las tablas de forma visual.
+
+#### 3. Vía Cliente SQL (DBeaver, TablePlus, VS Code):
+* **Host**: `166.0.112.1`
+* **Puerto**: `5432`
+* **Base de datos**: `postgres`
+* **Usuario**: `postgres`
+* **Contraseña**: La encuentras ejecutando `cat ~/culturago-stellar/deploy/.env` en tu VPS.
 
 ---
 
-## 💻 Instalación y Desarrollo Local
+## 📂 Estructura y Mapa del Código
+Consulta el documento [CODEMAP.md](file:///c:/Users/marco/.gemini/antigravity/scratch/culturago-stellar/CODEMAP.md) para ver la ubicación exacta de cada vista, componente UI y módulo del proyecto.
 
-### 1. Clonar el repositorio e instalar dependencias
+---
+
+## 💻 Despliegue en VPS (Ubuntu)
+
+Para desplegar o actualizar en tu servidor VPS de Truebox:
 ```bash
 git clone https://github.com/viniciorm/culturago-stellar.git
 cd culturago-stellar
-npm install
+chmod +x deploy/setup-vps.sh
+./deploy/setup-vps.sh
 ```
-
-### 2. Ejecutar el servidor de desarrollo
-```bash
-npm run dev
-```
-Abre [http://localhost:3000](http://localhost:3000) en el navegador.
-
-### 3. Acceso al Dashboard de Administrador
-1.  Haz clic en **Acceso Admin** en la esquina superior derecha o ve directamente a `/login`.
-2.  Ingresa las siguientes credenciales de desarrollo:
-    *   **Usuario:** `admin@culturago.cl`
-    *   **Contraseña:** `admin123`
-
----
-
-## ☁️ Conexión con Supabase en la Nube
-
-Para conectar la aplicación a un proyecto real de Supabase:
-1.  Crea un proyecto en Supabase.
-2.  Ve al SQL Editor en el panel de Supabase y ejecuta el script de migración ubicado en `docs/supabase-schema.sql`. Esto creará las tablas, los triggers de actualización y cargará los datos semilla iniciales.
-3.  Crea un archivo `.env.local` en la raíz de este proyecto con tus credenciales:
-    ```env
-    NEXT_PUBLIC_SUPABASE_URL=tu-url-de-supabase
-    NEXT_PUBLIC_SUPABASE_ANON_KEY=tu-anon-key-de-supabase
-    ```
-4.  Reinicia el servidor local. El motor detectará de forma automática las llaves y se conectará a la nube en lugar del Mock de almacenamiento local.
 
 ---
 
 ## 🎨 Principios de Diseño
-*   **Estética Cultural:** El fondo de la plataforma es de color marfil cálido (`#FCFBF7`), con tipografías serif y geométricas, detalles en burdeo profundo (`#5C061E`) y acentos en dorado suave (`#C5A880`).
-*   **Cero jerga cripto para el público:** Las interfaces públicas evitan conceptos como "gas", "NFT", "wallet address" o "smart contract". Se usan términos amigables e institucionales como **Pasaporte Cultural**, **Acreditación Oficial** y **Verificado por FDVC**.
-*   **Mobile-First:** Las vistas del pasaporte, de escuelas y credenciales públicas se adaptan perfectamente a pantallas de celulares para ser escaneadas cómodamente en las puertas del teatro Aula Magna Manuel de Salas.
+* **Estética Cultural:** Fondo marfil cálido (`#FCFBF7`), tipografías serif y geométricas, detalles en burdeo profundo (`#5C061E`) y acentos en dorado suave (`#C5A880`).
+* **Cero jerga cripto para el público:** Términos institucionales y amigables como **Pasaporte Cultural**, **Acreditación Oficial** y **Verificado por FDVC**.
