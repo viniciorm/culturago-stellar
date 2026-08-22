@@ -1,6 +1,7 @@
 'use client';
 import { domainError } from '@/domain/errors';
 import { PreparedTransactionPayload, SignedTransactionPayload, SignerPort } from '@/ports/SignerPort';
+import { Transaction, TransactionBuilder } from '@stellar/stellar-sdk';
 import type { StorageAdapter, StoredPasskey } from 'passkey-kit';
 
 class InMemoryPasskeyStorage implements StorageAdapter {
@@ -72,15 +73,29 @@ export class PasskeyKitSigner implements SignerPort {
 
   async createWallet(appName: string, userName: string): Promise<{ keyId: string; contractId: string; signedTx: string }> {
     this.kit = await this.buildKit();
-    const { keyId, keyIdBase64, contractId, signedTx, rawResponse } = await this.kit.createWallet(appName, userName);
+    const { keyIdBase64, contractId, signedTx } = await this.kit.createWallet(appName, userName);
     this.keyId = keyIdBase64;
     this.contractId = contractId;
-    // La clave pública se extrae de la respuesta raw para guardarla en storage
-    const response = rawResponse as unknown as { response?: { publicKeyAlgorithm?: number; attestationObject?: ArrayBuffer; getPublicKey?: () => ArrayBuffer } };
-    const publicKey: Uint8Array = new Uint8Array(0);
+
+    // Enviar el deployment para que el contrato exista realmente en la red
+    const tx = TransactionBuilder.fromXDR(signedTx, this.networkPassphrase) as Transaction;
+    const submit = await this.kit.rpc.sendTransaction(tx);
+    if (submit.status === 'ERROR') {
+      throw domainError('INVALID_STATE_TRANSITION', `wallet deployment rejected: ${submit.errorResult?.toString() ?? 'unknown'}`);
+    }
+    const txHash = submit.hash;
+    for (let i = 0; i < 15; i++) {
+      const result = await this.kit.rpc.getTransaction(txHash);
+      if (result.status === 'SUCCESS') break;
+      if (result.status === 'FAILED') {
+        throw domainError('INVALID_STATE_TRANSITION', 'wallet deployment failed on-chain');
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+
     await this.storage.save({
       keyId: keyIdBase64,
-      publicKey,
+      publicKey: new Uint8Array(0),
       contractId,
       isPrimary: true,
       createdAt: Date.now(),
@@ -92,13 +107,18 @@ export class PasskeyKitSigner implements SignerPort {
 
   async connectWallet(keyIdBase64: string): Promise<string> {
     this.kit = await this.buildKit();
-    const { contractId } = await this.kit.connectWallet({
-      keyId: keyIdBase64,
-      getContractId: async () => this.contractId,
-    });
-    this.keyId = keyIdBase64;
-    this.contractId = contractId;
-    return contractId;
+    try {
+      const { contractId } = await this.kit.connectWallet({
+        keyId: keyIdBase64,
+        getContractId: async () => this.contractId,
+      });
+      this.keyId = keyIdBase64;
+      this.contractId = contractId;
+      return contractId;
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : JSON.stringify(error);
+      throw new Error(`Could not connect passkey wallet: ${detail}`);
+    }
   }
 
   async sign(prepared: PreparedTransactionPayload): Promise<SignedTransactionPayload> {
