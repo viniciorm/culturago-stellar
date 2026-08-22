@@ -8,6 +8,10 @@ import { SorobanStellarGateway } from './SorobanStellarGateway';
 import { getStellarNetworkConfig } from './networkConfig';
 import { isPersistenceConfigured } from '../config/env';
 
+// Singleton para que prepare y submit compartan el estado en memoria
+// cuando no haya PostgreSQL configurado (local dev / fallback temporal).
+const inMemoryStore = new InMemoryOperationStore();
+
 /**
  * Factory for the concrete StellarGateway.
  * - demo: in-memory mock, no network.
@@ -21,7 +25,7 @@ export function createStellarGateway(): { gateway: StellarGateway } {
   }
   const config = getStellarNetworkConfig();
   const transport = new SdkSorobanTransport(config);
-  const store = isPersistenceConfigured() ? new PostgreSQLOperationStore() : new InMemoryOperationStore();
+  const store = isPersistenceConfigured() ? new PostgreSQLOperationStore() : inMemoryStore;
   const gateway = new SorobanStellarGateway(config, transport, store, null);
   return { gateway };
 }
