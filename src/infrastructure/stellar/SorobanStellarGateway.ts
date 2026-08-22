@@ -1,5 +1,6 @@
 import 'server-only';
 import { createHash, randomUUID } from 'crypto';
+import { Keypair, Transaction, TransactionBuilder } from '@stellar/stellar-sdk';
 import { domainError } from '../../domain/errors';
 import { assertTransition, mustNotResubmit } from '../../domain/operations/operationState';
 import { OperationStore, StoredOperation } from '../../ports/OperationStore';
@@ -229,7 +230,44 @@ export class SorobanStellarGateway implements StellarGateway {
       return state;
     }
 
-    const phase = sim.needsRestore ? 'restoring' : 'awaiting_signature';
+    let unsignedXdr = sim.preparedXdr;
+    let preparedAtLedger = sim.latestLedger;
+    let phase: OperationState['phase'] = sim.needsRestore ? 'restoring' : 'awaiting_signature';
+
+    if (sim.needsRestore && this.config.feePayerSecret) {
+      const signed = this.signWithFeePayer(unsignedXdr);
+      const { txHash } = await this.transport.submit(signed);
+      await this.waitForSuccess(txHash);
+      const sim2 = await this.transport.simulate(spec);
+      if (sim2.contractError) {
+        const state2: OperationState = {
+          operationId,
+          idempotencyKey: command.idempotencyKey,
+          phase: 'failed_terminal',
+          txHash,
+          ledger: null,
+          errorCode: sim2.contractError,
+        };
+        await this.store.create({
+          state: state2,
+          intent: {
+            kind,
+            actorAddress: command.actorAddress,
+            fingerprint,
+            subjectKey: this.subjectKeyFor(command, kind),
+            prepared: null,
+          },
+        });
+        return state2;
+      }
+      if (sim2.needsRestore) {
+        throw domainError('INVALID_STATE_TRANSITION', 'restore did not clear TTL requirement');
+      }
+      unsignedXdr = sim2.preparedXdr;
+      preparedAtLedger = sim2.latestLedger;
+      phase = 'awaiting_signature';
+    }
+
     const state: OperationState = {
       operationId,
       idempotencyKey: command.idempotencyKey,
@@ -241,8 +279,8 @@ export class SorobanStellarGateway implements StellarGateway {
     const prepared = {
       operationId,
       networkPassphrase: this.config.networkPassphrase,
-      unsignedXdr: sim.preparedXdr,
-      preparedAtLedger: sim.latestLedger,
+      unsignedXdr,
+      preparedAtLedger,
       intentFingerprint: fingerprint,
     };
     await this.store.create({
@@ -256,6 +294,31 @@ export class SorobanStellarGateway implements StellarGateway {
       },
     });
     return state;
+  }
+
+  private signWithFeePayer(unsignedXdr: string): string {
+    if (!this.config.feePayerSecret) {
+      throw domainError('UNAUTHORIZED', 'fee payer secret is not configured');
+    }
+    const tx = TransactionBuilder.fromXDR(unsignedXdr, this.config.networkPassphrase);
+    if (!(tx instanceof Transaction)) {
+      throw domainError('INVALID_INPUT', 'restore transaction is not a plain transaction');
+    }
+    tx.sign(Keypair.fromSecret(this.config.feePayerSecret));
+    return tx.toXDR();
+  }
+
+  private async waitForSuccess(txHash: string): Promise<void> {
+    const maxAttempts = 15;
+    for (let i = 0; i < maxAttempts; i++) {
+      const result = await this.transport.pollTransaction(txHash);
+      if (result.status === 'SUCCESS') return;
+      if (result.status === 'FAILED') {
+        throw domainError('INVALID_STATE_TRANSITION', `restore transaction failed: ${result.contractError ?? 'unknown'}`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+    throw domainError('INVALID_STATE_TRANSITION', 'restore transaction did not confirm in time');
   }
 
   private async pollAndConfirm(op: StoredOperation): Promise<OperationState> {

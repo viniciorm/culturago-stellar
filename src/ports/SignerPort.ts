@@ -13,6 +13,8 @@ export interface PreparedTransactionPayload {
   preparedAtLedger: number;
   /** Sha-256 of the intent; a signed tx must correspond to THIS intent. */
   intentFingerprint: string;
+  /** Contract call spec for restoring/re-simulation (optional). */
+  spec?: import('./SorobanTransport').ContractCallSpec;
 }
 
 export interface SignedTransactionPayload {

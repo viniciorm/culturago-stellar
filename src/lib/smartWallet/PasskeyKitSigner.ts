@@ -1,6 +1,40 @@
 'use client';
 import { domainError } from '@/domain/errors';
 import { PreparedTransactionPayload, SignedTransactionPayload, SignerPort } from '@/ports/SignerPort';
+import type { StorageAdapter, StoredPasskey } from 'passkey-kit';
+
+class InMemoryPasskeyStorage implements StorageAdapter {
+  private store = new Map<string, StoredPasskey>();
+
+  async save(passkey: StoredPasskey): Promise<void> {
+    this.store.set(passkey.keyId, { ...passkey, lastUsedAt: Date.now() });
+  }
+
+  async get(keyId: string): Promise<StoredPasskey | null> {
+    return this.store.get(keyId) ?? null;
+  }
+
+  async getByContract(contractId: string): Promise<StoredPasskey[]> {
+    return [...this.store.values()].filter((p) => p.contractId === contractId);
+  }
+
+  async getAll(): Promise<StoredPasskey[]> {
+    return [...this.store.values()];
+  }
+
+  async delete(keyId: string): Promise<void> {
+    this.store.delete(keyId);
+  }
+
+  async update(keyId: string, updates: Partial<Omit<StoredPasskey, 'keyId' | 'publicKey'>>): Promise<void> {
+    const p = this.store.get(keyId);
+    if (p) this.store.set(keyId, { ...p, ...updates });
+  }
+
+  async clear(): Promise<void> {
+    this.store.clear();
+  }
+}
 
 /**
  * Browser-side smart wallet signer using Passkey Kit. The server NEVER
@@ -14,6 +48,7 @@ export class PasskeyKitSigner implements SignerPort {
   private keyId: string | undefined;
   private contractId: string | undefined;
   private kit: import('passkey-kit').PasskeyKit | undefined;
+  private storage = new InMemoryPasskeyStorage();
 
   constructor(
     private readonly rpcUrl: string,
@@ -31,21 +66,36 @@ export class PasskeyKitSigner implements SignerPort {
       walletWasmHash: this.walletWasmHash,
       acceptedWasmHashes: [...this.acceptedWasmHashes],
       rpId: this.rpId,
+      storage: this.storage,
     });
   }
 
   async createWallet(appName: string, userName: string): Promise<{ keyId: string; contractId: string; signedTx: string }> {
     this.kit = await this.buildKit();
-    const { keyIdBase64, contractId, signedTx } = await this.kit.createWallet(appName, userName);
+    const { keyId, keyIdBase64, contractId, signedTx, rawResponse } = await this.kit.createWallet(appName, userName);
     this.keyId = keyIdBase64;
     this.contractId = contractId;
+    // La clave pública se extrae de la respuesta raw para guardarla en storage
+    const response = rawResponse as unknown as { response?: { publicKeyAlgorithm?: number; attestationObject?: ArrayBuffer; getPublicKey?: () => ArrayBuffer } };
+    const publicKey: Uint8Array = new Uint8Array(0);
+    await this.storage.save({
+      keyId: keyIdBase64,
+      publicKey,
+      contractId,
+      isPrimary: true,
+      createdAt: Date.now(),
+      lastUsedAt: Date.now(),
+    });
     // createWallet no conecta el kit; la conexión se confirma vía connectWallet
     return { keyId: keyIdBase64, contractId, signedTx };
   }
 
   async connectWallet(keyIdBase64: string): Promise<string> {
     this.kit = await this.buildKit();
-    const { contractId } = await this.kit.connectWallet({ keyId: keyIdBase64 });
+    const { contractId } = await this.kit.connectWallet({
+      keyId: keyIdBase64,
+      getContractId: async () => this.contractId,
+    });
     this.keyId = keyIdBase64;
     this.contractId = contractId;
     return contractId;
@@ -61,7 +111,10 @@ export class PasskeyKitSigner implements SignerPort {
 
     // Asegurar que el kit tiene el wallet conectado antes de firmar
     if (!this.kit.wallet) {
-      await this.kit.connectWallet({ keyId: this.keyId });
+      await this.kit.connectWallet({
+        keyId: this.keyId,
+        getContractId: async () => this.contractId,
+      });
     }
     const wallet = this.kit.wallet!;
 

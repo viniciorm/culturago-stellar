@@ -9,6 +9,15 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+// Cargar .env/.env.vini en process.env para que las credenciales del VPS
+// estén disponibles sin tener que exportarlas manualmente.
+const localEnv = { ...readLocalEnv('.env'), ...readLocalEnv('.env.vini') };
+for (const [key, value] of Object.entries(localEnv)) {
+  if (process.env[key] === undefined) {
+    process.env[key] = value;
+  }
+}
+
 const host = process.env.VPS_HOST;
 const user = process.env.VPS_USER;
 const password = (process.env.VPS_SSH_KEY || process.env.VPS_PASSWORD || '').trim();
@@ -144,6 +153,31 @@ function readLocalEnv(filename) {
   }
 }
 
+async function updateEnvOnly(conn) {
+  const remoteEnv = buildRemoteEnv();
+  console.log('\nUploading .env to VPS (ENV_ONLY)...');
+  const upload = await uploadFile(conn, `${deployDir}/.env`, remoteEnv);
+  if (upload.exit !== 0) {
+    console.error(red('Failed to write .env'));
+    process.exit(1);
+  }
+
+  console.log('Removing old containers...');
+  await exec(conn, 'docker rm -f culturago-app culturago-caddy 2>/dev/null || true');
+
+  console.log(green('Recreating containers with new env (no build)...'));
+  const up = await exec(conn, `cd ${deployDir} && docker compose --env-file .env -f deploy/docker-compose.app.yml up -d --no-build`);
+  if (up.exit !== 0) {
+    console.error(red('Docker compose recreate failed'));
+    process.exit(1);
+  }
+
+  console.log('\nContainer status:');
+  await exec(conn, `docker ps --filter name=culturago-`);
+  console.log(green('\nEnv update finished.'));
+  conn.end();
+}
+
 async function main() {
   const conn = new Client();
 
@@ -167,6 +201,10 @@ async function main() {
   });
 
   console.log(green(`Connected to ${host} as ${user}`));
+
+  if (process.env.ENV_ONLY === '1') {
+    return updateEnvOnly(conn);
+  }
 
   console.log('\nOpening firewall ports...');
   await exec(conn, '(ufw allow 22/tcp && ufw allow 8080/tcp && ufw allow 8444/tcp && ufw reload) 2>/dev/null || true');

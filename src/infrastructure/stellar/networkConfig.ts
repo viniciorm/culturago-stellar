@@ -19,6 +19,8 @@ export interface StellarNetworkConfig {
   smartWalletWasmAllowlist: readonly string[];
   /** Funded G-account that pays fees when the actor is a smart-wallet contract. */
   feePayerAddress: string | null;
+  /** Secret for the fee payer; only used for restore/bump in the two-phase flow. */
+  feePayerSecret: string | null;
 }
 
 export function getStellarNetworkConfig(): StellarNetworkConfig {
@@ -47,6 +49,10 @@ export function getStellarNetworkConfig(): StellarNetworkConfig {
     process.env.STELLAR_FEEPAYER_ADDRESS ??
     process.env.STELLAR_TESTNET_ADMIN_ADDRESS ??
     null;
+  const feePayerSecret =
+    process.env.STELLAR_FEEPAYER_SECRET ??
+    process.env.STELLAR_TESTNET_DEPLOYER_SECRET ??
+    null;
 
   return {
     environment: publicConfig.environment,
@@ -57,6 +63,7 @@ export function getStellarNetworkConfig(): StellarNetworkConfig {
     explorerBase: publicConfig.stellarExplorerBase,
     smartWalletWasmAllowlist: allowlist,
     feePayerAddress: feePayer && feePayer.trim() !== '' ? feePayer.trim() : null,
+    feePayerSecret: feePayerSecret && feePayerSecret.trim() !== '' ? feePayerSecret.trim() : null,
   };
 }
 

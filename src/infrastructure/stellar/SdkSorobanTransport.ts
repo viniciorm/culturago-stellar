@@ -2,6 +2,7 @@ import 'server-only';
 import {
   Account,
   Contract,
+  Operation,
   Transaction,
   TransactionBuilder,
   nativeToScVal,
@@ -51,9 +52,10 @@ export class SdkSorobanTransport implements SorobanTransport {
       };
     }
     if (rpc.Api.isSimulationRestore(sim)) {
+      const restoreXdr = await this.buildRestoreXdr(spec, sim);
       return {
         needsRestore: true,
-        preparedXdr: '',
+        preparedXdr: restoreXdr,
         latestLedger,
         contractError: null,
       };
@@ -136,6 +138,29 @@ export class SdkSorobanTransport implements SorobanTransport {
   }
 
   // ---------- internals ----------
+
+  private async buildRestoreXdr(
+    spec: ContractCallSpec,
+    sim: rpc.Api.SimulateTransactionResponse
+  ): Promise<string> {
+    const source = spec.feePayerAddress ?? spec.actorAddress;
+    const account: Account = await this.server
+      .getAccount(source)
+      .catch((error: unknown) => {
+        throw domainError('NOT_FOUND', `fee payer account not found on-chain: ${this.sanitize(error)}`);
+      });
+
+    const raw = new TransactionBuilder(account, {
+      fee: '100',
+      networkPassphrase: this.config.networkPassphrase,
+    })
+      .addOperation(Operation.restoreFootprint({}))
+      .setTimeout(180)
+      .build();
+
+    const assembled = rpc.assembleTransaction(raw, sim);
+    return assembled.build().toXDR();
+  }
 
   private async buildTransaction(spec: ContractCallSpec): Promise<Transaction> {
     // The fee payer pays fees; auth entries carry the actor's authorization.
