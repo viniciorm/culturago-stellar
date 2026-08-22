@@ -24,6 +24,10 @@ export default function SmartWalletPage() {
   const [keyId, setKeyId] = useState('');
   const [log, setLog] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [bailarinaId, setBailarinaId] = useState('');
+  const [organizerId, setOrganizerId] = useState('');
+  const [eventId] = useState(hex32('evento-bailarina'));
+  const [lastCredentialId, setLastCredentialId] = useState('');
 
   const addLog = (message: string) => setLog((prev) => [...prev, message]);
 
@@ -63,20 +67,11 @@ export default function SmartWalletPage() {
     }
   };
 
-  const prepareAndSign = async () => {
+  const sendCommand = async (command: Record<string, unknown>) => {
     if (!signer || !contractId) return;
     setLoading(true);
     try {
-      const idempotencyKey = self.crypto.randomUUID();
-      const command = {
-        kind: 'register_entity' as const,
-        idempotencyKey,
-        actorAddress: contractId,
-        entityId: hex32('test-entity'),
-        metadataHash: hex32('demo-metadata'),
-        hashSchema: 1,
-      };
-      addLog('Preparando transacción en backend...');
+      addLog(`Preparando: ${command.kind}...`);
       const prepareRes = await fetch('/api/sign/prepare', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -84,13 +79,12 @@ export default function SmartWalletPage() {
       });
       const prepareData = await prepareRes.json();
       if (!prepareRes.ok || !prepareData.prepared) throw new Error(prepareData.error ?? 'prepare failed');
-      addLog(`Transacción preparada: ${prepareData.prepared.operationId}`);
+      addLog(`Preparado: ${prepareData.prepared.operationId}`);
 
       addLog('Firmando con passkey...');
       const signed = await signer.sign(prepareData.prepared);
       addLog(`Firmado, signedXdr length: ${signed.signedXdr.length}`);
 
-      addLog('Enviando transacción firmada...');
       const submitRes = await fetch('/api/sign/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -102,11 +96,89 @@ export default function SmartWalletPage() {
       });
       const submitData = await submitRes.json();
       if (!submitRes.ok) throw new Error(submitData.error ?? 'submit failed');
-      addLog(`Submit: ${JSON.stringify(submitData.operation)}`);
+      addLog(`Confirmado: ${JSON.stringify(submitData.operation)}`);
+      return submitData.operation;
     } catch (e) {
-      addLog(`Error end-to-end: ${e instanceof Error ? e.message : String(e)}`);
+      addLog(`Error: ${e instanceof Error ? e.message : String(e)}`);
+      throw e;
     } finally {
       setLoading(false);
+    }
+  };
+
+  const registerOrganizer = async () => {
+    const id = hex32('organizer-' + self.crypto.randomUUID().slice(0, 8));
+    setOrganizerId(id);
+    await sendCommand({
+      kind: 'register_entity',
+      idempotencyKey: self.crypto.randomUUID(),
+      actorAddress: contractId,
+      entityId: id,
+      metadataHash: hex32('organizer-metadata'),
+      hashSchema: 1,
+    });
+    return id;
+  };
+
+  const registerBailarina = async () => {
+    const id = hex32('bailarina-' + self.crypto.randomUUID().slice(0, 8));
+    setBailarinaId(id);
+    await sendCommand({
+      kind: 'register_entity',
+      idempotencyKey: self.crypto.randomUUID(),
+      actorAddress: contractId,
+      entityId: id,
+      metadataHash: hex32('bailarina-metadata'),
+      hashSchema: 1,
+    });
+    return id;
+  };
+
+  const issueCredential = async (issuerOverride?: string, subjectOverride?: string) => {
+    const subject = subjectOverride || bailarinaId;
+    if (!subject) {
+      addLog('Primero registrá a la bailarina');
+      return;
+    }
+    const id = hex32('credential-' + self.crypto.randomUUID().slice(0, 8));
+    setLastCredentialId(id);
+    const issuer = issuerOverride || organizerId || subject;
+    await sendCommand({
+      kind: 'issue_credential',
+      idempotencyKey: self.crypto.randomUUID(),
+      actorAddress: contractId,
+      credentialId: id,
+      issuerId: issuer,
+      subjectId: subject,
+      eventId,
+      credentialType: 1,
+      metadataHash: hex32('credential-metadata'),
+      hashSchema: 1,
+    });
+    return id;
+  };
+
+  const revokeCredential = async () => {
+    if (!lastCredentialId) {
+      addLog('Primero emití una credencial');
+      return;
+    }
+    await sendCommand({
+      kind: 'revoke_credential',
+      idempotencyKey: self.crypto.randomUUID(),
+      actorAddress: contractId,
+      credentialId: lastCredentialId,
+    });
+  };
+
+  const fullBailarinaFlow = async () => {
+    try {
+      const org = await registerOrganizer();
+      const bail = await registerBailarina();
+      await issueCredential(org, bail);
+      addLog('Flujo bailarina completado.');
+    } catch (e) {
+      addLog(`Flujo abortado: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
 
@@ -114,14 +186,28 @@ export default function SmartWalletPage() {
     <main className="p-8 max-w-xl mx-auto">
       <h1 className="text-2xl font-bold mb-4">Smart Wallet (Passkey Testnet)</h1>
       <div className="space-y-2 mb-4">
-        <button onClick={initKit} disabled={loading} className="bg-gray-200 px-4 py-2 rounded">Inicializar Signer</button>
-        <button onClick={createWallet} disabled={loading} className="bg-blue-600 text-white px-4 py-2 rounded ml-2">Crear wallet</button>
-        <button onClick={connectWallet} disabled={loading} className="bg-green-600 text-white px-4 py-2 rounded ml-2">Conectar wallet</button>
-        <button onClick={prepareAndSign} disabled={loading} className="bg-purple-600 text-white px-4 py-2 rounded ml-2">Preparar + Firmar</button>
+        <div>
+          <button onClick={initKit} disabled={loading} className="bg-gray-200 px-4 py-2 rounded">Inicializar Signer</button>
+          <button onClick={createWallet} disabled={loading} className="bg-blue-600 text-white px-4 py-2 rounded ml-2">Crear wallet</button>
+          <button onClick={connectWallet} disabled={loading} className="bg-green-600 text-white px-4 py-2 rounded ml-2">Conectar wallet</button>
+        </div>
+        <div>
+          <button onClick={registerBailarina} disabled={loading} className="bg-yellow-600 text-white px-4 py-2 rounded">Registrar bailarina</button>
+          <button onClick={registerOrganizer} disabled={loading} className="bg-orange-600 text-white px-4 py-2 rounded ml-2">Registrar organizador</button>
+          <button onClick={() => issueCredential()} disabled={loading} className="bg-indigo-600 text-white px-4 py-2 rounded ml-2">Emitir credencial</button>
+          <button onClick={revokeCredential} disabled={loading} className="bg-red-600 text-white px-4 py-2 rounded ml-2">Revocar credencial</button>
+        </div>
+        <div>
+          <button onClick={fullBailarinaFlow} disabled={loading} className="bg-purple-600 text-white px-4 py-2 rounded">Flujo completo bailarina</button>
+        </div>
       </div>
       <div className="text-sm text-gray-700 mb-4">
         <p><strong>Contract ID:</strong> {contractId || '-'}</p>
         <p><strong>Key ID:</strong> {keyId ? `${keyId.slice(0, 16)}...` : '-'}</p>
+        <p><strong>Organizador:</strong> {organizerId || '-'}</p>
+        <p><strong>Bailarina:</strong> {bailarinaId || '-'}</p>
+        <p><strong>Evento:</strong> {eventId}</p>
+        <p><strong>Última credencial:</strong> {lastCredentialId || '-'}</p>
       </div>
       <div className="bg-black text-green-400 p-4 rounded text-sm font-mono h-64 overflow-auto">
         {log.map((line, i) => (

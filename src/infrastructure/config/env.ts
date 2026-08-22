@@ -86,14 +86,30 @@ export function getPublicConfig(): CulturaGoConfig {
  */
 export function getDatabaseUrl(): string {
   const url = read('DATABASE_URL');
-  if (!url) {
-    throw domainError('INVALID_INPUT', 'DATABASE_URL is required for server-side persistence');
+  if (url) return url;
+
+  const host = read('DB_HOST');
+  const port = read('DB_PORT') ?? '5432';
+  const user = read('DB_USER');
+  const password = read('DB_PASSWORD');
+  const name = read('DB_NAME') ?? read('DB_USER') ?? 'culturago';
+
+  if (!host || !user || !password) {
+    throw domainError('INVALID_INPUT', 'DATABASE_URL or DB_HOST/DB_USER/DB_PASSWORD are required for server-side persistence');
   }
-  return url;
+
+  const encodedPassword = encodeURIComponent(password);
+  return `postgres://${encodeURIComponent(user)}:${encodedPassword}@${host}:${port}/${encodeURIComponent(name)}`;
 }
 
 export function isPersistenceConfigured(): boolean {
-  return read('DATABASE_URL') !== null;
+  const url = read('DATABASE_URL');
+  if (url) return true;
+
+  const host = read('DB_HOST');
+  const user = read('DB_USER');
+  const password = read('DB_PASSWORD');
+  return host !== null && user !== null && password !== null;
 }
 
 export function explorerUrlForTx(txHash: string): string | null {

@@ -2,18 +2,17 @@ import 'server-only';
 import { StellarGateway } from '../../ports/StellarGateway';
 import { createMockStellarGateway } from './MockStellarGateway';
 import { InMemoryOperationStore } from './InMemoryOperationStore';
+import { PostgreSQLOperationStore } from './PostgreSQLOperationStore';
 import { SdkSorobanTransport } from './SdkSorobanTransport';
 import { SorobanStellarGateway } from './SorobanStellarGateway';
 import { getStellarNetworkConfig } from './networkConfig';
-
-// Singleton para que /api/sign/prepare y /api/sign/submit compartan estado
-// en el mismo proceso Node. En producción hay que reemplazar por PostgreSQLOperationStore.
-const sharedStore = new InMemoryOperationStore();
+import { isPersistenceConfigured } from '../config/env';
 
 /**
  * Factory for the concrete StellarGateway.
  * - demo: in-memory mock, no network.
- * - testnet/mainnet: real Soroban RPC with in-memory operation store.
+ * - testnet/mainnet: PostgreSQL operation store when DATABASE_URL is set;
+ *   otherwise in-memory (local dev / demo fallback only).
  */
 export function createStellarGateway(): { gateway: StellarGateway } {
   const env = process.env.NEXT_PUBLIC_CULTURAGO_ENV;
@@ -22,6 +21,7 @@ export function createStellarGateway(): { gateway: StellarGateway } {
   }
   const config = getStellarNetworkConfig();
   const transport = new SdkSorobanTransport(config);
-  const gateway = new SorobanStellarGateway(config, transport, sharedStore, null);
+  const store = isPersistenceConfigured() ? new PostgreSQLOperationStore() : new InMemoryOperationStore();
+  const gateway = new SorobanStellarGateway(config, transport, store, null);
   return { gateway };
 }

@@ -1,6 +1,7 @@
 'use client';
 import { domainError } from '@/domain/errors';
 import { PreparedTransactionPayload, SignedTransactionPayload, SignerPort } from '@/ports/SignerPort';
+import { Transaction, TransactionBuilder } from '@stellar/stellar-sdk';
 import type { StorageAdapter, StoredPasskey } from 'passkey-kit';
 
 class InMemoryPasskeyStorage implements StorageAdapter {
@@ -67,6 +68,7 @@ export class PasskeyKitSigner implements SignerPort {
       acceptedWasmHashes: [...this.acceptedWasmHashes],
       rpId: this.rpId,
       storage: this.storage,
+      deploySource: process.env.NEXT_PUBLIC_STELLAR_TESTNET_DEPLOYER_SECRET,
     });
   }
 
@@ -76,15 +78,33 @@ export class PasskeyKitSigner implements SignerPort {
     this.keyId = keyIdBase64;
     this.contractId = contractId;
 
-    // Enviar el deployment vía el relayer para que el contrato exista on-chain
-    const deployRes = await fetch('/api/smart-wallet/deploy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ signedTx }),
-    });
-    const deployResult = (await deployRes.json()) as { success: boolean; txHash?: string; error?: string };
-    if (!deployRes.ok || !deployResult.success) {
-      throw domainError('INVALID_STATE_TRANSITION', `wallet deployment failed: ${deployResult.error ?? deployRes.statusText}`);
+    // Enviar el deployment. Si hay deploySource propio, `signedTx` es un tx completo.
+    // Si no, usar el relayer server-side.
+    if (process.env.NEXT_PUBLIC_STELLAR_TESTNET_DEPLOYER_SECRET) {
+      const tx = TransactionBuilder.fromXDR(signedTx, this.networkPassphrase) as Transaction;
+      const submit = await this.kit.rpc.sendTransaction(tx);
+      if (submit.status === 'ERROR') {
+        throw domainError('INVALID_STATE_TRANSITION', `wallet deployment rejected: ${submit.errorResult?.toString() ?? 'unknown'}`);
+      }
+      const txHash = submit.hash;
+      for (let i = 0; i < 15; i++) {
+        const result = await this.kit.rpc.getTransaction(txHash);
+        if (result.status === 'SUCCESS') break;
+        if (result.status === 'FAILED') {
+          throw domainError('INVALID_STATE_TRANSITION', 'wallet deployment failed on-chain');
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+    } else {
+      const deployRes = await fetch('/api/smart-wallet/deploy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ signedTx }),
+      });
+      const deployResult = (await deployRes.json()) as { success: boolean; txHash?: string; error?: string };
+      if (!deployRes.ok || !deployResult.success) {
+        throw domainError('INVALID_STATE_TRANSITION', `wallet deployment failed: ${deployResult.error ?? deployRes.statusText}`);
+      }
     }
 
     await this.storage.save({
