@@ -21,6 +21,7 @@ interface StellarOperationsRow {
 function fromRow(row: StellarOperationsRow): StoredOperation {
   const payload = row.payload as Record<string, unknown>;
   const prepared = payload.prepared as StoredOperation['intent']['prepared'] | null | undefined;
+  const signed = payload.signed as StoredOperation['intent']['signed'] | null | undefined;
   return {
     state: {
       operationId: row.id,
@@ -36,6 +37,7 @@ function fromRow(row: StellarOperationsRow): StoredOperation {
       fingerprint: (payload.fingerprint as string) ?? '',
       subjectKey: (payload.subjectKey as string) ?? '',
       prepared: prepared === undefined ? null : prepared,
+      signed: signed === undefined ? null : signed,
       expected: (payload.expected as StoredOperation['intent']['expected']) ?? undefined,
     },
   };
@@ -47,6 +49,7 @@ function toPayload(record: StoredOperation): unknown {
     fingerprint: record.intent.fingerprint,
     subjectKey: record.intent.subjectKey,
     prepared: record.intent.prepared,
+    signed: record.intent.signed,
     expected: record.intent.expected,
   };
 }
@@ -106,13 +109,13 @@ export class PostgreSQLOperationStore implements OperationStore {
         subject_key = $4,
         intent_fingerprint = $5,
         prepared_xdr = $6,
-        signed_xdr = NULL,
-        signer_address = NULL,
-        tx_hash = $7,
-        ledger = $8,
-        error_code = $9,
-        attempt_count = $10,
-        next_retry_at = $11,
+        signed_xdr = $7,
+        signer_address = $8,
+        tx_hash = $9,
+        ledger = $10,
+        error_code = $11,
+        attempt_count = $12,
+        next_retry_at = $13,
         claimed_until = NULL,
         claimed_by = NULL
       WHERE id = $1`,
@@ -123,6 +126,8 @@ export class PostgreSQLOperationStore implements OperationStore {
         record.intent.subjectKey,
         record.intent.fingerprint,
         record.intent.prepared?.unsignedXdr ?? null,
+        record.intent.signed?.signedXdr ?? null,
+        record.intent.signed?.signerAddress ?? null,
         record.state.txHash,
         record.state.ledger,
         record.state.errorCode,
@@ -147,7 +152,7 @@ export class PostgreSQLOperationStore implements OperationStore {
          WHERE id IN (
            SELECT id
            FROM stellar_operations
-           WHERE phase IN ('awaiting_signature','submitted','confirming','failed_retryable','unknown','restoring')
+           WHERE phase IN ('awaiting_signature','signed','submitted','confirming','failed_retryable','unknown','restoring')
              AND (next_retry_at IS NULL OR next_retry_at <= NOW())
              AND (claimed_until IS NULL OR claimed_until <= NOW())
              AND attempt_count < max_attempts

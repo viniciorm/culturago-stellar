@@ -1,5 +1,5 @@
 import { OperationState } from './StellarGateway';
-import { PreparedTransactionPayload } from './SignerPort';
+import { PreparedTransactionPayload, SignedTransactionPayload } from './SignerPort';
 
 /**
  * Durable record of a chain operation: state machine + stored intent for
@@ -14,6 +14,8 @@ export interface StoredOperation {
     /** Domain key used by readback: entityId for register, credentialId otherwise. */
     subjectKey: string;
     prepared: PreparedTransactionPayload | null;
+    /** Signed payload once submitSigned has run; null until then. */
+    signed: SignedTransactionPayload | null;
     /** Expected on-chain state for post-confirmation readback. */
     expected?: {
       metadataHash?: string;

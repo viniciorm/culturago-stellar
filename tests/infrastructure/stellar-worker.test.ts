@@ -54,6 +54,7 @@ function pendingOperation(
         preparedAtLedger: 1000,
         intentFingerprint: hex(9),
       },
+      signed: null,
       expected,
     },
   };
@@ -81,6 +82,7 @@ function pendingReconcile(
       fingerprint: hex(9),
       subjectKey,
       prepared: null,
+      signed: null,
     },
   };
   return store.create(record).then(() => record);

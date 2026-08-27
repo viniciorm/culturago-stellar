@@ -146,6 +146,11 @@ export class SorobanStellarGateway implements StellarGateway {
     }
 
     return this.transition(op, 'signed', async (next) => {
+      next.intent.signed = {
+        operationId: next.state.operationId,
+        signedXdr: finalXdr,
+        signerAddress,
+      };
       const { txHash } = await this.transport.submit(finalXdr);
       console.log('[submitSigned] opId:', next.state.operationId, 'txHash:', txHash);
       next.state.txHash = txHash;
@@ -272,6 +277,7 @@ export class SorobanStellarGateway implements StellarGateway {
           fingerprint,
           subjectKey: await this.subjectKeyFor(command, kind),
           prepared: null,
+          signed: null,
         },
       });
       return state;
@@ -303,6 +309,7 @@ export class SorobanStellarGateway implements StellarGateway {
             fingerprint,
             subjectKey: await this.subjectKeyFor(command, kind),
             prepared: null,
+            signed: null,
           },
         });
         return state2;
@@ -338,6 +345,7 @@ export class SorobanStellarGateway implements StellarGateway {
         fingerprint,
         subjectKey: await this.subjectKeyFor(command, kind),
         prepared,
+        signed: null,
         expected: this.expectedFor(command, kind),
       },
     });
