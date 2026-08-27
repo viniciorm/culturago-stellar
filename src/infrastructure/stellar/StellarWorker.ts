@@ -41,11 +41,22 @@ export class StellarWorker {
 
     for (const op of batch) {
       await this.process(op).catch(async (error: unknown) => {
-        // Any unexpected error releases the claim by updating the record.
-        // The state machine still governs retriability.
         const record = await this.store.get(op.state.operationId);
-        if (record) {
-          record.state.errorCode = error instanceof Error ? error.message : 'WORKER_ERROR';
+        if (!record) return;
+        const errorCode = (error instanceof Error ? error.message : 'WORKER_ERROR').slice(0, 128);
+        // submitSigned already schedules a resubmit while keeping the signed
+        // payload; do not overwrite it.
+        if (record.state.phase === 'signed' && record.nextRetryAt && record.nextRetryAt > new Date()) {
+          record.state.errorCode = errorCode;
+          await this.store.save(record).catch(() => undefined);
+          return;
+        }
+        const terminal = record.state.phase === 'confirmed' || record.state.phase === 'failed_terminal';
+        if (!terminal) {
+          record.attemptCount = (record.attemptCount ?? 0) + 1;
+          record.nextRetryAt = new Date(Date.now() + this.backoffMs(record.attemptCount ?? 1));
+          record.state.errorCode = errorCode;
+          record.state.phase = 'failed_retryable';
           await this.store.save(record).catch(() => undefined);
         }
       });
@@ -87,6 +98,13 @@ export class StellarWorker {
         const signed = await this.signer.sign(op.intent.prepared);
         await this.gateway.submitSigned(id, signed.signedXdr, signed.signerAddress);
         return;
+      case 'signed':
+        metrics.increment('stellar.worker.resubmit');
+        if (!op.intent.signed) {
+          throw domainError('INVALID_STATE_TRANSITION', `operation ${id} is signed but has no payload`);
+        }
+        await this.gateway.submitSigned(id, op.intent.signed.signedXdr, op.intent.signed.signerAddress);
+        return;
       case 'submitted':
       case 'confirming':
       case 'unknown':
@@ -98,6 +116,12 @@ export class StellarWorker {
       default:
         return;
     }
+  }
+
+  private backoffMs(attempt: number): number {
+    const base = 2_000;
+    const max = 60_000;
+    return Math.min(base * 2 ** attempt, max);
   }
 
   private sleep(ms: number, signal: AbortSignal): Promise<void> {

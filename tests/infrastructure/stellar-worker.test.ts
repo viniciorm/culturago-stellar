@@ -88,6 +88,46 @@ function pendingReconcile(
   return store.create(record).then(() => record);
 }
 
+function signedOperation(
+  store: OperationStore,
+  subjectKey: string,
+  signedXdr: string
+): Promise<StoredOperation> {
+  const id = `op-${Math.random().toString(36).slice(2)}`;
+  const record: StoredOperation = {
+    state: {
+      operationId: id,
+      idempotencyKey: `key-${Math.random().toString(36).slice(2)}`,
+      phase: 'signed',
+      txHash: null,
+      ledger: null,
+      errorCode: null,
+    },
+    attemptCount: 0,
+    nextRetryAt: null,
+    intent: {
+      kind: 'register_entity',
+      actorAddress: ACTOR,
+      fingerprint: hex(9),
+      subjectKey,
+      prepared: {
+        operationId: id,
+        networkPassphrase: 'CulturaGO Demo ; 2026',
+        unsignedXdr: signedXdr,
+        preparedAtLedger: 1000,
+        intentFingerprint: hex(9),
+      },
+      signed: {
+        operationId: id,
+        signedXdr,
+        signerAddress: ACTOR,
+      },
+      expected: { metadataHash: hex(9), hashSchema: 1 },
+    },
+  };
+  return store.create(record).then(() => record);
+}
+
 describe('StellarWorker', () => {
   it('processes an awaiting_signature operation to confirmed', async () => {
     const bundle = createMockStellarGateway({ signer: null });
@@ -136,6 +176,32 @@ describe('StellarWorker', () => {
     await worker.runOneBatch();
     const final = await store.get(op.state.operationId);
     expect(final?.state.phase).toBe('unknown');
+  });
+
+  it('resubmits a signed payload after a crash', async () => {
+    const bundle = createMockStellarGateway({ signer: null });
+    const store = bundle.store;
+    const gateway = bundle.gateway;
+    const prepared = validRegisterSpec(hex(1), hex(9), 1);
+    const envelope = JSON.parse(prepared) as Record<string, unknown>;
+    envelope.mode = 'signed';
+    envelope.signature = 'demo-sig';
+    const signedXdr = JSON.stringify(envelope);
+    const op = await signedOperation(store, hex(1), signedXdr);
+
+    const worker = new StellarWorker(store, gateway, null, {
+      batchSize: 10,
+      workerId: 'w3',
+      claimTtlSeconds: 10,
+      pollIntervalMs: 100,
+      maxAttempts: 5,
+    });
+
+    await worker.runOneBatch();
+    const final = await store.get(op.state.operationId);
+    expect(final?.state.phase).toBe('confirmed');
+    expect(final?.intent.signed).not.toBeNull();
+    expect(final?.attemptCount).toBeGreaterThanOrEqual(0);
   });
 
   it('two workers do not claim the same operation', async () => {

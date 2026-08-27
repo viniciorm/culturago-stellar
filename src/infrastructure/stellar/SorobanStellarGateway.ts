@@ -93,9 +93,33 @@ export class SorobanStellarGateway implements StellarGateway {
     signerAddress: string
   ): Promise<OperationState> {
     const op = await this.requireOperation(operationId);
-    if (op.state.phase !== 'awaiting_signature') {
+    if (op.state.phase !== 'awaiting_signature' && op.state.phase !== 'signed') {
       throw domainError('INVALID_STATE_TRANSITION', `operation ${operationId} is in phase ${op.state.phase}`);
     }
+
+    // Recovery from a previously signed (but not yet submitted) operation.
+    if (op.state.phase === 'signed') {
+      if (!op.intent.signed) {
+        throw domainError('INVALID_STATE_TRANSITION', `operation ${operationId} is signed but has no stored payload`);
+      }
+      if (signedXdr !== op.intent.signed.signedXdr || signerAddress !== op.intent.signed.signerAddress) {
+        throw domainError('UNAUTHORIZED', 'signed payload mismatch during recovery');
+      }
+      try {
+        const { txHash } = await this.transport.submit(op.intent.signed.signedXdr);
+        console.log('[submitSigned] recovery opId:', operationId, 'txHash:', txHash);
+        op.state.txHash = txHash;
+        op.state.phase = 'submitted';
+        await this.store.save(op);
+        return this.pollAndConfirm(op);
+      } catch (error) {
+        this.scheduleRetry(op);
+        op.state.errorCode = error instanceof Error ? error.message : 'SUBMIT_FAILED';
+        await this.store.save(op);
+        throw domainError('INVALID_STATE_TRANSITION', 'transaction submission failed, queued for retry');
+      }
+    }
+
     if (signerAddress !== op.intent.actorAddress) {
       throw domainError('UNAUTHORIZED', 'signed payload does not match the intent actor');
     }
@@ -145,19 +169,31 @@ export class SorobanStellarGateway implements StellarGateway {
       }
     }
 
-    return this.transition(op, 'signed', async (next) => {
-      next.intent.signed = {
-        operationId: next.state.operationId,
-        signedXdr: finalXdr,
-        signerAddress,
-      };
-      const { txHash } = await this.transport.submit(finalXdr);
-      console.log('[submitSigned] opId:', next.state.operationId, 'txHash:', txHash);
-      next.state.txHash = txHash;
-      next.state.phase = 'submitted';
-      await this.store.save(next);
-      return this.pollAndConfirm(next);
-    });
+    // Persist the signed payload in the 'signed' phase BEFORE touching the
+    // network. This closes the crash window between signing and submission.
+    op.intent.signed = {
+      operationId: op.state.operationId,
+      signedXdr: finalXdr,
+      signerAddress,
+    };
+    op.state.phase = 'signed';
+    await this.store.save(op);
+
+    let txHash: string;
+    try {
+      const result = await this.transport.submit(finalXdr);
+      txHash = result.txHash;
+    } catch (error) {
+      this.scheduleRetry(op);
+      op.state.errorCode = error instanceof Error ? error.message : 'SUBMIT_FAILED';
+      await this.store.save(op);
+      throw domainError('INVALID_STATE_TRANSITION', 'transaction submission failed, queued for retry');
+    }
+    console.log('[submitSigned] opId:', op.state.operationId, 'txHash:', txHash);
+    op.state.txHash = txHash;
+    op.state.phase = 'submitted';
+    await this.store.save(op);
+    return this.pollAndConfirm(op);
   }
 
   async getOperation(operationId: string): Promise<OperationState> {
@@ -391,12 +427,12 @@ export class SorobanStellarGateway implements StellarGateway {
     switch (result.status) {
       case 'PENDING':
       case 'NOT_FOUND':
-        op.state.phase = 'unknown';
-        op.state.errorCode = null;
+        this.markUnknown(op);
         break;
       case 'FAILED':
         op.state.phase = 'failed_terminal';
         op.state.errorCode = result.contractError ?? 'CONTRACT_FAILED';
+        op.nextRetryAt = null;
         if ('diagnosticEventsXdr' in result && result.diagnosticEventsXdr) {
           console.log(
             '[pollAndConfirm] diagnostics:',
@@ -614,6 +650,29 @@ export class SorobanStellarGateway implements StellarGateway {
     const op = await this.store.get(operationId);
     if (!op) throw domainError('NOT_FOUND', `operation ${operationId} does not exist`);
     return op;
+  }
+
+  private backoffMs(attempt: number): number {
+    const base = 2_000;
+    const max = 60_000;
+    return Math.min(base * 2 ** attempt, max);
+  }
+
+  private scheduleRetry(op: StoredOperation): void {
+    op.attemptCount = (op.attemptCount ?? 0) + 1;
+    op.nextRetryAt = new Date(Date.now() + this.backoffMs(op.attemptCount ?? 1));
+  }
+
+  private markRetryable(op: StoredOperation, errorCode: string): void {
+    this.scheduleRetry(op);
+    op.state.errorCode = errorCode;
+    op.state.phase = 'failed_retryable';
+  }
+
+  private markUnknown(op: StoredOperation): void {
+    this.scheduleRetry(op);
+    op.state.errorCode = null;
+    op.state.phase = 'unknown';
   }
 
   // ---------- XDR structural validation for smart wallets ----------

@@ -23,6 +23,10 @@ export interface StoredOperation {
       revoked?: boolean;
     };
   };
+  /** Number of processing attempts for exponential backoff. */
+  attemptCount?: number;
+  /** Earliest time the worker may pick this operation again. */
+  nextRetryAt?: Date | null;
 }
 
 /**

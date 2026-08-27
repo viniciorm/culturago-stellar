@@ -40,6 +40,8 @@ function fromRow(row: StellarOperationsRow): StoredOperation {
       signed: signed === undefined ? null : signed,
       expected: (payload.expected as StoredOperation['intent']['expected']) ?? undefined,
     },
+    attemptCount: row.attempt_count ?? 0,
+    nextRetryAt: row.next_retry_at ? new Date(row.next_retry_at) : null,
   };
 }
 
@@ -131,8 +133,8 @@ export class PostgreSQLOperationStore implements OperationStore {
         record.state.txHash,
         record.state.ledger,
         record.state.errorCode,
-        0,
-        null,
+        record.attemptCount ?? 0,
+        record.nextRetryAt ?? null,
       ]
     ).catch(translatePgError);
   }
