@@ -36,8 +36,14 @@ jobs:
       - name: Run tests
         run: pnpm test
 
-      - name: Contracts test
+      - name: Contracts lint
         run: pnpm contracts:lint
+
+      - name: Contracts test
+        run: pnpm contracts:test
+
+      - name: Contracts build
+        run: pnpm contracts:build
 
       - name: Audit production dependencies
         run: pnpm audit --prod

@@ -11,8 +11,11 @@ AS $$
 DECLARE
   prefix bytea;
   body bytea;
+  zero bytea := decode('00', 'hex');
 BEGIN
-  prefix := convert_to('CULTURAGO' || E'\000' || schema_id || E'\000', 'UTF8');
+  -- Domain separation prefix: CULTURAGO\0 || schema_id || \0
+  -- Built as bytea so PostgreSQL never sees U+0000 inside a TEXT value.
+  prefix := convert_to('CULTURAGO', 'UTF8') || zero || convert_to(schema_id, 'UTF8') || zero;
   body := convert_to(coalesce(canonical, ''), 'UTF8');
   RETURN encode(digest(prefix || body, 'sha256'), 'hex');
 END;

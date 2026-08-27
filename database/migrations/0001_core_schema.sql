@@ -16,7 +16,7 @@ CREATE TYPE relationship_kind AS ENUM (
 CREATE TYPE relationship_status AS ENUM ('pending', 'active', 'ended', 'rejected', 'archived');
 CREATE TYPE participation_state AS ENUM ('registered', 'checked_in', 'participation_confirmed', 'credential_issued');
 CREATE TYPE credential_status AS ENUM ('issued', 'revoked');
-CREATE TYPE chain_phase AS ENUM ('signing', 'submitted', 'confirming', 'confirmed', 'failed_retryable', 'failed_terminal', 'unknown', 'restoring');
+CREATE TYPE chain_phase AS ENUM ('signing', 'awaiting_signature', 'signed', 'submitted', 'confirming', 'confirmed', 'failed_retryable', 'failed_terminal', 'unknown', 'restoring');
 CREATE TYPE wallet_kind AS ENUM ('none', 'stellar_classic', 'smart_wallet', 'passkey');
 CREATE TYPE wallet_state AS ENUM ('none', 'reserved', 'claimed', 'disabled');
 CREATE TYPE operation_kind AS ENUM ('register_entity', 'issue_credential', 'revoke_credential', 'link_wallet');

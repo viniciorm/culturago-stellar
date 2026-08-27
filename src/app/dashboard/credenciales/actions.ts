@@ -248,7 +248,7 @@ export async function createCredential(input: CreateCredentialInput): Promise<vo
   const actor = await requireActorFromSession();
   assertIssuerScope(actor, input.issuer_entity_id);
 
-  const metadataHash = computeMetadataHash(metadataPayload);
+  const metadataHash = await computeMetadataHash(metadataPayload);
   const hashSchema = 1;
 
   const id = crypto.randomUUID();

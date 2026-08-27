@@ -1,14 +1,16 @@
-import { createHash } from 'crypto';
+import { CanonicalHashService } from '@/infrastructure/hashing/CanonicalHashService';
+
+const canonicalHash = new CanonicalHashService();
 
 /**
- * Computes a deterministic SHA-256 over a canonical JSON payload.
- * The keys are sorted so the hash is stable regardless of insertion order.
+ * Deterministic SHA-256 over a canonical JSON credential metadata payload.
+ * Uses the same CanonicalHashPort as the Stellar gateway so off-chain and
+ * on-chain hashes are comparable. The numeric hash_schema sent to the
+ * contract remains 1 because that is the only version currently allowed
+ * on the deployed testnet contracts.
  */
-export function computeMetadataHash(payload: Record<string, unknown>): string {
-  const canonical = JSON.stringify(
-    Object.fromEntries(Object.entries(payload).sort(([a], [b]) => a.localeCompare(b)))
-  );
-  return createHash('sha256').update(canonical).digest('hex');
+export async function computeMetadataHash(payload: Record<string, unknown>): Promise<string> {
+  return canonicalHash.hashDocument('culturago.credential.v1', payload);
 }
 
 export const credentialTypeToNumber: Record<string, number> = {

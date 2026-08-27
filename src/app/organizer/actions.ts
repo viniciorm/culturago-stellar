@@ -27,7 +27,7 @@ function ensurePersistence(): void {
   }
 }
 
-function parseReasonHash(raw: string | null): string | null {
+async function parseReasonHash(raw: string | null): Promise<string | null> {
   if (!raw || raw.trim().length === 0) return null;
   return computeMetadataHash({ reason: raw.trim() });
 }
@@ -129,7 +129,7 @@ export async function issueCredential(formData: FormData): Promise<void> {
     issued_at: now(),
   };
 
-  const metadataHash = computeMetadataHash(metadataPayload);
+  const metadataHash = await computeMetadataHash(metadataPayload);
   const hashSchema = 1;
 
   await issueCredentialUseCase(
@@ -170,7 +170,7 @@ export async function revokeCredential(formData: FormData): Promise<void> {
     throw domainError('INVALID_INPUT', 'Se requiere credentialId');
   }
 
-  const reasonHash = parseReasonHash(reason);
+  const reasonHash = await parseReasonHash(reason);
 
   await revokeCredentialUseCase(
     { db, now },

@@ -1,67 +1,58 @@
 # Handoff - CulturaGO Stellar
 
-> **Auditoría del estado real, 26-ago-2026.** 
+> **Estado de auditoría, 26-ago-2026.** Refleja el estado real del repositorio y los bloqueadores que aún deben cerrarse antes del deploy productivo.
 
 ## Gates actuales
 
 | Gate | Resultado |
-|------|-----------|
+|---|---|
+| `pnpm lint --max-warnings=0` | ✅ Pasa |
 | `pnpm typecheck` | ✅ Pasa |
-| `pnpm test` | ✅ 88/88 pasan |
+| `pnpm test` | ✅ 94/94 pasan |
 | `pnpm build` | ✅ Pasa |
-| `pnpm lint` | ✅ 0 errores, 42 warnings |
-| `pnpm lint --max-warnings=0` | ❌ Falla |
-| `pnpm audit --prod` | ❌ Pendiente de correr con pnpm (falló con npm por no-lockfile) |
+| `pnpm audit --prod` | ✅ Sin vulnerabilidades productivas |
 | `cargo test` contratos | ✅ 51/51 pasan |
 | Build WASM | ✅ Pasa, hashes coinciden con manifiesto |
 | `git diff --check` | ✅ Pasa |
 
-**Nota:** los 88 tests cubren lógica de dominio y mocks. No cubren PostgreSQL, migraciones, WebAuthn real, Server Actions ni E2E Testnet.
+**Nota:** los tests cubren lógica de dominio y mocks. No cubren PostgreSQL real, migraciones, WebAuthn real, Server Actions con PG ni E2E Testnet.
 
 ## Estado por fase
 
-| Fase | Estado auditado | Conclusión |
-|------|-----------------|------------|
-| 0 — Baseline | Parcial | Gates ejecutados, pero el working tree tiene decenas de archivos sin organizar, CI incompatible y vulnerabilidades abiertas. |
-| 1 — Readback | ✅ Cumplida | Regresión corregida; `stellar-gateway` tests verdes. |
-| 2 — Auth / perímetro | Bloqueada | Dashboard tiene guard, pero login, WebAuthn PG y endpoints mutantes siguen incompletos. |
-| 3 — Passkey / XDR / WASM | Parcial | Implementación avanzada, faltan tests XDR reales; allowlist de WASM aprobada. |
-| 4 — Dashboard real | Bloqueada | CRUD PG parcial; IDs/UUID pasan al contrato como si fueran `BytesN<32>` y el flujo contractual no funciona E2E. |
-| 5 — Estado / reconciliación | Parcial | `prepareCredentialIssue` prepara, pero la UI descarta el `operationId` y no firma/envía/poll. |
-| 6 — E2E Testnet | No ejecutada | No hay evidencia E2E frontend ni cleanup. `/smart-wallet` todavía llama a `/api/testnet/grant-roles`, que fue eliminado. |
+| Fase | Estado | Conclusión |
+|---|---|---|
+| 0 — Baseline | ✅ Cumplida | Working tree limpio, lint 0 warnings, CI con Node 22/pnpm 10, README/HANDOFF/architecture en actualización, dependencias mitigadas. |
+| 1 — Readback | ✅ Cumplida | `stellar-gateway` tests verdes. |
+| 2 — Auth / perímetro | Bloqueada | WebAuthn/Passkey pendiente de persistencia PostgreSQL y tests de integración. |
+| 3 — Passkey / XDR / WASM | Parcial | Implementación avanzada; allowlist de WASM vacía a la espera de aprobación. |
+| 4 — Dashboard real | Parcial | UUID → BytesN<32> implementado en gateway y SQL; `culturago_canonical_hash` corregida; falta ejecutar la paridad contra PostgreSQL real y unificar metadata hash. |
+| 5 — Estado / reconciliación | Parcial | `prepareCredentialIssue` prepara; falta cerrar durabilidad de `signed` y recovery del worker. |
+| 6 — E2E Testnet | No ejecutada | Sin evidencia E2E frontend. |
 | 7 — Retiro de mocks | Parcial | Eliminados `src/lib/stellar.ts`, `src/lib/hashes.ts` y `testnet/grant-roles`; `src/lib/db.ts` (mock) sigue activo. |
-| 8 — Build / CI | No cumplida | CI con Node 20 / pnpm 9 cuando el proyecto pide Node ≥22 / pnpm ≥10; omite audit y contratos; Docker ignora errores de build. |
-| 9 — Documentación | No cumplida | README, `architecture.md`, `supabase-schema.sql` y manifiesto siguen desactualizados. |
-| 10 — Handoff | Documentada / diferida | Existe este documento, pero las responsabilidades operativas no están implementadas. |
+| 8 — Build / CI | ✅ Cumplida | CI con Node 22/pnpm 10, lint estricto, audit y contratos test/build. |
+| 9 — Documentación | En progreso | README, `architecture.md` y manifiesto en actualización. |
+| 10 — Handoff | En progreso | Este documento refleja el estado actual. |
 
-## Bloqueadores críticos
+## Bloqueadores críticos residuales
 
-1. **WebAuthn no funciona correctamente con PostgreSQL.** `PasskeyService` consume el challenge crudo, mientras PostgreSQL guarda SHA-256/digest. `auth_challenges.id` y `sessions.rotated_from` son UUIDs pero reciben otros formatos. Los tests usan solo `InMemoryIdentityStore`.
-2. **La ruta PostgreSQL de operaciones Stellar sigue rota.** `chain_phase` no contiene `awaiting_signature` ni `signed`; `PostgreSQLOperationStore.save()` borra `signed_xdr` y `signer_address`, dejando una operación irrecuperable ante una caída.
-3. **UUIDs pasan al contrato directamente.** `prepareCredentialIssue` envía `credentialId`, `issuerId`, `subjectId`, `eventId` como UUIDs en lugar de `BytesN<32>` de 64 hex. La preparación real falla.
-4. **No se usa el hash canónico oficial.** `credentialMetadata.ts` usa SHA-256 simple; el proyecto tiene `CanonicalHashPort` con canonicalización recursiva y dominio. Los hashes no son equivalentes.
-5. **Emisión y revocación no completan el ciclo on-chain.** En el dashboard, "revocar" actualiza PostgreSQL directamente. El panel organizer también emite/revoca con casos de uso de BD; no usa `SorobanStellarGateway`.
-6. **El perímetro del harness no está protegido.** `/api/sign/prepare`, `/api/sign/submit` y `/api/smart-wallet/deploy` usan `assertTestnetHarnessAllowed` sin token obligatorio, sesión, rol/scope, CSRF ni rate limit.
-7. **Fase 6 E2E no existe.** No hay evidencia de concesión/revocación de roles, unlink, XDR alterado, operaciones `unknown` reconciliadas, etc.
-8. **CRUD PostgreSQL no están suficientemente probados.** Errores en `WHERE` de updates, `issued_by` usa `issuer_entity_id` en lugar de `accounts.id`, y no revalidan actor/rol. Faltan tests de integración.
-9. **Lint warnings ocultan errores.** 42 warnings impiden `lint --max-warnings=0`.
-10. **CI y dependencias desactualizadas.** CI usa Node 20 / pnpm 9; manifiesto tiene `ledger: null` y allowlist vacía; `next.config.ts` ignora erroles de build en Docker.
+1. **F1 — WebAuthn no persiste en PostgreSQL.** `PasskeyService` y `PostgreSQLIdentityStore` deben alinear challenge/digest y passkeys con el esquema.
+2. **F2 — Signed payload no es duradero.** Crash window entre submit y save; `StellarWorker` no maneja fase `signed`; `attempt_count` no se incrementa ni hay backoff.
+3. **F4 — Metadata hash aún no usa CanonicalHashPort.** `credentialMetadata.ts` usa SHA-256 simple. Decisión pendiente: `hash_schema` 1 vs 2 y `allow_hash_schema` on-chain.
+4. **F5 — Emisión/revocación on-chain no completa.** Dashboard/organizer usan BD directa; no fluyen por `SorobanStellarGateway`.
+5. **F6 — E2E Testnet no existe.**
+6. **F7 — `src/lib/db.ts` (mock) sigue activo.**
 
-## Supuestos pendientes de validación
+## Supuestos y advertencias operativas
 
-- Las tablas `0002_identity_prep.sql` y `0005_credential_title_description.sql` deben estar aplicadas en PostgreSQL. Marcos debe corroborar esto antes de deployar a producción.
+- Las migraciones `0001`–`0007` deben aplicarse en orden en PostgreSQL real.
+- `0006_canonical_hash.sql` y `0007_chain_phase_values.sql` son idempotentes.
+- No hay pruebas automáticas contra PostgreSQL: se necesita un entorno con `DATABASE_URL` para validar paridad SQL/TS.
+- `hash_schema` 1 es el único aceptado por los contratos desplegados actualmente.
 
-## Pasos recomendados para Marcos
+## Pasos recomendados
 
-1. Corroborar que `0002_identity_prep.sql` y `0005_credential_title_description.sql` estén aplicadas en el Postgres objetivo.
-2. Corregir `PasskeyService` y `PostgreSQLIdentityStore` para que el challenge/digest sean consistentes con el esquema.
-3. Arreglar `PostgreSQLOperationStore` para no perder `signed_xdr`/`signer_address` y agregar los valores `awaiting_signature`/`signed` a `chain_phase`.
-4. Derivar `BytesN<32>` desde UUIDs antes de llamar a `SorobanStellarGateway`.
-5. Reemplazar SHA-256 simple por `CanonicalHashPort` en `credentialMetadata.ts`.
-6. Implementar autorización productiva en `/api/sign/prepare`, `/api/sign/submit` y `/api/smart-wallet/deploy`.
-7. Revisar y completar README, manifiesto y documentación de arquitectura.
-
-## Contacto / dudas
-
-- Cualquier error en producción probablemente esté en `src/lib/db.ts` (mock), en los endpoints que dependen de `assertTestnetHarnessAllowed`, o en la conversión UUID → `BytesN<32>`.
-- Este handoff **no es un "estado completo"**; es una auditoría de bloqueadores para priorizar el trabajo restante.
+1. Validar migraciones en base limpia y verificar `culturago_canonical_hash`.
+2. Implementar `PostgreSQLIdentityStore` y tests de integración WebAuthn.
+3. Cerrar durabilidad de `signed` en `SorobanStellarGateway` y `StellarWorker`.
+4. Migrar `computeMetadataHash` a `CanonicalHashPort` tras decidir `hash_schema`.
+5. Completar E2E Testnet y retirar `src/lib/db.ts`.
