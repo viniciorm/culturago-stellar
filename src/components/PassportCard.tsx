@@ -1,5 +1,5 @@
 import React from 'react';
-import { User, ShieldCheck, MapPin, Globe, Calendar, Award } from 'lucide-react';
+import { User, Award } from 'lucide-react';
 import { Entity, Person } from '../lib/db';
 import { VerificationBadge, StellarStatusBadge } from './ui/Badge';
 

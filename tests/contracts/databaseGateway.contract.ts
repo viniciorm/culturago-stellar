@@ -21,6 +21,8 @@ export function runDatabaseGatewayContract(
       subjectId: 'subject-1',
       eventId: 'event-1',
       credentialType: 1,
+      title: 'Credential title',
+      description: 'Credential description',
       metadataHash: 'a'.repeat(64),
       hashSchema: 2,
       status: 'issued',

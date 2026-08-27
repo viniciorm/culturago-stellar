@@ -26,6 +26,7 @@ export function createStellarGateway(): { gateway: StellarGateway } {
   const config = getStellarNetworkConfig();
   const transport = new SdkSorobanTransport(config);
   const store = isPersistenceConfigured() ? new PostgreSQLOperationStore() : inMemoryStore;
+  console.log('[createStellarGateway] persistence configured:', isPersistenceConfigured(), 'store:', store.constructor.name);
   const gateway = new SorobanStellarGateway(config, transport, store, null);
   return { gateway };
 }

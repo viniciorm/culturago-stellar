@@ -29,6 +29,8 @@ const baseCommand: IssueCredentialCommand = {
   eventId: 'fdvc-2026',
   credentialType: 'dancer_participant',
   credentialCode: 'CRED-FDVC26-DCR-DANC-001',
+  title: 'Bailarina Participante FDVC 2026',
+  description: 'Acreditación oficial de bailarina solista.',
   metadataHash: HASH_A,
   hashSchema: 2,
 };

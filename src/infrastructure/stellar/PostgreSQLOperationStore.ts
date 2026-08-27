@@ -36,6 +36,7 @@ function fromRow(row: StellarOperationsRow): StoredOperation {
       fingerprint: (payload.fingerprint as string) ?? '',
       subjectKey: (payload.subjectKey as string) ?? '',
       prepared: prepared === undefined ? null : prepared,
+      expected: (payload.expected as StoredOperation['intent']['expected']) ?? undefined,
     },
   };
 }
@@ -46,6 +47,7 @@ function toPayload(record: StoredOperation): unknown {
     fingerprint: record.intent.fingerprint,
     subjectKey: record.intent.subjectKey,
     prepared: record.intent.prepared,
+    expected: record.intent.expected,
   };
 }
 

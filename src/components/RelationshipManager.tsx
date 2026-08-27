@@ -1,10 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Link2, Trash2, CheckCircle2, UserPlus, Info } from 'lucide-react';
+import { Link2, Trash2, UserPlus } from 'lucide-react';
 import { 
   Entity, 
-  Relationship, 
   PopulatedRelationship, 
   db 
 } from '../lib/db';

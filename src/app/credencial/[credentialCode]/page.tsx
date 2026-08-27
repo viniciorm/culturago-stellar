@@ -2,10 +2,10 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Award, ShieldCheck, CheckCircle2, XCircle, Clock, Database, Calendar, FileCode } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, XCircle, Clock, Database } from 'lucide-react';
 import { PublicLayout } from '../../../components/PublicLayout';
 import { StellarVerificationLinks } from '../../../components/StellarVerificationLinks';
-import { db, PopulatedCredential, Entity } from '../../../lib/db';
+import { db, PopulatedCredential } from '../../../lib/db';
 import { QRCodeBlock } from '../../../components/ui/QRCodeBlock';
 import { CredentialCard } from '../../../components/CredentialCard';
 import { Button } from '../../../components/ui/Button';

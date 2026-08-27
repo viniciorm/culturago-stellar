@@ -1,7 +1,7 @@
 'use client';
 import { domainError } from '@/domain/errors';
 import { PreparedTransactionPayload, SignedTransactionPayload, SignerPort } from '@/ports/SignerPort';
-import { Transaction, TransactionBuilder } from '@stellar/stellar-sdk';
+import { Address, Transaction, TransactionBuilder, xdr } from '@stellar/stellar-sdk';
 import type { StorageAdapter, StoredPasskey } from 'passkey-kit';
 
 class InMemoryPasskeyStorage implements StorageAdapter {
@@ -68,7 +68,8 @@ export class PasskeyKitSigner implements SignerPort {
       acceptedWasmHashes: [...this.acceptedWasmHashes],
       rpId: this.rpId,
       storage: this.storage,
-      deploySource: process.env.NEXT_PUBLIC_STELLAR_TESTNET_DEPLOYER_SECRET,
+      // Deployment is always server-side; the client never has a deployer secret.
+      deploySource: undefined,
     });
   }
 
@@ -78,33 +79,16 @@ export class PasskeyKitSigner implements SignerPort {
     this.keyId = keyIdBase64;
     this.contractId = contractId;
 
-    // Enviar el deployment. Si hay deploySource propio, `signedTx` es un tx completo.
-    // Si no, usar el relayer server-side.
-    if (process.env.NEXT_PUBLIC_STELLAR_TESTNET_DEPLOYER_SECRET) {
-      const tx = TransactionBuilder.fromXDR(signedTx, this.networkPassphrase) as Transaction;
-      const submit = await this.kit.rpc.sendTransaction(tx);
-      if (submit.status === 'ERROR') {
-        throw domainError('INVALID_STATE_TRANSITION', `wallet deployment rejected: ${submit.errorResult?.toString() ?? 'unknown'}`);
-      }
-      const txHash = submit.hash;
-      for (let i = 0; i < 15; i++) {
-        const result = await this.kit.rpc.getTransaction(txHash);
-        if (result.status === 'SUCCESS') break;
-        if (result.status === 'FAILED') {
-          throw domainError('INVALID_STATE_TRANSITION', 'wallet deployment failed on-chain');
-        }
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-      }
-    } else {
-      const deployRes = await fetch('/api/smart-wallet/deploy', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ signedTx }),
-      });
-      const deployResult = (await deployRes.json()) as { success: boolean; txHash?: string; error?: string };
-      if (!deployRes.ok || !deployResult.success) {
-        throw domainError('INVALID_STATE_TRANSITION', `wallet deployment failed: ${deployResult.error ?? deployRes.statusText}`);
-      }
+    // Deployment is server-side: the client only signs the auth entries.
+    // The server validates the WASM allowlist and relays/funds the transaction.
+    const deployRes = await fetch('/api/smart-wallet/deploy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ signedTx }),
+    });
+    const deployResult = (await deployRes.json()) as { success: boolean; txHash?: string; error?: string };
+    if (!deployRes.ok || !deployResult.success) {
+      throw domainError('INVALID_STATE_TRANSITION', `wallet deployment failed: ${deployResult.error ?? deployRes.statusText}`);
     }
 
     await this.storage.save({
@@ -135,6 +119,37 @@ export class PasskeyKitSigner implements SignerPort {
     }
   }
 
+  private credentialsAddress(creds: xdr.SorobanCredentials): xdr.ScAddress {
+    const name = creds.switch().name.toLowerCase();
+    switch (name) {
+      case 'sorobancredentialsaddress':
+        return (creds as unknown as { address(): { address(): xdr.ScAddress } }).address().address();
+      case 'sorobancredentialsaddressv2':
+        return (creds as unknown as { addressV2(): { address(): xdr.ScAddress } }).addressV2().address();
+      case 'sorobancredentialsaddresswithdelegates':
+        return (creds as unknown as { addressWithDelegates(): { addressCredentials(): { address(): xdr.ScAddress } } })
+          .addressWithDelegates()
+          .addressCredentials()
+          .address();
+      default:
+        throw domainError('INVALID_INPUT', `Unsupported auth credentials type ${name}`);
+    }
+  }
+
+  private isWalletAuthEntry(entry: xdr.SorobanAuthorizationEntry): boolean {
+    const creds = entry.credentials();
+    const name = creds.switch().name.toLowerCase();
+    if (name !== 'sorobancredentialsaddress' && name !== 'sorobancredentialsaddressv2') {
+      return false;
+    }
+    if (!this.contractId) return false;
+    try {
+      return Address.fromScAddress(this.credentialsAddress(creds)).toString() === this.contractId;
+    } catch {
+      return false;
+    }
+  }
+
   async sign(prepared: PreparedTransactionPayload): Promise<SignedTransactionPayload> {
     if (!this.kit || !this.keyId || !this.contractId) {
       throw domainError('INVALID_STATE_TRANSITION', 'Wallet must be created or connected before signing');
@@ -150,12 +165,89 @@ export class PasskeyKitSigner implements SignerPort {
         getContractId: async () => this.contractId,
       });
     }
-    const wallet = this.kit.wallet!;
 
-    // Reconstruir el AssembledTransaction desde el XDR preparado
-    const assembled = wallet.txFromXDR!(prepared.unsignedXdr) as { toXDR(): string };
-    const signed = await this.kit.sign(assembled as unknown as Parameters<typeof this.kit.sign>[0]);
-    const signedXdr = (signed as unknown as { toXDR(): string }).toXDR();
+    const tx = TransactionBuilder.fromXDR(prepared.unsignedXdr, this.networkPassphrase) as Transaction;
+    if (tx.operations.length !== 1) {
+      throw domainError('INVALID_INPUT', 'Expected exactly one operation');
+    }
+    const op = tx.operations[0] as { type: string } | undefined;
+    if (!op || op.type !== 'invokeHostFunction') {
+      throw domainError('INVALID_INPUT', 'Prepared payload is not a contract invocation');
+    }
+
+    // The Transaction object exposes immutable JS operation objects and a
+    // defensive copy of the inner XDR. Mutating `tx.operations[0].auth` does
+    // NOT change the serialized envelope. Instead, get the TransactionEnvelope
+    // directly and mutate the inner XDR operation's auth array.
+    const envelope = tx.toEnvelope();
+    const envelopeType = envelope.switch().name;
+    if (envelopeType !== 'envelopeTypeTx' && envelopeType !== 'envelopeTypeTxV0') {
+      throw domainError('INVALID_INPUT', `Unsupported envelope type ${envelopeType}`);
+    }
+
+    const innerTx = (envelope.value() as { tx(): unknown }).tx() as { operations(): unknown[] };
+    const innerOps = innerTx.operations();
+    if (innerOps.length !== 1) {
+      throw domainError('INVALID_INPUT', 'Expected exactly one operation');
+    }
+    const innerOp = innerOps[0] as xdr.Operation;
+    const body = innerOp.body();
+    if (!/invoke.?host.?function/i.test(body.switch().name)) {
+      throw domainError('INVALID_INPUT', 'Prepared payload is not a contract invocation');
+    }
+    const hostFn = body.invokeHostFunctionOp();
+    const authEntries = hostFn.auth() ?? [];
+
+    const newAuth: xdr.SorobanAuthorizationEntry[] = [];
+    let signedCount = 0;
+
+    // The passkey-kit default expiration is derived from the configured
+    // timeout (only ~6 ledgers for 30s). Between signing and submission the
+    // ledger can advance past that, so we fetch the current ledger and add a
+    // generous buffer (100 ledgers ≈ 8 minutes on Testnet).
+    let expiration = prepared.preparedAtLedger + 100;
+    try {
+      const health = await this.kit.rpc.getHealth();
+      expiration = health.latestLedger + 100;
+    } catch {
+      // Fallback to the prepared ledger if the RPC call fails.
+    }
+
+    for (const entry of authEntries) {
+      if (this.isWalletAuthEntry(entry)) {
+        const original = entry.toXDR('base64');
+        const signed = await this.kit.signAuthEntry(entry, undefined, { expiration });
+        if (signed.toXDR('base64') === original) {
+          throw domainError('INVALID_STATE_TRANSITION', 'Passkey signing produced an identical auth entry');
+        }
+        newAuth.push(signed);
+        signedCount++;
+      } else {
+        newAuth.push(entry);
+      }
+    }
+    if (signedCount === 0) {
+      throw domainError('INVALID_INPUT', 'No auth entry for this wallet to sign');
+    }
+
+    hostFn.auth(newAuth);
+
+    const signedXdr = envelope.toXDR('base64');
+
+    // Verify that the signatures actually made it through XDR round-trip.
+    const verifyTx = TransactionBuilder.fromXDR(signedXdr, this.networkPassphrase) as Transaction;
+    const verifyEnv = verifyTx.toEnvelope();
+    const verifyInnerTx = (verifyEnv.value() as { tx(): unknown }).tx() as { operations(): unknown[] };
+    const verifyOp = verifyInnerTx.operations()[0] as xdr.Operation;
+    const verifyAuth = (verifyOp.body().invokeHostFunctionOp() as { auth(): xdr.SorobanAuthorizationEntry[] }).auth();
+    if (verifyAuth.length !== newAuth.length) {
+      throw domainError('INVALID_STATE_TRANSITION', 'Auth entry count changed during XDR round-trip');
+    }
+    for (let i = 0; i < newAuth.length; i++) {
+      if (verifyAuth[i].toXDR('base64') !== newAuth[i].toXDR('base64')) {
+        throw domainError('INVALID_STATE_TRANSITION', 'Signed auth entry did not survive XDR round-trip');
+      }
+    }
 
     return {
       operationId: prepared.operationId,

@@ -59,6 +59,7 @@ interface ChainCredential {
 export class InMemoryChainTransport implements SorobanTransport {
   private ledger = 1000;
   private entities = new Map<string, ChainEntityHead>();
+  private entityVersions = new Map<string, Map<number, { metadataHash: string; hashSchema: number }>>();
   private credentials = new Map<string, ChainCredential>();
   private tokenCounter = 0;
   private businessKeys = new Map<string, string>();
@@ -106,6 +107,7 @@ export class InMemoryChainTransport implements SorobanTransport {
     const first = spec.args.find((a) => a.kind === 'bytes32');
     const key = first && first.kind === 'bytes32' ? first.hex : null;
     if (!key) return null;
+
     if (spec.method === 'get_entity') {
       const head = this.entities.get(key);
       if (!head) return null;
@@ -118,6 +120,20 @@ export class InMemoryChainTransport implements SorobanTransport {
         matches: true,
       };
     }
+
+    if (spec.method === 'verify_entity') {
+      const entityId = hexOf(spec.args[0]);
+      const version = u32Of(spec.args[1]);
+      const metadataHash = hexOf(spec.args[2]);
+      const hashSchema = u32Of(spec.args[3]);
+      const head = this.entities.get(entityId);
+      if (!head || !head.active) return false;
+      if (version < 1 || version > head.latestVersion) return false;
+      const v = this.entityVersions.get(entityId)?.get(version);
+      if (!v) return false;
+      return v.metadataHash === metadataHash && v.hashSchema === hashSchema;
+    }
+
     if (spec.method === 'get_credential') {
       const record = this.credentials.get(key);
       if (!record) return null;
@@ -131,7 +147,43 @@ export class InMemoryChainTransport implements SorobanTransport {
         matches: true,
       };
     }
+
+    if (spec.method === 'verify_credential') {
+      const credentialId = hexOf(spec.args[0]);
+      const metadataHash = hexOf(spec.args[1]);
+      const hashSchema = u32Of(spec.args[2]);
+      const record = this.credentials.get(credentialId);
+      if (!record) return false;
+      return (
+        !record.revoked &&
+        record.metadataHash === metadataHash &&
+        record.hashSchema === hashSchema
+      );
+    }
+
     return null;
+  }
+
+  async enforcingSimulateAndAssemble(signedXdr: string): Promise<SimulationOutcome> {
+    // The in-memory transport does not model auth entry validation, but it
+    // validates the underlying spec. The returned XDR is the same fake envelope
+    // because tests using this transport do not run fee-payer signature logic.
+    const { spec, signature } = this.decodeEnvelope(signedXdr);
+    if (!signature) {
+      return {
+        needsRestore: false,
+        preparedXdr: '',
+        latestLedger: this.ledger,
+        contractError: 'UNAUTHORIZED',
+      };
+    }
+    const error = this.validate(spec);
+    return {
+      needsRestore: false,
+      preparedXdr: signedXdr,
+      latestLedger: this.ledger,
+      contractError: error,
+    };
   }
 
   async verifySignedMatches(unsignedXdr: string, signedXdr: string): Promise<boolean> {
@@ -194,15 +246,20 @@ export class InMemoryChainTransport implements SorobanTransport {
     switch (spec.method) {
       case 'register_entity': {
         const id = hexOf(spec.args[1]);
+        const metadataHash = hexOf(spec.args[2]);
+        const hashSchema = u32Of(spec.args[3]);
         if (!this.entities.has(id)) {
           this.entities.set(id, {
             entityId: id,
             latestVersion: 1,
             active: true,
-            metadataHash: hexOf(spec.args[2]),
-            hashSchema: u32Of(spec.args[3]),
+            metadataHash,
+            hashSchema,
             ledger: this.ledger,
           });
+          const versions = new Map<number, { metadataHash: string; hashSchema: number }>();
+          versions.set(1, { metadataHash, hashSchema });
+          this.entityVersions.set(id, versions);
         }
         return;
       }

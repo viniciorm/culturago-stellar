@@ -13,6 +13,8 @@ export interface CredentialRecord {
   subjectId: string;
   eventId: string;
   credentialType: CredentialTypeCode;
+  title: string;
+  description: string | null;
   metadataHash: string;
   hashSchema: number;
   status: CredentialStatus;
@@ -34,6 +36,8 @@ export interface IssueCredentialInput {
   subjectId: string;
   eventId: string;
   credentialType: string;
+  title: string;
+  description?: string | null;
   metadataHash: string;
   hashSchema: number;
   /** Server clock, injected. Never derived from the browser. */
@@ -54,6 +58,8 @@ function samePayload(a: CredentialRecord, input: IssueCredentialInput): boolean 
   return (
     a.credentialCode === input.credentialCode &&
     a.issuedBy === input.issuedBy &&
+    a.title === input.title &&
+    a.description === (input.description ?? null) &&
     a.metadataHash === input.metadataHash &&
     a.hashSchema === input.hashSchema
   );
@@ -99,6 +105,8 @@ export function buildCredential(
     subjectId: input.subjectId,
     eventId: input.eventId,
     credentialType: type,
+    title: input.title,
+    description: input.description ?? null,
     metadataHash: input.metadataHash,
     hashSchema: input.hashSchema,
     status: 'issued',

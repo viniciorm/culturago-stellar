@@ -35,7 +35,14 @@ export interface SimulationOutcome {
 
 export type TransactionStatusResult =
   | { status: 'SUCCESS'; ledger: number }
-  | { status: 'FAILED'; contractError: string | null }
+  | {
+      status: 'FAILED';
+      contractError: string | null;
+      /** Base64 diagnostic events from the failed transaction. */
+      diagnosticEventsXdr?: string[];
+      /** Base64 transaction result XDR. */
+      resultXdr?: string;
+    }
   | { status: 'NOT_FOUND' }
   | { status: 'PENDING' };
 
@@ -51,4 +58,9 @@ export interface SorobanTransport {
   /** True iff `signedXdr` is exactly the transaction encoded in
    *  `unsignedXdr` plus signatures — no swapped operations, memo or source. */
   verifySignedMatches(unsignedXdr: string, signedXdr: string): Promise<boolean>;
+  /** Re-simulate an already-signed transaction in enforcing mode so the RPC
+   *  runs the real authorization checks (e.g. smart-wallet __check_auth) and
+   *  returns a correct `SorobanTransactionData`. Returns the assembled,
+   *  fee-payer-unsigned XDR or a contract error. */
+  enforcingSimulateAndAssemble(signedXdr: string): Promise<SimulationOutcome>;
 }

@@ -25,6 +25,8 @@ interface CredentialRow {
   subject_entity_id: string;
   event_id: string;
   credential_type: number;
+  title: string;
+  description: string | null;
   metadata_hash: string;
   hash_schema: number;
   status: 'issued' | 'revoked';
@@ -45,6 +47,8 @@ function toCredentialRecord(row: CredentialRow): CredentialRecord {
     subjectId: row.subject_entity_id,
     eventId: row.event_id,
     credentialType: row.credential_type as CredentialRecord['credentialType'],
+    title: row.title,
+    description: row.description,
     metadataHash: row.metadata_hash,
     hashSchema: row.hash_schema,
     status: row.status,
@@ -274,12 +278,14 @@ export class PostgreSQLDatabaseGateway implements DatabaseGateway {
     await query(
       `INSERT INTO credentials (
          id, credential_code, issuer_entity_id, issued_by, subject_entity_id,
-         event_id, credential_type, metadata_hash, hash_schema, status,
+         event_id, credential_type, title, description, metadata_hash, hash_schema, status,
          issued_intent_at, issued_ledger, revoked_ledger, revoked_reason_hash,
          revoked_at, revoked_by
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
        ON CONFLICT (id) DO UPDATE SET
          status = EXCLUDED.status,
+         title = EXCLUDED.title,
+         description = EXCLUDED.description,
          issued_ledger = EXCLUDED.issued_ledger,
          revoked_ledger = EXCLUDED.revoked_ledger,
          revoked_reason_hash = EXCLUDED.revoked_reason_hash,
@@ -293,6 +299,8 @@ export class PostgreSQLDatabaseGateway implements DatabaseGateway {
         record.subjectId,
         record.eventId,
         record.credentialType,
+        record.title,
+        record.description,
         record.metadataHash,
         record.hashSchema,
         record.status,

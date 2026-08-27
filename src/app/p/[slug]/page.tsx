@@ -2,11 +2,10 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, User, ShieldCheck, Award, Link as LinkIcon, AlertCircle, Key } from 'lucide-react';
+import { ArrowLeft, Award, Key } from 'lucide-react';
 import { PublicLayout } from '../../../components/PublicLayout';
-import { db, Entity, Person, Credential, Relationship } from '../../../lib/db';
+import { db, Entity, Person, Credential } from '../../../lib/db';
 import { PassportCard } from '../../../components/PassportCard';
-import { CredentialCard } from '../../../components/CredentialCard';
 import { QRCodeBlock } from '../../../components/ui/QRCodeBlock';
 import { Button } from '../../../components/ui/Button';
 
@@ -161,7 +160,6 @@ export default function PersonPublicPassportPage() {
             ) : (
               <div className="space-y-4">
                 {credentials.map(c => {
-                  const issuer = db.getEntityById(c.issuer_entity_id);
                   // We'll render a smaller interactive preview that redirects to the validation page
                   return (
                     <div 

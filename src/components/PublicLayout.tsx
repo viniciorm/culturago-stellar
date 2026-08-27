@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { ShieldCheck, Award, LogIn } from 'lucide-react';
+import { ShieldCheck, LogIn } from 'lucide-react';
 
 interface PublicLayoutProps {
   children: React.ReactNode;

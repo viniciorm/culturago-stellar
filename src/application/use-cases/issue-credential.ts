@@ -22,6 +22,8 @@ export interface IssueCredentialCommand {
   eventId: string;
   credentialType: string;
   credentialCode: string;
+  title: string;
+  description?: string | null;
   metadataHash: string;
   hashSchema: number;
 }
@@ -57,6 +59,8 @@ export async function issueCredential(
     subjectId: command.subjectId,
     eventId: command.eventId,
     credentialType: command.credentialType,
+    title: command.title,
+    description: command.description,
     metadataHash: command.metadataHash,
     hashSchema: command.hashSchema,
     issuedIntentAt: deps.now(),

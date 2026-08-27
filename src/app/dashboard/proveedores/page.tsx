@@ -1,13 +1,14 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Plus, Truck, Search, Trash2, Edit2, Cpu, ExternalLink } from 'lucide-react';
-import { db, Entity, Provider } from '../../../lib/db';
+import { Plus, Truck, Search, Trash2, Edit2, ExternalLink } from 'lucide-react';
+import { Entity, Provider } from '../../../lib/db';
 import { Button } from '../../../components/ui/Button';
 import { Table } from '../../../components/ui/Table';
-import { StellarStatusBadge, StatusBadge } from '../../../components/ui/Badge';
+import { StellarStatusBadge } from '../../../components/ui/Badge';
 import { Dialog } from '../../../components/ui/Dialog';
 import { ProviderForm } from '../../../components/ProviderForm';
+import { listProviders, createProvider, updateProvider, deleteProvider } from './actions';
 
 export default function ProveedoresCRUDPage() {
   const [providers, setProviders] = useState<(Provider & { entity: Entity })[]>([]);
@@ -22,7 +23,7 @@ export default function ProveedoresCRUDPage() {
   const loadProviders = async () => {
     setLoading(true);
     try {
-      const data = await db.getProviders();
+      const data = await listProviders();
       setProviders(data);
     } catch (e) {
       console.error(e);
@@ -36,14 +37,14 @@ export default function ProveedoresCRUDPage() {
   }, []);
 
   const handleCreateSubmit = async (entityData: any, providerData: any) => {
-    await db.createProvider(entityData, providerData);
+    await createProvider(entityData, providerData);
     setIsAddOpen(false);
     loadProviders();
   };
 
   const handleEditSubmit = async (entityData: any, providerData: any) => {
     if (selectedEntity) {
-      await db.updateProvider(selectedEntity.id, entityData, providerData);
+      await updateProvider(selectedEntity.id, entityData, providerData);
       setSelectedEntity(null);
       setSelectedProvider(null);
       loadProviders();
@@ -52,7 +53,7 @@ export default function ProveedoresCRUDPage() {
 
   const handleDelete = async (id: string) => {
     if (confirm('¿Estás seguro de que deseas eliminar este registro? Se borrarán de forma definitiva todos sus vínculos y credenciales asociadas.')) {
-      await db.deleteEntity(id);
+      await deleteProvider(id);
       loadProviders();
     }
   };
@@ -121,7 +122,7 @@ export default function ProveedoresCRUDPage() {
               header: 'Proveedor',
               accessor: (row) => (
                 <div className="flex items-center gap-2 text-left">
-                  <div className="w-8 h-8 rounded-full bg-stone-100 flex items-center justify-center text-stone-400 flex-shrink-0">
+                  <div className="w-8 h-8 rounded-full bg-stone-100 flex items-center justify-center text-stone-400 shrink-0">
                     <Truck className="w-4 h-4" />
                   </div>
                   <div>

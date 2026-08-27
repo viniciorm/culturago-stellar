@@ -19,13 +19,14 @@ import {
   Globe
 } from 'lucide-react';
 import { mockDb } from '../lib/db';
-import { Button } from './ui/Button';
+import { ActorContext } from '../infrastructure/auth/actorContext';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
+  actor: ActorContext;
 }
 
-export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
+export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, actor }) => {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -35,8 +36,9 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
     setIsClient(true);
   }, []);
 
-  const handleLogout = () => {
-    router.push('/');
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    router.push('/login');
   };
 
   const handleResetMockDb = () => {
@@ -59,7 +61,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
   return (
     <div className="min-h-screen flex bg-stone-100 text-[#1C1A17]">
       {/* Sidebar for Desktop */}
-      <aside className="hidden lg:flex lg:flex-shrink-0 lg:w-64 lg:flex-col border-r border-stone-200 bg-[#FCFBF7]">
+      <aside className="hidden lg:flex lg:shrink-0 lg:w-64 lg:flex-col border-r border-stone-200 bg-[#FCFBF7]">
         <div className="flex items-center gap-3 px-6 h-16 border-b border-stone-200">
           <div className="w-8 h-8 rounded-lg bg-[#5C061E] flex items-center justify-center text-[#C5A880] font-bold">
             C
@@ -140,12 +142,17 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
               CulturaGO Admin
             </span>
           </div>
-          <button 
-            onClick={() => setMobileOpen(!mobileOpen)}
-            className="p-1.5 rounded-lg text-stone-500 hover:bg-stone-100"
-          >
-            {mobileOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-          </button>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-stone-500 hidden sm:inline" title={actor.accountId}>
+              {actor.role}
+            </span>
+            <button
+              onClick={() => setMobileOpen(!mobileOpen)}
+              className="p-1.5 rounded-lg text-stone-500 hover:bg-stone-100"
+            >
+              {mobileOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            </button>
+          </div>
         </header>
 
         {/* Mobile Nav Overlay */}

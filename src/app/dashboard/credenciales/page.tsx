@@ -1,8 +1,15 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Plus, Award, Search, Trash2, Cpu, ExternalLink } from 'lucide-react';
-import { db, Entity, PopulatedCredential } from '../../../lib/db';
+import { Plus, Award, Search, Cpu, ExternalLink } from 'lucide-react';
+import { Entity, PopulatedCredential } from '../../../lib/db';
+import {
+  listCredentials,
+  listEntities,
+  createCredential,
+  updateCredential,
+  prepareCredentialIssue,
+} from './actions';
 import { Button } from '../../../components/ui/Button';
 import { Table } from '../../../components/ui/Table';
 import { StatusBadge, StellarStatusBadge } from '../../../components/ui/Badge';
@@ -24,10 +31,8 @@ export default function CredencialesCRUDPage() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const credData = await db.getCredentials();
+      const [credData, entData] = await Promise.all([listCredentials(), listEntities()]);
       setCredentials(credData);
-
-      const entData = await db.getEntities();
       setEntities(entData);
     } catch (e) {
       console.error(e);
@@ -41,14 +46,14 @@ export default function CredencialesCRUDPage() {
   }, []);
 
   const handleCreateSubmit = async (credentialData: any) => {
-    await db.createCredential(credentialData);
+    await createCredential(credentialData);
     setIsAddOpen(false);
     loadData();
   };
 
   const handleRevoke = async (id: string) => {
     if (confirm('¿Estás seguro de que deseas revocar esta credencial? Esta acción quedará registrada en la red Stellar.')) {
-      await db.updateCredential(id, { status: 'revoked', revoked_at: new Date().toISOString() });
+      await updateCredential(id, { status: 'revoked', revoked_at: new Date().toISOString() });
       loadData();
     }
   };
@@ -104,7 +109,7 @@ export default function CredencialesCRUDPage() {
               header: 'Credencial / Acreditación',
               accessor: (row) => (
                 <div className="flex items-center gap-2 text-left">
-                  <div className="w-8 h-8 rounded-lg bg-stone-100 flex items-center justify-center text-stone-400 flex-shrink-0">
+                  <div className="w-8 h-8 rounded-lg bg-stone-100 flex items-center justify-center text-stone-400 shrink-0">
                     <Award className="w-4 h-4" />
                   </div>
                   <div>
@@ -162,6 +167,11 @@ export default function CredencialesCRUDPage() {
         <StellarStatusBlock
           credential={selectedCredential}
           onUpdate={() => {
+            loadData();
+          }}
+          onPrepare={async () => {
+            if (!selectedCredential) return;
+            await prepareCredentialIssue(selectedCredential.id);
             loadData();
           }}
         />

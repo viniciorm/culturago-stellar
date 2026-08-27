@@ -10,6 +10,9 @@ const acceptedWasmHashes = (process.env.NEXT_PUBLIC_SMART_WALLET_ACCEPTED_WASM_H
   .split(',')
   .filter((s) => s.length > 0);
 const rpId = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+const explorerTxBase = networkPassphrase.includes('Test')
+  ? 'https://stellar.expert/explorer/testnet/tx/'
+  : 'https://stellar.expert/explorer/public/tx/';
 
 function hex32(input: string): string {
   const hex = Array.from(input)
@@ -28,6 +31,7 @@ export default function SmartWalletPage() {
   const [organizerId, setOrganizerId] = useState('');
   const [eventId] = useState(hex32('evento-bailarina'));
   const [lastCredentialId, setLastCredentialId] = useState('');
+  const [lastTxHash, setLastTxHash] = useState('');
 
   const addLog = (message: string) => setLog((prev) => [...prev, message]);
 
@@ -97,6 +101,9 @@ export default function SmartWalletPage() {
       const submitData = await submitRes.json();
       if (!submitRes.ok) throw new Error(submitData.error ?? 'submit failed');
       addLog(`Confirmado: ${JSON.stringify(submitData.operation)}`);
+      if (submitData.operation?.txHash) {
+        setLastTxHash(submitData.operation.txHash);
+      }
       return submitData.operation;
     } catch (e) {
       addLog(`Error: ${e instanceof Error ? e.message : String(e)}`);
@@ -106,8 +113,36 @@ export default function SmartWalletPage() {
     }
   };
 
+  const grantRoles = async () => {
+    if (!contractId) {
+      addLog('Primero creá/conectá la wallet');
+      return;
+    }
+    setLoading(true);
+    try {
+      const id = organizerId || hex32('organizer-' + self.crypto.randomUUID().slice(0, 8));
+      setOrganizerId(id);
+      const res = await fetch('/api/testnet/grant-roles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          operator: contractId,
+          registrar: contractId,
+          issuerId: id,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'grant roles failed');
+      addLog(`Roles otorgados: ${data.txHashes.length} txs`);
+    } catch (e) {
+      addLog(`Error otorgando roles: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const registerOrganizer = async () => {
-    const id = hex32('organizer-' + self.crypto.randomUUID().slice(0, 8));
+    const id = organizerId || hex32('organizer-' + self.crypto.randomUUID().slice(0, 8));
     setOrganizerId(id);
     await sendCommand({
       kind: 'register_entity',
@@ -173,6 +208,7 @@ export default function SmartWalletPage() {
 
   const fullBailarinaFlow = async () => {
     try {
+      await grantRoles();
       const org = await registerOrganizer();
       const bail = await registerBailarina();
       await issueCredential(org, bail);
@@ -192,7 +228,8 @@ export default function SmartWalletPage() {
           <button onClick={connectWallet} disabled={loading} className="bg-green-600 text-white px-4 py-2 rounded ml-2">Conectar wallet</button>
         </div>
         <div>
-          <button onClick={registerBailarina} disabled={loading} className="bg-yellow-600 text-white px-4 py-2 rounded">Registrar bailarina</button>
+          <button onClick={grantRoles} disabled={loading} className="bg-pink-600 text-white px-4 py-2 rounded">Otorgar roles</button>
+          <button onClick={registerBailarina} disabled={loading} className="bg-yellow-600 text-white px-4 py-2 rounded ml-2">Registrar bailarina</button>
           <button onClick={registerOrganizer} disabled={loading} className="bg-orange-600 text-white px-4 py-2 rounded ml-2">Registrar organizador</button>
           <button onClick={() => issueCredential()} disabled={loading} className="bg-indigo-600 text-white px-4 py-2 rounded ml-2">Emitir credencial</button>
           <button onClick={revokeCredential} disabled={loading} className="bg-red-600 text-white px-4 py-2 rounded ml-2">Revocar credencial</button>
@@ -209,6 +246,19 @@ export default function SmartWalletPage() {
         <p><strong>Evento:</strong> {eventId}</p>
         <p><strong>Última credencial:</strong> {lastCredentialId || '-'}</p>
       </div>
+      {lastTxHash && (
+        <div className="text-sm text-gray-700 mb-4">
+          <span>Explorer: </span>
+          <a
+            href={`${explorerTxBase}${lastTxHash}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-600 underline"
+          >
+            Ver {lastTxHash.slice(0, 12)}... en Stellar Explorer
+          </a>
+        </div>
+      )}
       <div className="bg-black text-green-400 p-4 rounded text-sm font-mono h-64 overflow-auto">
         {log.map((line, i) => (
           <div key={i}>{line}</div>

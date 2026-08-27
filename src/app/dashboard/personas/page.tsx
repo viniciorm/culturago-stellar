@@ -1,13 +1,14 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Plus, User, Search, Trash2, Edit2, Cpu, ExternalLink } from 'lucide-react';
-import { db, Entity, Person } from '../../../lib/db';
+import { Plus, User, Search, Trash2, Edit2, ExternalLink } from 'lucide-react';
+import { Entity, Person } from '../../../lib/db';
 import { Button } from '../../../components/ui/Button';
 import { Table } from '../../../components/ui/Table';
-import { StellarStatusBadge, StatusBadge } from '../../../components/ui/Badge';
+import { StellarStatusBadge } from '../../../components/ui/Badge';
 import { Dialog } from '../../../components/ui/Dialog';
 import { PersonForm } from '../../../components/PersonForm';
+import { listPeople, createPerson, updatePerson, deletePerson } from './actions';
 
 export default function PersonasCRUDPage() {
   const [people, setPeople] = useState<(Person & { entity: Entity })[]>([]);
@@ -22,7 +23,7 @@ export default function PersonasCRUDPage() {
   const loadPeople = async () => {
     setLoading(true);
     try {
-      const data = await db.getPeople();
+      const data = await listPeople();
       setPeople(data);
     } catch (e) {
       console.error(e);
@@ -36,14 +37,14 @@ export default function PersonasCRUDPage() {
   }, []);
 
   const handleCreateSubmit = async (entityData: any, personData: any) => {
-    await db.createPerson(entityData, personData);
+    await createPerson(entityData, personData);
     setIsAddOpen(false);
     loadPeople();
   };
 
   const handleEditSubmit = async (entityData: any, personData: any) => {
     if (selectedEntity) {
-      await db.updatePerson(selectedEntity.id, entityData, personData);
+      await updatePerson(selectedEntity.id, entityData, personData);
       setSelectedEntity(null);
       setSelectedPerson(null);
       loadPeople();
@@ -52,7 +53,7 @@ export default function PersonasCRUDPage() {
 
   const handleDelete = async (id: string) => {
     if (confirm('¿Estás seguro de que deseas eliminar este registro? Se borrarán de forma definitiva todos sus vínculos y credenciales asociadas.')) {
-      await db.deleteEntity(id);
+      await deletePerson(id);
       loadPeople();
     }
   };
@@ -113,7 +114,7 @@ export default function PersonasCRUDPage() {
               header: 'Artista / Persona',
               accessor: (row) => (
                 <div className="flex items-center gap-2 text-left">
-                  <div className="w-8 h-8 rounded-full bg-stone-100 flex items-center justify-center text-stone-400 flex-shrink-0">
+                  <div className="w-8 h-8 rounded-full bg-stone-100 flex items-center justify-center text-stone-400 shrink-0">
                     <User className="w-4 h-4" />
                   </div>
                   <div>

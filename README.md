@@ -5,12 +5,12 @@ CulturaGO es una plataforma de pasaportes culturales digitales verificables para
 ---
 
 ## 🚀 Características del MVP
-1.  **Dashboard de Eventos:** Panel principal completo en `/dashboard/eventos/fdvc-2026` con 8 pestañas interactivas de administración (Resumen, Escuelas, Bailarinas, Profesoras, Proveedores, Credenciales, Pendientes, QR de Entrada).
-2.  **CRUDs de Entidades:** Interfaces para agregar, modificar y eliminar Artistas, Organizaciones y Proveedores Técnicos de manera ágil.
-3.  **Generación de Códigos QR Dinámicos:** Códigos QR interactivos autogenerados para pasaportes personales, perfiles de academias, de proveedores y credenciales individuales, enlazados a sus respectivas URLs públicas.
-4.  **Emisión de Credenciales Verificables:** Emisión de certificados oficiales firmados (como "Escuela Participante" o "Fotógrafo Oficial") con estados vigentes, pendientes o revocados.
-5.  **Motor de Base de Datos Dual:** Funciona localmente mediante un mock de almacenamiento local (`localStorage`) cargado con datos semilla iniciales, o conectado a **Supabase** en la nube si se proveen las llaves API correspondientes.
-6.  **Capa Mock de Stellar & Soroban:** Módulo de transacciones blockchain simuladas listo en `src/lib/stellar.ts`, ideal para que Danilo conecte contratos Rust reales y wallets passkeys.
+1.  **Dashboard de Eventos:** Panel principal en `/dashboard/eventos/fdvc-2026` con administración de participantes, organizaciones, proveedores, credenciales y verificación QR.
+2.  **CRUDs de Entidades:** Interfaces para agregar, modificar y eliminar Personas, Organizaciones y Proveedores.
+3.  **Generación de Códigos QR Dinámicos:** Códigos QR para pasaportes, perfiles y credenciales públicas.
+4.  **Emisión de Credenciales Verificables:** Certificados oficiales con estados vigentes, pendientes o revocados; anclaje opcional a Stellar/Soroban.
+5.  **Persistencia PostgreSQL:** Cuando se configura `DATABASE_URL`, el dashboard usa PostgreSQL vía `pg`. Sin `DATABASE_URL`, el cliente usa un mock en memoria (`localStorage`) solo para demostraciones locales.
+6.  **Integración Stellar/Soroban:** Preparación y firma de transacciones on-chain mediante `SorobanStellarGateway`, `OperationStore` y `SignerPort`; no es un módulo mock.
 
 ---
 
@@ -18,7 +18,9 @@ CulturaGO es una plataforma de pasaportes culturales digitales verificables para
 *   **Core:** [Next.js 16 (App Router)](https://nextjs.org/)
 *   **Lenguaje:** [TypeScript](https://www.typescriptlang.org/)
 *   **Estilos (CSS):** [Tailwind CSS v4](https://tailwindcss.com/)
-*   **Base de datos / Auth:** [Supabase Client](https://supabase.com/)
+*   **Base de datos / Auth:** [PostgreSQL](https://www.postgresql.org/) (`pg`) + migraciones SQL
+*   **Blockchain:** [Stellar Soroban](https://soroban.stellar.org/) (`@stellar/stellar-sdk`)
+*   **Passkeys:** [`@simplewebauthn/*`](https://simplewebauthn.dev/) y `passkey-kit`
 *   **Iconos:** [Lucide React](https://lucide.dev/)
 *   **Generador QR:** [QRCode (npm)](https://www.npmjs.com/package/qrcode)
 
@@ -26,54 +28,55 @@ CulturaGO es una plataforma de pasaportes culturales digitales verificables para
 
 ## 📂 Estructura del Proyecto
 
-*   `src/app/` - Rutas de Next.js (públicas y privadas).
-*   `src/components/` - Layouts globales (`PublicLayout`, `DashboardLayout`) y componentes interactivos (`PassportCard`, `CredentialCard`, `RelationshipManager`).
-*   `src/components/ui/` - Librería de componentes visuales adaptada (Button, Input, Select, Dialog, Tabs, Table, Badges).
-*   `src/lib/` - Lógica del sistema:
-    *   `db.ts` - Motor de datos dual (Supabase + LocalStorage Mock).
-    *   `stellar.ts` - Funciones mock preparadas para Danilo.
-    *   `hashes.ts` - Utilidad de generación de hashes SHA-256 determinísticos.
-*   `docs/` - Documentación técnica detallada:
-    *   `architecture.md` - Decisiones de diseño de software y base de datos.
-    *   `stellar-integration.md` - Especificación de contratos Rust y SDK de Stellar.
-    *   `supabase-schema.sql` - Script SQL con las tablas y datos semilla.
+*   `src/app/` - Rutas de Next.js (públicas y privadas) y Server Actions.
+*   `src/components/` - Layouts y componentes reutilizables.
+*   `src/components/ui/` - Librería de componentes visuales.
+*   `src/lib/` - Utilidades, modelos de dominio y helpers. **Nota:** `src/lib/db.ts` es un mock en memoria que se debe reemplazar por Server Actions reales antes de producción.
+*   `src/infrastructure/` - Adaptadores de PostgreSQL, Stellar, auth y operaciones.
+*   `src/ports/` - Contratos (interfaces) para database, dashboard, operation store, etc.
+*   `database/migrations/` - Migraciones SQL (`0001` a `0005`).
+*   `contracts/` - Contratos Rust para Soroban.
+*   `docs/` - Documentación técnica:
+    *   `HANDOFF.md` - Estado real y bloqueadores actuales (leer antes de deployar).
+    *   `architecture.md` - Decisiones de arquitectura (puede estar desactualizado).
+    *   `stellar-integration.md` - Especificación de contratos y SDK.
 
 ---
 
 ## 💻 Instalación y Desarrollo Local
 
-### 1. Clonar el repositorio e instalar dependencias
+Requisitos: **Node.js >=22**, **pnpm >=10**.
+
+### 1. Clonar e instalar
 ```bash
 git clone https://github.com/viniciorm/culturago-stellar.git
 cd culturago-stellar
-npm install
+pnpm install
 ```
 
-### 2. Ejecutar el servidor de desarrollo
+### 2. Variables de entorno
+Crear `.env.local` con al menos:
+```env
+DATABASE_URL=postgres://user:pass@host:5432/culturago
+NEXT_PUBLIC_CULTURAGO_ENV=testnet
+CULTURAGO_ENV=testnet
+NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE="Test SDF Network ; September 2015"
+NEXT_PUBLIC_SOROBAN_RPC_URL=https://soroban-testnet.stellar.org
+```
+
+### 3. Aplicar migraciones
 ```bash
-npm run dev
+pnpm migrate
 ```
-Abre [http://localhost:3000](http://localhost:3000) en el navegador.
 
-### 3. Acceso al Dashboard de Administrador
-1.  Haz clic en **Acceso Admin** en la esquina superior derecha o ve directamente a `/login`.
-2.  Ingresa las siguientes credenciales de desarrollo:
-    *   **Usuario:** `admin@culturago.cl`
-    *   **Contraseña:** `admin123`
+### 4. Ejecutar el servidor de desarrollo
+```bash
+pnpm dev
+```
+Abre [http://localhost:3000](http://localhost:3000).
 
----
-
-## ☁️ Conexión con Supabase en la Nube
-
-Para conectar la aplicación a un proyecto real de Supabase:
-1.  Crea un proyecto en Supabase.
-2.  Ve al SQL Editor en el panel de Supabase y ejecuta el script de migración ubicado en `docs/supabase-schema.sql`. Esto creará las tablas, los triggers de actualización y cargará los datos semilla iniciales.
-3.  Crea un archivo `.env.local` en la raíz de este proyecto con tus credenciales:
-    ```env
-    NEXT_PUBLIC_SUPABASE_URL=tu-url-de-supabase
-    NEXT_PUBLIC_SUPABASE_ANON_KEY=tu-anon-key-de-supabase
-    ```
-4.  Reinicia el servidor local. El motor detectará de forma automática las llaves y se conectará a la nube en lugar del Mock de almacenamiento local.
+### 5. Acceso al Dashboard
+Ve a `/login`. El sistema soporta autenticación real vía WebAuthn/Passkey + cuentas de `accounts`. No hay credenciales de demo hardcodeadas.
 
 ---
 

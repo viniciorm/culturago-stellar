@@ -14,6 +14,12 @@ export interface StoredOperation {
     /** Domain key used by readback: entityId for register, credentialId otherwise. */
     subjectKey: string;
     prepared: PreparedTransactionPayload | null;
+    /** Expected on-chain state for post-confirmation readback. */
+    expected?: {
+      metadataHash?: string;
+      hashSchema?: number;
+      revoked?: boolean;
+    };
   };
 }
 

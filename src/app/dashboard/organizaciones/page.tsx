@@ -1,13 +1,14 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Plus, Building2, Search, Trash2, Edit2, Cpu, ExternalLink } from 'lucide-react';
-import { db, Entity, Organization } from '../../../lib/db';
+import { Plus, Building2, Search, Trash2, Edit2, ExternalLink } from 'lucide-react';
+import { Entity, Organization } from '../../../lib/db';
 import { Button } from '../../../components/ui/Button';
 import { Table } from '../../../components/ui/Table';
-import { StellarStatusBadge, StatusBadge } from '../../../components/ui/Badge';
+import { StellarStatusBadge } from '../../../components/ui/Badge';
 import { Dialog } from '../../../components/ui/Dialog';
 import { OrganizationForm } from '../../../components/OrganizationForm';
+import { listOrganizations, createOrganization, updateOrganization, deleteOrganization } from './actions';
 
 export default function OrganizacionesCRUDPage() {
   const [orgs, setOrgs] = useState<(Organization & { entity: Entity })[]>([]);
@@ -22,7 +23,7 @@ export default function OrganizacionesCRUDPage() {
   const loadOrgs = async () => {
     setLoading(true);
     try {
-      const data = await db.getOrganizations();
+      const data = await listOrganizations();
       setOrgs(data);
     } catch (e) {
       console.error(e);
@@ -36,14 +37,14 @@ export default function OrganizacionesCRUDPage() {
   }, []);
 
   const handleCreateSubmit = async (entityData: any, orgData: any) => {
-    await db.createOrganization(entityData, orgData);
+    await createOrganization(entityData, orgData);
     setIsAddOpen(false);
     loadOrgs();
   };
 
   const handleEditSubmit = async (entityData: any, orgData: any) => {
     if (selectedEntity) {
-      await db.updateOrganization(selectedEntity.id, entityData, orgData);
+      await updateOrganization(selectedEntity.id, entityData, orgData);
       setSelectedEntity(null);
       setSelectedOrg(null);
       loadOrgs();
@@ -52,7 +53,7 @@ export default function OrganizacionesCRUDPage() {
 
   const handleDelete = async (id: string) => {
     if (confirm('¿Estás seguro de que deseas eliminar este registro? Se borrarán de forma definitiva todos sus vínculos y credenciales asociadas.')) {
-      await db.deleteEntity(id);
+      await deleteOrganization(id);
       loadOrgs();
     }
   };
@@ -114,7 +115,7 @@ export default function OrganizacionesCRUDPage() {
               header: 'Organización',
               accessor: (row) => (
                 <div className="flex items-center gap-2 text-left">
-                  <div className="w-8 h-8 rounded-full bg-stone-100 flex items-center justify-center text-stone-400 flex-shrink-0">
+                  <div className="w-8 h-8 rounded-full bg-stone-100 flex items-center justify-center text-stone-400 shrink-0">
                     <Building2 className="w-4 h-4" />
                   </div>
                   <div>

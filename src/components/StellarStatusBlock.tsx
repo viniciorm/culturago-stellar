@@ -1,45 +1,32 @@
 'use client';
 
 import React, { useState } from 'react';
-import { 
-  Database, 
-  Key, 
-  Cpu, 
-  Link as LinkIcon, 
-  CheckCircle, 
+import {
+  Cpu,
+  CheckCircle,
   AlertCircle,
   FileCode,
   Globe,
   Loader2
 } from 'lucide-react';
-import { 
-  Entity, 
-  Credential, 
-  db, 
-  StellarStatus, 
-  WalletStatus 
-} from '../lib/db';
-import { 
-  registerEntityOnChain, 
-  issueCredentialOnChain, 
-  createPasskeyWallet, 
-  linkWalletToEntity 
-} from '../lib/stellar';
-import { generateMetadataHash } from '../lib/hashes';
+import { Entity, Credential } from '../lib/db';
 import { Button } from './ui/Button';
 
 interface StellarStatusBlockProps {
   entity?: Entity | null;
   credential?: Credential | null;
-  onUpdate: () => void;
+  onUpdate?: () => void;
+  onPrepare?: () => Promise<void>;
 }
 
 export const StellarStatusBlock: React.FC<StellarStatusBlockProps> = ({
   entity,
   credential,
   onUpdate,
+  onPrepare,
 }) => {
-  const [loadingAction, setLoadingAction] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const target = entity || credential;
   if (!target) return null;
@@ -51,100 +38,24 @@ export const StellarStatusBlock: React.FC<StellarStatusBlockProps> = ({
   const metadataHash = target.metadata_hash;
   const stellarTx = target.stellar_tx;
 
-  // Handles chain registration simulation
-  const handleRegisterOnChain = async () => {
-    setLoadingAction('register');
-    try {
-      // 1. Generate Metadata Hash
-      const hashData = isEntity 
-        ? { id: entity.id, name: entity.display_name, type: entity.type, city: entity.city }
-        : { id: credential!.id, code: credential!.credential_code, title: credential!.title };
-      const computedHash = await generateMetadataHash(hashData);
-
-      // Save intermediate status to db
-      if (isEntity) {
-        await db.updateEntity(entity.id, { stellar_status: 'pending', metadata_hash: computedHash });
-      } else {
-        await db.updateCredential(credential!.id, { stellar_status: 'pending', metadata_hash: computedHash });
-      }
-      onUpdate();
-
-      // 2. Call Stellar Mock
-      const chainResult = isEntity
-        ? await registerEntityOnChain({ ...entity, metadata_hash: computedHash })
-        : await issueCredentialOnChain({ ...credential!, metadata_hash: computedHash });
-
-      // 3. Save final success status
-      if (isEntity) {
-        await db.updateEntity(entity.id, { 
-          stellar_status: chainResult.status === 'success' ? 'registered' : 'failed',
-          stellar_tx: chainResult.txHash
-        });
-      } else {
-        await db.updateCredential(credential!.id, { 
-          stellar_status: chainResult.status === 'success' ? 'registered' : 'failed',
-          stellar_tx: chainResult.txHash
-        });
-      }
-    } catch (e) {
-      console.error(e);
-      if (isEntity) {
-        await db.updateEntity(entity.id, { stellar_status: 'failed' });
-      } else {
-        await db.updateCredential(credential!.id, { stellar_status: 'failed' });
-      }
-    } finally {
-      setLoadingAction(null);
-      onUpdate();
-    }
+  const statusLabels: Record<string, string> = {
+    not_registered: 'No registrado',
+    pending: 'Pendiente de firma',
+    registered: 'Registrado',
+    failed: 'Fallido',
   };
 
-  // Handles passkey wallet creation simulation
-  const handleCreatePasskey = async () => {
-    if (!entity) return;
-    setLoadingAction('passkey');
+  const handlePrepare = async () => {
+    if (!onPrepare) return;
+    setLoading(true);
+    setError(null);
     try {
-      const walletResult = await createPasskeyWallet(entity.id);
-      await db.updateEntity(entity.id, {
-        wallet_address: walletResult.walletAddress,
-        wallet_status: 'reserved'
-      });
-      // Save in wallets table
-      await db.createOrUpdateWallet(entity.id, {
-        wallet_address: walletResult.walletAddress,
-        wallet_type: 'passkey',
-        wallet_status: 'reserved'
-      });
+      await onPrepare();
+      if (onUpdate) onUpdate();
     } catch (e) {
-      console.error(e);
+      setError(e instanceof Error ? e.message : 'Error al preparar la operación Stellar');
     } finally {
-      setLoadingAction(null);
-      onUpdate();
-    }
-  };
-
-  // Handles classic wallet linking simulation
-  const handleLinkClassicWallet = async () => {
-    if (!entity) return;
-    setLoadingAction('link');
-    try {
-      const mockClassicKey = 'G' + Math.random().toString(36).substring(2, 10).toUpperCase() + 'CLASSICKEY' + Date.now().toString().substring(8);
-      const linkResult = await linkWalletToEntity(entity.id, mockClassicKey);
-      await db.updateEntity(entity.id, {
-        wallet_address: linkResult.walletAddress,
-        wallet_status: 'claimed'
-      });
-      await db.createOrUpdateWallet(entity.id, {
-        wallet_address: linkResult.walletAddress,
-        wallet_type: 'stellar_classic',
-        wallet_status: 'claimed',
-        claimed_at: new Date().toISOString()
-      });
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoadingAction(null);
-      onUpdate();
+      setLoading(false);
     }
   };
 
@@ -166,21 +77,21 @@ export const StellarStatusBlock: React.FC<StellarStatusBlockProps> = ({
             {stellarStatus === 'registered' ? (
               <span className="inline-flex items-center text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded">
                 <CheckCircle className="w-3.5 h-3.5 mr-1" />
-                Registrado
+                {statusLabels.registered}
               </span>
             ) : stellarStatus === 'pending' ? (
               <span className="inline-flex items-center text-amber-700 font-semibold bg-amber-50 px-2 py-0.5 rounded">
                 <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
-                Procesando
+                {statusLabels.pending}
               </span>
             ) : stellarStatus === 'failed' ? (
               <span className="inline-flex items-center text-rose-700 font-semibold bg-rose-50 px-2 py-0.5 rounded">
                 <AlertCircle className="w-3.5 h-3.5 mr-1" />
-                Fallido
+                {statusLabels.failed}
               </span>
             ) : (
               <span className="text-stone-500 bg-stone-100 px-2 py-0.5 rounded font-medium">
-                No registrado
+                {statusLabels.not_registered}
               </span>
             )}
           </div>
@@ -195,7 +106,7 @@ export const StellarStatusBlock: React.FC<StellarStatusBlockProps> = ({
               {metadataHash}
             </div>
           ) : (
-            <span className="text-stone-400 italic">No generado (requiere registrar en Stellar)</span>
+            <span className="text-stone-400 italic">No generado</span>
           )}
         </div>
 
@@ -209,7 +120,7 @@ export const StellarStatusBlock: React.FC<StellarStatusBlockProps> = ({
                 href={`https://stellar.expert/explorer/testnet/tx/${stellarTx}`}
                 target="_blank"
                 rel="noreferrer"
-                className="text-[#5C061E] hover:underline flex items-center gap-0.5 flex-shrink-0"
+                className="text-[#5C061E] hover:underline flex items-center gap-0.5 shrink-0"
               >
                 <Globe className="w-3 h-3" />
                 Explorador
@@ -245,46 +156,30 @@ export const StellarStatusBlock: React.FC<StellarStatusBlockProps> = ({
           </>
         )}
 
-        {/* Actions Mocks */}
-        <div className="pt-3 flex flex-col gap-2">
-          {stellarStatus !== 'registered' && (
+        {/* Prepare on-chain action */}
+        {onPrepare && stellarStatus === 'not_registered' && (
+          <div className="pt-3">
             <Button
               variant="primary"
               size="sm"
               className="w-full text-xs font-semibold"
-              onClick={handleRegisterOnChain}
-              isLoading={loadingAction === 'register'}
+              onClick={handlePrepare}
+              isLoading={loading}
             >
               <Cpu className="w-3.5 h-3.5 mr-1" />
-              Anclar y Registrar en Stellar
+              Preparar operación Stellar
             </Button>
-          )}
+            <p className="text-[10px] text-stone-500 mt-1.5">
+              Crea una operación en estado <em>awaiting_signature</em>. Luego debe ser firmada por el operador.
+            </p>
+          </div>
+        )}
 
-          {isEntity && walletStatus === 'none' && (
-            <div className="grid grid-cols-2 gap-2 mt-1">
-              <Button
-                variant="secondary"
-                size="sm"
-                className="text-[10px] px-2"
-                onClick={handleCreatePasskey}
-                isLoading={loadingAction === 'passkey'}
-              >
-                <Key className="w-3 h-3 mr-1" />
-                Reservar Passkey
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                className="text-[10px] px-2"
-                onClick={handleLinkClassicWallet}
-                isLoading={loadingAction === 'link'}
-              >
-                <LinkIcon className="w-3 h-3 mr-1" />
-                Vincular Wallet
-              </Button>
-            </div>
-          )}
-        </div>
+        {error && (
+          <div className="p-2 bg-rose-50 text-rose-700 text-[10px] rounded border border-rose-200">
+            {error}
+          </div>
+        )}
       </div>
     </div>
   );

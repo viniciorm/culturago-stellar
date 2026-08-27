@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Truck, ShieldCheck, Award, MapPin, Globe, Mail, Phone, User } from 'lucide-react';
+import { ArrowLeft, Truck, Award, MapPin, Globe, Mail, Phone, User } from 'lucide-react';
 import { PublicLayout } from '../../../components/PublicLayout';
 import { db, Entity, Provider, Credential } from '../../../lib/db';
 import { QRCodeBlock } from '../../../components/ui/QRCodeBlock';

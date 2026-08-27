@@ -45,6 +45,7 @@
   },
   "notes": [
     "No secretos, seeds, claves privadas o passkeys en este manifiesto.",
-    "contractId y ledger se completan solo después del despliegue real aprobado en Testnet."
+    "contractId proviene del despliegue actual en testnet; ledger permanece null hasta que se confirme la secuencia de anclaje.",
+    "smartWallet.wasmHashAllowlist está vacío: solo se deben desplegar smart wallets cuyo WASM hash haya sido aprobado y agregado a esta lista."
   ]
 }

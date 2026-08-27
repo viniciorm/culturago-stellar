@@ -10,6 +10,8 @@ const cred = (overrides: Partial<CredentialRecord>): CredentialRecord => ({
   subjectId: 'dancer-1',
   eventId: 'fdvc-2026',
   credentialType: 1,
+  title: 'Bailarina Participante FDVC 2026',
+  description: 'Acreditación oficial de bailarina solista.',
   metadataHash: 'a'.repeat(64),
   hashSchema: 2,
   status: 'issued',

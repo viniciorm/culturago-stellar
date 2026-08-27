@@ -1,24 +1,17 @@
 'use client';
 
-import React, { useEffect, useState, useMemo } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import { useParams } from 'next/navigation';
 import { 
   Calendar, 
   MapPin, 
-  Building2, 
-  Users, 
-  UserCheck, 
-  Truck, 
   Award, 
-  QrCode, 
   Clock, 
   Plus, 
   Copy, 
   Check, 
-  Download, 
   ExternalLink,
   Cpu,
-  RefreshCw,
   Search
 } from 'lucide-react';
 import { 
@@ -44,12 +37,9 @@ import { OrganizationForm } from '../../../../components/OrganizationForm';
 import { ProviderForm } from '../../../../components/ProviderForm';
 import { CredentialForm } from '../../../../components/CredentialForm';
 import { StellarStatusBlock } from '../../../../components/StellarStatusBlock';
-import { generateMetadataHash } from '../../../../lib/hashes';
-import { registerEntityOnChain, issueCredentialOnChain } from '../../../../lib/stellar';
 
 export default function EventDashboardPage() {
   const params = useParams();
-  const router = useRouter();
   const eventId = params.eventId as string; // slug like 'fdvc-2026'
 
   const [event, setEvent] = useState<(Event & { entity: Entity }) | null>(null);
@@ -79,7 +69,7 @@ export default function EventDashboardPage() {
   const [isStellarModalOpen, setIsStellarModalOpen] = useState(false);
 
   // Sync DB loader
-  const loadDatabase = async () => {
+  const loadDatabase = useCallback(async () => {
     try {
       const ev = await db.getEventBySlug(eventId);
       if (!ev) {
@@ -117,13 +107,13 @@ export default function EventDashboardPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [eventId]);
 
   useEffect(() => {
     if (eventId) {
       loadDatabase();
     }
-  }, [eventId]);
+  }, [eventId, loadDatabase]);
 
   // Filtering datasets related to current event
   const currentEventRels = useMemo(() => {
@@ -268,45 +258,6 @@ export default function EventDashboardPage() {
     setIsStellarModalOpen(true);
   };
 
-  const handleBulkRegisterStellar = async () => {
-    if (confirm(`¿Deseas registrar en bloque las ${pendingRegistrations.length} acreditaciones pendientes en Stellar?`)) {
-      setIsLoading(true);
-      for (const item of pendingRegistrations) {
-        try {
-          const hashData = item.type === 'entity'
-            ? { 
-                id: (item.raw as Entity).id, 
-                name: (item.raw as Entity).display_name, 
-                type: (item.raw as Entity).type, 
-                city: (item.raw as Entity).city 
-              }
-            : { 
-                id: (item.raw as Credential).id, 
-                code: (item.raw as Credential).credential_code, 
-                title: (item.raw as Credential).title 
-              };
-          const computedHash = await generateMetadataHash(hashData);
-
-          if (item.type === 'entity') {
-            const rawEntity = item.raw as Entity;
-            await db.updateEntity(rawEntity.id, { stellar_status: 'pending', metadata_hash: computedHash });
-            const res = await registerEntityOnChain({ ...rawEntity, metadata_hash: computedHash });
-            await db.updateEntity(rawEntity.id, { stellar_status: 'registered', stellar_tx: res.txHash });
-          } else {
-            const rawCred = item.raw as Credential;
-            await db.updateCredential(rawCred.id, { stellar_status: 'pending', metadata_hash: computedHash });
-            const res = await issueCredentialOnChain({ ...rawCred, metadata_hash: computedHash });
-            await db.updateCredential(rawCred.id, { stellar_status: 'registered', stellar_tx: res.txHash });
-          }
-        } catch (e) {
-          console.error(e);
-        }
-      }
-      setIsLoading(false);
-      loadDatabase();
-    }
-  };
-
   const tabItems = [
     { id: 'summary', label: 'Resumen' },
     { id: 'schools', label: 'Escuelas', count: eventSchools.length },
@@ -430,11 +381,6 @@ export default function EventDashboardPage() {
             {activeTab === 'providers' && (
               <Button variant="secondary" size="sm" onClick={() => setIsAddProviderOpen(true)}>
                 <Plus className="w-3.5 h-3.5 mr-1" /> Crear Proveedor
-              </Button>
-            )}
-            {activeTab === 'pending' && pendingRegistrations.length > 0 && (
-              <Button variant="primary" size="sm" onClick={handleBulkRegisterStellar}>
-                <Cpu className="w-3.5 h-3.5 mr-1" /> Registrar todo en Stellar
               </Button>
             )}
           </div>
@@ -589,7 +535,7 @@ export default function EventDashboardPage() {
             },
             {
               header: 'Rol',
-              accessor: (row) => 'Bailarina',
+              accessor: () => 'Bailarina',
             },
             {
               header: 'Stellar Status',

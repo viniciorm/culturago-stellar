@@ -2,9 +2,9 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Calendar, MapPin, Building, ShieldCheck, Trophy, Truck, ArrowLeft, Globe, Users } from 'lucide-react';
+import { Calendar, MapPin, Trophy, Truck, ArrowLeft, ShieldCheck, Users } from 'lucide-react';
 import { PublicLayout } from '../../../components/PublicLayout';
-import { db, Event, Entity, Organization, Provider, Relationship } from '../../../lib/db';
+import { db, Event, Entity, Organization, Provider } from '../../../lib/db';
 import { Button } from '../../../components/ui/Button';
 import { EntityCard } from '../../../components/EntityCard';
 

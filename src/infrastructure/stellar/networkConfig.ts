@@ -1,4 +1,5 @@
 import 'server-only';
+import { Keypair } from '@stellar/stellar-sdk';
 import { domainError } from '../../domain/errors';
 import { getPublicConfig, CulturaGoEnvironment } from '../config/env';
 
@@ -45,14 +46,20 @@ export function getStellarNetworkConfig(): StellarNetworkConfig {
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
 
-  const feePayer =
-    process.env.STELLAR_FEEPAYER_ADDRESS ??
-    process.env.STELLAR_TESTNET_ADMIN_ADDRESS ??
-    null;
-  const feePayerSecret =
-    process.env.STELLAR_FEEPAYER_SECRET ??
-    process.env.STELLAR_TESTNET_DEPLOYER_SECRET ??
-    null;
+  const feePayer = process.env.STELLAR_FEEPAYER_ADDRESS?.trim() || null;
+  const feePayerSecret = process.env.STELLAR_FEEPAYER_SECRET?.trim() || null;
+
+  if (feePayer && feePayerSecret) {
+    const derived = Keypair.fromSecret(feePayerSecret).publicKey();
+    if (derived !== feePayer) {
+      throw domainError(
+        'INVALID_INPUT',
+        'STELLAR_FEEPAYER_SECRET does not match STELLAR_FEEPAYER_ADDRESS'
+      );
+    }
+  }
+
+  console.log('[networkConfig] feePayer present:', !!feePayer, 'feePayerSecret present:', !!feePayerSecret);
 
   return {
     environment: publicConfig.environment,

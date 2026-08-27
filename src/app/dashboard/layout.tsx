@@ -1,12 +1,21 @@
 import React from 'react';
+import { redirect } from 'next/navigation';
 import { DashboardLayout } from '../../components/DashboardLayout';
+import { getActorFromSession } from '../../infrastructure/auth/getActorFromSession';
 
-// Sin autenticación hasta Fase 8: el dashboard corre en modo demo local.
-// La autorización real se resolverá con ActorContext + sesiones passkey.
-export default function AdminDashboardLayout({
+export default async function AdminDashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return <DashboardLayout>{children}</DashboardLayout>;
+  const actor = await getActorFromSession();
+  if (!actor) {
+    redirect('/login');
+  }
+
+  return (
+    <DashboardLayout actor={actor}>
+      {children}
+    </DashboardLayout>
+  );
 }

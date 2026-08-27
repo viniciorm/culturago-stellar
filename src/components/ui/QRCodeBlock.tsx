@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
-import { QrCode, Download, ExternalLink, Copy, Check } from 'lucide-react';
+import { QrCode, Download, Copy, Check } from 'lucide-react';
 import { Button } from './Button';
 
 interface QRCodeBlockProps {

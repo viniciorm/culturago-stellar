@@ -29,7 +29,8 @@ function pendingOperation(
   store: OperationStore,
   kind: StoredOperation['intent']['kind'],
   subjectKey: string,
-  unsignedXdr: string
+  unsignedXdr: string,
+  expected?: StoredOperation['intent']['expected']
 ): Promise<StoredOperation> {
   const id = `op-${Math.random().toString(36).slice(2)}`;
   const record: StoredOperation = {
@@ -53,6 +54,7 @@ function pendingOperation(
         preparedAtLedger: 1000,
         intentFingerprint: hex(9),
       },
+      expected,
     },
   };
   return store.create(record).then(() => record);
@@ -89,7 +91,13 @@ describe('StellarWorker', () => {
     const bundle = createMockStellarGateway({ signer: null });
     const store = bundle.store;
     const gateway = bundle.gateway;
-    const op = await pendingOperation(store, 'register_entity', hex(1), validRegisterSpec(hex(1), hex(9), 1));
+    const op = await pendingOperation(
+      store,
+      'register_entity',
+      hex(1),
+      validRegisterSpec(hex(1), hex(9), 1),
+      { metadataHash: hex(9), hashSchema: 1 }
+    );
 
     const worker = new StellarWorker(store, gateway, new MockSigner(ACTOR), {
       batchSize: 10,

@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Search, Award, ShieldCheck, Calendar, ArrowRight, UserCheck, Sparkles } from 'lucide-react';
+import { Search, Award, ShieldCheck, ArrowRight, Sparkles } from 'lucide-react';
 import { PublicLayout } from '../components/PublicLayout';
 import { db, Entity } from '../lib/db';
 import { Button } from '../components/ui/Button';

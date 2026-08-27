@@ -2,9 +2,9 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Building2, ShieldCheck, Award, MapPin, Globe, Users } from 'lucide-react';
+import { ArrowLeft, Building2, Award, MapPin, Globe, Users } from 'lucide-react';
 import { PublicLayout } from '../../../components/PublicLayout';
-import { db, Entity, Organization, Credential, Relationship, Person } from '../../../lib/db';
+import { db, Entity, Organization, Credential, Person } from '../../../lib/db';
 import { QRCodeBlock } from '../../../components/ui/QRCodeBlock';
 import { StatusBadge, StellarStatusBadge } from '../../../components/ui/Badge';
 import { Button } from '../../../components/ui/Button';

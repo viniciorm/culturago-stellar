@@ -50,10 +50,9 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status }) => {
 // --- Stellar Blockchain Status Badge ---
 interface StellarStatusBadgeProps {
   status: StellarStatus;
-  type?: 'entity' | 'credential';
 }
 
-export const StellarStatusBadge: React.FC<StellarStatusBadgeProps> = ({ status, type = 'entity' }) => {
+export const StellarStatusBadge: React.FC<StellarStatusBadgeProps> = ({ status }) => {
   const styles = {
     not_registered: 'bg-stone-100 text-stone-600 border-stone-200',
     pending: 'bg-amber-50 text-amber-600 border-amber-200',

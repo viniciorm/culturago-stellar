@@ -1,6 +1,6 @@
 import 'server-only';
 import { createHash, randomUUID } from 'crypto';
-import { Keypair, Transaction, TransactionBuilder } from '@stellar/stellar-sdk';
+import { Address, Keypair, Transaction, TransactionBuilder, scValToNative, xdr } from '@stellar/stellar-sdk';
 import { domainError } from '../../domain/errors';
 import { assertTransition, mustNotResubmit } from '../../domain/operations/operationState';
 import { OperationStore, StoredOperation } from '../../ports/OperationStore';
@@ -77,6 +77,7 @@ export class SorobanStellarGateway implements StellarGateway {
 
   async getPreparedPayload(operationId: string) {
     const op = await this.requireOperation(operationId);
+    console.log('[SorobanStellarGateway.getPreparedPayload] opId:', operationId, 'phase:', op.state.phase, 'hasPrepared:', !!op.intent.prepared);
     if (op.state.phase !== 'awaiting_signature' || !op.intent.prepared) {
       throw domainError('INVALID_STATE_TRANSITION', `operation ${operationId} is not awaiting signature`);
     }
@@ -95,18 +96,55 @@ export class SorobanStellarGateway implements StellarGateway {
     if (signerAddress !== op.intent.actorAddress) {
       throw domainError('UNAUTHORIZED', 'signed payload does not match the intent actor');
     }
-    // The signed XDR must correspond byte-for-byte to the stored intent:
-    // same operations, memo and source; only signatures were added.
-    const matches = await this.transport.verifySignedMatches(
-      op.intent.prepared!.unsignedXdr,
-      signedXdr
-    );
-    if (!matches) {
-      throw domainError('UNAUTHORIZED', 'signed payload does not match the stored intent');
+
+    let finalXdr = signedXdr;
+
+    if (signerAddress.startsWith('C')) {
+      // Smart wallet: the passkey only signs the operation auth entries.
+      // Validate that the signed envelope matches the prepared intent before
+      // re-simulating in enforcing mode with the real signature.
+      if (!this.config.feePayerSecret) {
+        throw domainError('UNAUTHORIZED', 'fee payer is not configured for smart wallet submission');
+      }
+      this.assertSmartWalletSignedMatches(
+        op.intent.prepared!.unsignedXdr,
+        signedXdr,
+        signerAddress
+      );
+
+      const enforced = await this.transport.enforcingSimulateAndAssemble(signedXdr);
+      console.log('[submitSigned] enforcing result:', {
+        contractError: enforced.contractError,
+        needsRestore: enforced.needsRestore,
+        preparedXdrLength: enforced.preparedXdr.length,
+      });
+      if (enforced.contractError) {
+        throw domainError(
+          'UNAUTHORIZED',
+          `smart wallet enforcing simulation failed: ${enforced.contractError}`
+        );
+      }
+
+      const tx = TransactionBuilder.fromXDR(
+        enforced.preparedXdr,
+        this.config.networkPassphrase
+      ) as Transaction;
+      tx.sign(Keypair.fromSecret(this.config.feePayerSecret));
+      finalXdr = tx.toEnvelope().toXDR('base64');
+    } else {
+      // Classic account: the signer is the source, hash remains stable.
+      const matches = await this.transport.verifySignedMatches(
+        op.intent.prepared!.unsignedXdr,
+        signedXdr
+      );
+      if (!matches) {
+        throw domainError('UNAUTHORIZED', 'signed payload does not match the stored intent');
+      }
     }
 
     return this.transition(op, 'signed', async (next) => {
-      const { txHash } = await this.transport.submit(signedXdr);
+      const { txHash } = await this.transport.submit(finalXdr);
+      console.log('[submitSigned] opId:', next.state.operationId, 'txHash:', txHash);
       next.state.txHash = txHash;
       next.state.phase = 'submitted';
       await this.store.save(next);
@@ -208,6 +246,9 @@ export class SorobanStellarGateway implements StellarGateway {
     const operationId = this.newId();
     const fingerprint = this.fingerprintOfCommand(command, kind);
 
+    console.log('[SorobanStellarGateway.prepare] kind:', kind, 'opId:', operationId, 'needsRestore:', sim.needsRestore, 'contractError:', sim.contractError);
+    console.log('[SorobanStellarGateway.prepare] feePayerSecret present:', !!this.config.feePayerSecret);
+
     if (sim.contractError) {
       const state: OperationState = {
         operationId,
@@ -291,8 +332,10 @@ export class SorobanStellarGateway implements StellarGateway {
         fingerprint,
         subjectKey: this.subjectKeyFor(command, kind),
         prepared,
+        expected: this.expectedFor(command, kind),
       },
     });
+    console.log('[SorobanStellarGateway.prepare] created operation', operationId, 'phase:', phase, 'prepared null:', !prepared);
     return state;
   }
 
@@ -330,6 +373,7 @@ export class SorobanStellarGateway implements StellarGateway {
     await this.store.save(op);
 
     const result = await this.transport.pollTransaction(txHash);
+    console.log('[pollAndConfirm] opId:', op.state.operationId, 'txHash:', txHash, 'result:', result);
     switch (result.status) {
       case 'PENDING':
       case 'NOT_FOUND':
@@ -339,6 +383,15 @@ export class SorobanStellarGateway implements StellarGateway {
       case 'FAILED':
         op.state.phase = 'failed_terminal';
         op.state.errorCode = result.contractError ?? 'CONTRACT_FAILED';
+        if ('diagnosticEventsXdr' in result && result.diagnosticEventsXdr) {
+          console.log(
+            '[pollAndConfirm] diagnostics:',
+            result.diagnosticEventsXdr
+          );
+        }
+        if ('resultXdr' in result && result.resultXdr) {
+          console.log('[pollAndConfirm] resultXdr:', result.resultXdr);
+        }
         break;
       case 'SUCCESS': {
         // Ledger inclusion is not enough: readback before confirmed.
@@ -355,15 +408,21 @@ export class SorobanStellarGateway implements StellarGateway {
 
   private async readbackMatches(op: StoredOperation): Promise<boolean> {
     // Readback must verify the postcondition of each intent kind.
+    const raw = await this.transport.readback(this.readbackSpecFor(op));
+    if (raw === null) return false;
+
     switch (op.intent.kind) {
       case 'register_entity':
-      case 'issue_credential':
-      case 'revoke_credential':
-        // The fake/real transports expose intent-scoped readback; concrete
-        // verification data was bound at prepare time via fingerprint.
-        return this.transport
-          .readback(this.readbackSpecFor(op))
-          .then((raw) => raw !== null && (raw as { matches?: boolean }).matches !== false);
+      case 'issue_credential': {
+        // verify_entity / verify_credential return a bool.
+        return raw === true;
+      }
+      case 'revoke_credential': {
+        const record = raw as {
+          revoked?: boolean;
+        };
+        return record.revoked === true;
+      }
     }
   }
 
@@ -373,13 +432,63 @@ export class SorobanStellarGateway implements StellarGateway {
       op.intent.kind === 'register_entity'
         ? this.config.entityRegistryContractId
         : this.config.credentialRegistryContractId;
+
+    if (op.intent.kind === 'register_entity') {
+      const expected = op.intent.expected;
+      return {
+        contractId,
+        method: 'verify_entity',
+        args: [
+          bytes32(op.intent.subjectKey),
+          u32(1),
+          bytes32(expected?.metadataHash ?? '0'.repeat(64)),
+          u32(expected?.hashSchema ?? 0),
+        ],
+        actorAddress: op.intent.actorAddress,
+        feePayerAddress: this.config.feePayerAddress ?? undefined,
+      };
+    }
+
+    if (op.intent.kind === 'issue_credential') {
+      const expected = op.intent.expected;
+      return {
+        contractId,
+        method: 'verify_credential',
+        args: [
+          bytes32(op.intent.subjectKey),
+          bytes32(expected?.metadataHash ?? '0'.repeat(64)),
+          u32(expected?.hashSchema ?? 0),
+        ],
+        actorAddress: op.intent.actorAddress,
+        feePayerAddress: this.config.feePayerAddress ?? undefined,
+      };
+    }
+
     return {
       contractId,
-      method: op.intent.kind === 'register_entity' ? 'get_entity' : 'get_credential',
+      method: 'get_credential',
       args: [bytes32(op.intent.subjectKey)],
       actorAddress: op.intent.actorAddress,
       feePayerAddress: this.config.feePayerAddress ?? undefined,
     };
+  }
+
+  private expectedFor(
+    command: RegisterEntityCommand | IssueCredentialCommand | RevokeCredentialCommand,
+    kind: IntentKind
+  ): StoredOperation['intent']['expected'] {
+    switch (kind) {
+      case 'register_entity': {
+        const c = command as RegisterEntityCommand;
+        return { metadataHash: c.metadataHash, hashSchema: c.hashSchema };
+      }
+      case 'issue_credential': {
+        const c = command as IssueCredentialCommand;
+        return { metadataHash: c.metadataHash, hashSchema: c.hashSchema };
+      }
+      case 'revoke_credential':
+        return { revoked: true };
+    }
   }
 
   private specFor(
@@ -478,5 +587,132 @@ export class SorobanStellarGateway implements StellarGateway {
     const op = await this.store.get(operationId);
     if (!op) throw domainError('NOT_FOUND', `operation ${operationId} does not exist`);
     return op;
+  }
+
+  // ---------- XDR structural validation for smart wallets ----------
+
+  private getHostFunctionOp(tx: Transaction): {
+    innerTx: xdr.Transaction;
+    op: xdr.Operation;
+    hostFn: xdr.InvokeHostFunctionOp;
+  } {
+    const envelope = tx.toEnvelope();
+    const envelopeType = envelope.switch().name;
+    if (envelopeType !== 'envelopeTypeTx' && envelopeType !== 'envelopeTypeTxV0') {
+      throw domainError('INVALID_INPUT', 'Unsupported envelope type');
+    }
+    const innerTx = (envelope.value() as { tx(): xdr.Transaction }).tx();
+    const ops = innerTx.operations();
+    if (ops.length !== 1) {
+      throw domainError('INVALID_INPUT', 'Expected exactly one operation');
+    }
+    const op = ops[0] as xdr.Operation;
+    const body = op.body();
+    if (!/invoke.?host.?function/i.test(body.switch().name)) {
+      throw domainError('INVALID_INPUT', 'Prepared payload is not a contract invocation');
+    }
+    return { innerTx, op, hostFn: body.invokeHostFunctionOp() };
+  }
+
+  private authEntryAddress(entry: xdr.SorobanAuthorizationEntry): string {
+    const creds = entry.credentials();
+    const name = creds.switch().name.toLowerCase();
+    let scAddress: xdr.ScAddress;
+    switch (name) {
+      case 'sorobancredentialsaddress':
+        scAddress = (creds as unknown as { address(): { address(): xdr.ScAddress } }).address().address();
+        break;
+      case 'sorobancredentialsaddressv2':
+        scAddress = (creds as unknown as { addressV2(): { address(): xdr.ScAddress } }).addressV2().address();
+        break;
+      case 'sorobancredentialsaddresswithdelegates':
+        scAddress = (creds as unknown as { addressWithDelegates(): { addressCredentials(): { address(): xdr.ScAddress } } })
+          .addressWithDelegates()
+          .addressCredentials()
+          .address();
+        break;
+      default:
+        throw domainError('INVALID_INPUT', 'Unsupported auth credentials type');
+    }
+    return Address.fromScAddress(scAddress).toString();
+  }
+
+  private isAddressBound(entry: xdr.SorobanAuthorizationEntry): boolean {
+    const name = entry.credentials().switch().name.toLowerCase();
+    return name === 'sorobancredentialsaddressv2' || name === 'sorobancredentialsaddresswithdelegates';
+  }
+
+  private hasAuthSignature(entry: xdr.SorobanAuthorizationEntry): boolean {
+    const creds = entry.credentials();
+    const addressCreds = (() => {
+      switch (creds.switch().name.toLowerCase()) {
+        case 'sorobancredentialsaddress':
+          return (creds as unknown as { address(): { signature(): xdr.ScVal } }).address();
+        case 'sorobancredentialsaddressv2':
+          return (creds as unknown as { addressV2(): { signature(): xdr.ScVal } }).addressV2();
+        case 'sorobancredentialsaddresswithdelegates':
+          return (creds as unknown as { addressWithDelegates(): { addressCredentials(): { signature(): xdr.ScVal } } })
+            .addressWithDelegates()
+            .addressCredentials();
+        default:
+          return null;
+      }
+    })();
+    if (!addressCreds) return false;
+    const sigs = addressCreds.signature();
+    if (sigs.switch().name === 'scvVoid') return false;
+    try {
+      const native = scValToNative(sigs);
+      if (Array.isArray(native) && native.length > 0) return true;
+      if (native && typeof native === 'object' && Object.keys(native).length > 0) return true;
+    } catch {
+      // ignore
+    }
+    return false;
+  }
+
+  private assertSmartWalletSignedMatches(
+    unsignedXdr: string,
+    signedXdr: string,
+    actorAddress: string
+  ): void {
+    const unsignedTx = TransactionBuilder.fromXDR(unsignedXdr, this.config.networkPassphrase) as Transaction;
+    const signedTx = TransactionBuilder.fromXDR(signedXdr, this.config.networkPassphrase) as Transaction;
+
+    const unsigned = this.getHostFunctionOp(unsignedTx);
+    const signed = this.getHostFunctionOp(signedTx);
+
+    // Compare the transaction body without auth entries: source, sequence,
+    // memo, preconditions, host function, and Soroban data must be identical.
+    const unsignedAuth = unsigned.hostFn.auth();
+    const signedAuth = signed.hostFn.auth();
+    unsigned.hostFn.auth([]);
+    signed.hostFn.auth([]);
+    if (unsigned.innerTx.toXDR('base64') !== signed.innerTx.toXDR('base64')) {
+      throw domainError('UNAUTHORIZED', 'Signed transaction body differs from prepared intent');
+    }
+    if (unsignedAuth.length !== signedAuth.length) {
+      throw domainError('UNAUTHORIZED', 'Auth entry count changed');
+    }
+
+    for (let i = 0; i < unsignedAuth.length; i++) {
+      const u = unsignedAuth[i];
+      const s = signedAuth[i];
+      const uAddr = this.authEntryAddress(u);
+      const sAddr = this.authEntryAddress(s);
+      if (uAddr !== sAddr) {
+        throw domainError('UNAUTHORIZED', `Auth entry ${i} address changed`);
+      }
+      if (sAddr === actorAddress) {
+        if (!this.isAddressBound(s)) {
+          throw domainError('UNAUTHORIZED', `Actor auth entry ${i} is not address-bound`);
+        }
+        if (!this.hasAuthSignature(s)) {
+          throw domainError('UNAUTHORIZED', `Actor auth entry ${i} is not signed`);
+        }
+      } else if (u.toXDR('base64') !== s.toXDR('base64')) {
+        throw domainError('UNAUTHORIZED', `Non-actor auth entry ${i} was modified`);
+      }
+    }
   }
 }
