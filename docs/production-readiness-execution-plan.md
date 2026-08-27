@@ -18,26 +18,63 @@ La integración Testnet puede entregarse antes que la infraestructura definitiva
 5. Detenerse ante cualquiera de los puntos `STOP` y pedir una decisión concreta.
 6. No desplegar ni invocar Mainnet durante este plan.
 
-## Estado inicial verificado
+## Estado auditado actual — 27 de agosto de 2026
 
-Este baseline corresponde al working tree analizado el 26 de agosto de 2026. Debe volver a medirse al comenzar la ejecución.
+Este estado fue contrastado con el código y con gates locales ejecutados nuevamente. La leyenda usada en todo el plan es:
 
-| Área | Estado verificado | Interpretación |
+- **COMPLETO:** implementación y evidencia exigida por la unidad disponibles.
+- **PARCIAL:** existe implementación útil, pero falta parte del criterio de aceptación o evidencia runtime.
+- **PENDIENTE:** el comportamiento principal todavía no existe o no fue ejecutado.
+- **NO VERIFICADO:** puede existir, pero no hay evidencia reproducible suficiente para marcarlo.
+
+### Resumen por fase
+
+| Fase / unidad | Estado actual | Evidencia y brecha principal |
 |---|---|---|
-| Contratos Testnet | Los dos IDs del manifiesto responden por Stellar RPC | Los contratos están desplegados y accesibles |
-| Contratos Rust | 51/51 tests, `fmt` y `clippy` pasan | La base contractual está sana |
-| TypeScript | `pnpm typecheck` pasa | El working tree tipa correctamente fuera de Docker |
-| Build | `pnpm build` pasa | El build local funciona, con advertencia por `middleware` deprecado |
-| Tests web | 79/85 pasan; 6 fallan | Existe una regresión bloqueante de readback |
-| Lint | 0 errores y 56 warnings | No bloquea actualmente, pero no es un gate limpio |
-| Dependencias | 15 vulnerabilidades: 8 altas y 7 moderadas | Bloquea un release público |
-| Git | `main` está un commit detrás de `origin/main` | No integrar cambios remotos sin preservar el working tree |
-| Working tree | 11 archivos modificados, aproximadamente 627 adiciones y archivos no rastreados | Debe preservarse y clasificarse antes de continuar |
-| Dashboard | Usa `src/lib/stellar.ts` mock | La interfaz principal no invoca contratos reales |
-| Autenticación UI | `/login` continúa en modo demo y el layout del dashboard no valida sesión | Las APIs de identidad existentes todavía no protegen la experiencia administrativa |
-| Gateway real | Conectado a `/api/sign/*` y al harness `/smart-wallet` | Existe integración parcial, no productiva |
-| Smart wallet | `PasskeyKitSigner` conserva metadata de conexión en memoria | Crear/conectar puede probarse en el harness, pero no sobrevive de forma confiable a recargas o reinicios |
-| Persistencia | Diferida a Marcos Vini | Sigue siendo requisito de producción completa |
+| F0 — Baseline | COMPLETO | Working tree limpio, `main` ahead 6, herramientas inventariadas y gates locales verdes. |
+| F1 — Readback | PARCIAL | Ledger `SUCCESS` no confirma sin readback y las suites pasan, pero emisión sólo compara ID/hash/schema/no-revocada, no todos los campos institucionales exigidos por el plan. |
+| F2.1 — Perímetro HTTP | PARCIAL | Submit, deploy y provisioning autentican actor; `/api/sign/prepare` sigue dependiendo de un token opcional y faltan Origin/CSRF, rate/body limits y schemas estrictos. |
+| F2.2 — Separación de claves | PARCIAL | Admin Testnet, fee payer, deployer y signer de usuario están separados; faltan presupuesto/límites de fee y pruebas negativas completas de configuración. |
+| F2.3 — Identidad UI | PARCIAL | Sesiones, roles, issuer scope y vínculo cuenta-wallet existen server-side; `/login` continúa en modo demo y no ejecuta WebAuthn real. |
+| F3.1 — XDR/passkey | PARCIAL | La comparación estructural y el round trip están implementados; falta demostrar la matriz adversarial con fixtures XDR reales. |
+| F3.2 — Allowlist wallet | PARCIAL | La validación falla cerrada, pero el manifiesto mantiene la allowlist vacía y falta procedencia on-chain/riesgo aprobado. |
+| F4.1 — IDs/hash canónico | PARCIAL | Derivación, golden vectors y función SQL corregida existen; faltan paridad ejecutada contra PostgreSQL real y evidencia TS/Rust. |
+| F4.2 — Gateway en UI | PARCIAL | Emisión/revocación preparan operaciones reales, pero los formularios rechazan explícitamente la firma fuera de `demo`; registro de entidad tampoco completa el flujo productivo. |
+| F5.1 — Estado/polling | PENDIENTE | No existe consulta HTTP scoped por operation ID ni polling acotado en UI. |
+| F5.2 — Worker runtime | PARCIAL | Recovery `signed`, lease y reconciliación están implementados y probados; no existe proceso runtime, heartbeat ni shutdown supervisado. |
+| F5-f — Provisioning admin Testnet | CERRADO para alcance funcional Testnet | Signer, servicio, endpoint, stores y migración existen. Grant/revoke dependen de ledger success; link/unlink sí tienen readback. Falta E2E en F6 y el pipeline admin conserva un crash window, por lo que no se considera durable para producción. |
+| F6 — E2E Testnet/cleanup | PENDIENTE | No existe evidencia del flujo completo desde frontend ni del cleanup on-chain. |
+| F7 — Retiro de temporales | PARCIAL | `src/lib/stellar.ts`, `src/lib/hashes.ts` y `grant-roles` fueron retirados; `/smart-wallet` y los consumidores de `src/lib/db.ts` permanecen. |
+| F8.1 — Dependencias | PARCIAL | `pnpm audit --prod` está limpio y los gates pasan, pero los overrides `>=...` siguen siendo rangos abiertos y falta evidencia de antigüedad/revisión por advisory. |
+| F8.2 — Build/Next/Docker | PARCIAL | `proxy.ts`, typecheck y runner no-root están; faltan arranque/health Docker actual, TLS público, error boundaries y evidencia del bundle. |
+| F8.3 — CI | PARCIAL | El workflow ejecuta el gate completo sin mutaciones de red; falta verificar branch protection para demostrar que cada PR no puede integrarse con fallos. |
+| F9 — Documentación/manifiesto | PARCIAL | Fuentes históricas siguen contradictorias; ledgers son `null` y la allowlist del manifiesto está vacía. |
+| F10 — Producción operativa | PARCIAL | Identidad PostgreSQL y recovery firmado avanzaron; faltan validación real de migraciones/PG, procesos, HTTPS final, secrets operativos, restore ensayado, observabilidad externa y aprobación. |
+
+### Baseline local reejecutado
+
+| Gate | Resultado |
+|---|---|
+| `pnpm lint --max-warnings=0` | COMPLETO Pasa, cero warnings |
+| `pnpm typecheck` | COMPLETO Pasa |
+| `pnpm test` | COMPLETO 108 pasan; 2 PostgreSQL skipped por falta de `DATABASE_URL` |
+| `pnpm build` | COMPLETO Pasa con Next.js 16.2.11 |
+| `pnpm audit --prod` | COMPLETO Sin vulnerabilidades conocidas |
+| `pnpm contracts:lint` | COMPLETO `fmt` y `clippy` pasan |
+| `pnpm contracts:test` | COMPLETO 51/51 pasan |
+| `pnpm contracts:build` | COMPLETO Pasa; hashes WASM coinciden con el manifiesto |
+| Git | COMPLETO Working tree limpio; `main` está 6 commits ahead de `origin/main` |
+
+### Pendientes prioritarios
+
+1. Completar el readback exacto de emisión/revocación para todos los campos exigidos por F1.
+2. Conectar `PasskeyKitSigner` a organizer/dashboard; hoy esos formularios sólo simulan firma en `demo`.
+3. Completar allowlist WASM y verificar procedencia/código on-chain.
+4. Crear consulta scoped de operación, polling UI y un proceso runtime observable para `StellarWorker`.
+5. Ejecutar provisioning F5-f, E2E frontend y cleanup real en Testnet; luego cerrar el crash window de `admin_provision` para producción.
+6. Retirar `/smart-wallet` y los consumidores productivos de `src/lib/db.ts` después del E2E.
+7. Ejecutar migraciones y tests contra PostgreSQL real; resolver el upgrade desde esquemas previos donde `0007` llega después del índice de `0003`.
+8. Cerrar TLS/dominio WebAuthn, límites del relayer, backup/restore, observabilidad externa, runbooks y aprobación de producción.
 
 ### Contratos Testnet observados
 
@@ -134,6 +171,8 @@ No ejecutar una fase si la anterior conserva un bloqueador crítico.
 
 # Fase 0 — Baseline reproducible y protección del working tree
 
+**Estado auditado: COMPLETO.** Baseline y gates reejecutados el 27 de agosto de 2026.
+
 ## Objetivo
 
 Comenzar desde un estado conocido sin perder los cambios locales ni mezclar accidentalmente el commit remoto pendiente.
@@ -144,13 +183,13 @@ Comenzar desde un estado conocido sin perder los cambios locales ni mezclar acci
 
 ### Pasos
 
-- [ ] Leer `AGENTS.md`, `CLAUDE.md` y las fuentes de verdad.
-- [ ] Registrar `git status --short --branch`, `git diff --stat`, `git diff --check` y `git log -5 --oneline`.
-- [ ] Clasificar archivos modificados y no rastreados como: integración vigente, diagnóstico temporal, evidencia o residuo eliminable.
-- [ ] Comprobar que ningún archivo no rastreado contiene secretos antes de abrirlo o versionarlo.
-- [ ] Inspeccionar el commit de `origin/main` pendiente sin hacer merge, rebase ni checkout.
-- [ ] Comparar las versiones de Node, pnpm, Rust, Cargo, Stellar CLI y Docker con las documentadas.
-- [ ] Ejecutar el baseline completo sin mutaciones de red.
+- [x] Leer `AGENTS.md`, `CLAUDE.md` y las fuentes de verdad.
+- [x] Registrar `git status --short --branch`, `git diff --stat`, `git diff --check` y `git log -5 --oneline`.
+- [x] Clasificar archivos modificados y no rastreados como: integración vigente, diagnóstico temporal, evidencia o residuo eliminable. El working tree estaba limpio al medir el baseline.
+- [x] Comprobar que ningún archivo no rastreado contiene secretos antes de abrirlo o versionarlo. No había archivos no rastreados.
+- [x] Inspeccionar la relación con `origin/main` sin hacer merge, rebase ni checkout. No hay commit remoto pendiente; `main` está ahead 6.
+- [x] Comparar las versiones de Node, pnpm, Rust, Cargo, Stellar CLI y Docker con las documentadas.
+- [x] Ejecutar el baseline completo sin mutaciones de red.
 
 ### Verificación
 
@@ -189,6 +228,8 @@ N/A. No crear commit por inventario.
 
 # Fase 1 — Reparar la regresión de readback
 
+**Estado auditado: PARCIAL.** La regresión original está corregida y `confirmed` exige ledger más readback, pero el readback de emisión no demuestra todos los campos exigidos por esta unidad.
+
 ## Objetivo
 
 Restaurar el contrato común entre el transporte en memoria y el transporte Soroban real, de modo que una operación solo llegue a `confirmed` si la postcondición exacta se cumple.
@@ -205,14 +246,14 @@ Restaurar el contrato común entre el transporte en memoria y el transporte Soro
 
 ### Pasos
 
-- [ ] Mantener una prueba fallida que reproduzca `SUCCESS` seguido de `READBACK_MISMATCH` incorrecto.
-- [ ] Alinear el transporte en memoria con los métodos reales `verify_entity`, `verify_credential` y `get_credential`, o establecer una representación común explícita.
-- [ ] Verificar postcondiciones, no solo existencia:
-  - entidad: ID, versión, metadata hash, schema y estado esperado;
-  - emisión: credential ID, emisor, sujeto, evento, tipo, metadata hash, schema y no revocada;
-  - revocación: registro existente, revocado y razón cuando corresponda.
-- [ ] Conservar casos negativos donde el ledger confirma pero el readback no coincide.
-- [ ] Evitar adaptaciones especiales que hagan al mock más permisivo que la red real.
+- [x] Mantener una prueba de regresión para `SUCCESS` seguido de readback incorrecto.
+- [x] Alinear el transporte en memoria con los métodos reales `verify_entity`, `verify_credential` y `get_credential`.
+- [ ] Verificar todas las postcondiciones, no sólo existencia. Actualmente:
+  - entidad: verifica ID, versión, metadata hash y schema;
+  - emisión: verifica credential ID, metadata hash, schema y no revocada, pero no compara emisor, sujeto, evento ni tipo;
+  - revocación: verifica registro existente y revocado, sin readback explícito de la razón.
+- [x] Conservar casos negativos donde el ledger confirma pero el readback no coincide.
+- [x] Evitar adaptaciones especiales que hagan al mock más permisivo que la red real.
 
 ### Pruebas positivas
 
@@ -259,11 +300,15 @@ Revertir únicamente la semántica de readback y sus pruebas. No tocar contratos
 
 # Fase 2 — Contener el harness y cerrar el perímetro
 
+**Estado auditado: PARCIAL.** La autenticación server-side y separación de claves avanzaron, pero el perímetro HTTP y la UI WebAuthn no cumplen toda la fase.
+
 ## Objetivo
 
 Impedir que endpoints de firma, deploy o administración Testnet puedan ser usados por un tercero y eliminar cualquier ruta de secreto hacia el navegador.
 
 ## Unidad 2.1 — Frontera E2E server-only
+
+**Estado: PARCIAL.** Existen guardas de Testnet y autenticación en submit/deploy/provisioning; `/api/sign/prepare` no exige sesión ni token obligatorio y faltan controles HTTP adversariales.
 
 **Archivos probables:**
 
@@ -277,15 +322,15 @@ Impedir que endpoints de firma, deploy o administración Testnet puedan ser usad
 
 ### Pasos
 
-- [ ] Añadir un kill switch server-only para el harness E2E.
-- [ ] Exigir simultáneamente entorno Testnet, passphrase exacta, IDs del manifiesto, flag y sesión/token interno autorizado.
-- [ ] Validar sesión y permiso dentro de cada Route Handler; no confiar solo en layout, proxy o visibilidad de página.
+- [x] Añadir un kill switch server-only para el harness E2E.
+- [ ] Exigir simultáneamente entorno Testnet, passphrase exacta, IDs del manifiesto, flag y sesión/token interno autorizado. La ruta `prepare` usa un token opcional.
+- [ ] Validar sesión y permiso dentro de cada Route Handler; no confiar solo en layout, proxy o visibilidad de página. `submit`, deploy y provisioning lo hacen; `prepare` no.
 - [ ] Validar `Origin` y aplicar protección CSRF a mutaciones.
 - [ ] Limitar tamaño de body, frecuencia por sesión/IP/wallet y presupuesto de relayer.
 - [ ] Usar schemas estrictos para comandos; rechazar campos desconocidos y tipos implícitos.
-- [ ] Derivar server-side el actor autorizado y vincularlo a la sesión; no confiar en `actorAddress`, `operator` o `registrar` enviados sin prueba de control.
-- [ ] Construir métodos administrativos desde una allowlist interna; nunca aceptar método, contract ID o XDR administrativo arbitrario.
-- [ ] Mantener respuestas sin secretos, cookies, XDR administrativos ni trazas internas.
+- [x] Derivar server-side el actor autorizado y vincularlo a la sesión en submit, deploy y provisioning.
+- [x] Construir métodos administrativos desde una allowlist interna; nunca aceptar método, contract ID o XDR administrativo arbitrario.
+- [x] Mantener respuestas sin secretos, cookies ni XDR administrativos.
 
 ### Pruebas positivas
 
@@ -333,6 +378,8 @@ Revertir Route Handlers, servicio E2E, configuración y pruebas de esta unidad. 
 
 ## Unidad 2.2 — Separación de claves y patrocinio
 
+**Estado: PARCIAL.** Las responsabilidades y variables están separadas; faltan límites operativos del fee payer/relayer y pruebas negativas completas.
+
 **Archivos probables:**
 
 - `src/lib/smartWallet/PasskeyKitSigner.ts`
@@ -343,14 +390,14 @@ Revertir Route Handlers, servicio E2E, configuración y pruebas de esta unidad. 
 
 ### Pasos
 
-- [ ] Eliminar todo uso de `NEXT_PUBLIC_STELLAR_TESTNET_DEPLOYER_SECRET`.
-- [ ] Fallar el build o la validación si existe cualquier variable `NEXT_PUBLIC_*SECRET`.
-- [ ] Separar admin, deployer y fee payer en configuración y responsabilidad.
-- [ ] Impedir fallbacks silenciosos entre admin, deployer y fee payer.
-- [ ] Validar que la public key derivada de cada secret coincide con su address configurada.
-- [ ] Limitar el fee payer a envelopes previamente preparados y verificados.
+- [x] Eliminar todo uso de `NEXT_PUBLIC_STELLAR_TESTNET_DEPLOYER_SECRET`.
+- [ ] Fallar el build o la validación si existe cualquier variable `NEXT_PUBLIC_*SECRET`. No hay usos actuales, pero falta el gate preventivo.
+- [x] Separar admin, deployer y fee payer en configuración y responsabilidad.
+- [x] Impedir fallbacks silenciosos entre admin, deployer y fee payer.
+- [x] Validar que la public key derivada de cada secret coincide con su address configurada para admin Testnet y fee payer cuando ambos valores están presentes.
+- [x] Limitar el fee payer a envelopes preparados y validados por el gateway.
 - [ ] Definir límites de fee, operaciones admitidas y presupuesto por sesión.
-- [ ] Usar el relayer server-only para deploy/patrocinio cuando esté aprobado.
+- [x] Usar el relayer server-only para deploy/patrocinio de smart wallet.
 
 ### Pruebas negativas
 
@@ -394,6 +441,8 @@ Revertir configuración, wiring del relayer y pruebas de separación. No reintro
 
 ## Unidad 2.3 — Activar identidad y autorización del dashboard
 
+**Estado: PARCIAL.** El backend de identidad y los guards server-side existen; falta conectar `/login` con WebAuthn y probar el recorrido real.
+
 **Archivos probables:**
 
 - `src/app/login/page.tsx`
@@ -406,16 +455,16 @@ Revertir configuración, wiring del relayer y pruebas de separación. No reintro
 
 ### Pasos
 
-- [ ] Conectar la UI de `/login` con los endpoints WebAuthn de registro y autenticación ya existentes.
-- [ ] Mantener el acceso directo sin sesión únicamente en entorno `demo`, con identificación visual inequívoca.
-- [ ] Exigir sesión válida server-side para dashboard, organizer y mutaciones Testnet.
-- [ ] Resolver roles y `issuer_id` server-side mediante `ActorContext`; no aceptar scopes aportados por React.
-- [ ] Redirigir o rechazar acceso cuando la sesión expire, sea revocada o no tenga el rol requerido.
-- [ ] Vincular la sesión con la wallet autorizada antes de aceptar `actorAddress`.
-- [ ] Conservar challenges de un uso, expiración, anti-replay, origin y RP ID exactos.
-- [ ] Evitar enumeración de cuentas y credenciales WebAuthn en respuestas de error.
-- [ ] Documentar que el store en memoria permite pruebas controladas de Testnet, pero no constituye persistencia productiva.
-- [ ] No inventar el modelo durable cuenta-wallet: dejar su decisión y almacenamiento definitivo en el handoff de Marcos.
+- [ ] Conectar la UI de `/login` con los endpoints WebAuthn de registro y autenticación ya existentes. La página continúa en modo demo.
+- [x] Mantener el acceso directo sin sesión únicamente en entorno `demo`, con identificación visual inequívoca.
+- [x] Exigir sesión válida server-side para dashboard, organizer y mutaciones productivas implementadas.
+- [x] Resolver roles y `issuer_id` server-side mediante `ActorContext`; no aceptar scopes aportados por React.
+- [x] Redirigir o rechazar acceso cuando no existe sesión válida o falta el rol requerido.
+- [x] Vincular la sesión con la wallet autorizada antes de aceptar el submit firmado.
+- [x] Conservar challenges de un uso, expiración, anti-replay, origin y RP ID exactos en los servicios.
+- [x] Evitar enumeración de cuentas y credenciales WebAuthn en respuestas de error cubiertas por los servicios.
+- [ ] Documentar y probar claramente las fronteras entre stores en memoria, Testnet y persistencia productiva.
+- [x] Persistir el vínculo durable cuenta-wallet en `accounts.wallet_contract_address` sin custodiar claves.
 
 ### Pruebas positivas
 
@@ -467,11 +516,15 @@ Revertir UI de login, guard del dashboard, wiring de identidad y pruebas de esta
 
 # Fase 3 — Endurecer passkey, XDR y allowlist WASM
 
+**Estado auditado: PARCIAL.** La validación estructural está implementada, pero falta evidencia adversarial XDR y cerrar la allowlist/procedencia del wallet.
+
 ## Objetivo
 
 Demostrar que la passkey autoriza exactamente la intención preparada, que la firma sobrevive la serialización y que la smart wallet usa una implementación allowlisted.
 
 ## Unidad 3.1 — Firma XDR real y comparación estructural
+
+**Estado: PARCIAL.** Código de firma y validación presente; falta una suite con fixtures XDR reales que demuestre toda la matriz adversarial.
 
 **Archivos probables:**
 
@@ -482,15 +535,15 @@ Demostrar que la passkey autoriza exactamente la intención preparada, que la fi
 
 ### Pasos
 
-- [ ] Construir fixtures XDR reales con Stellar SDK; no usar envelopes JSON del transporte mock para validar este límite.
-- [ ] Probar que la auth entry firmada sobrevive `serialize -> parse`.
-- [ ] Exigir exactamente una operación `invokeHostFunction`.
-- [ ] Comparar source, sequence, memo, preconditions, host function, contract ID, método, argumentos, Soroban data, footprint y límites de recursos.
-- [ ] Permitir únicamente las transformaciones de auth esperadas por Passkey Kit.
-- [ ] Verificar address, firma y expiration ledger del actor.
-- [ ] Rechazar modificaciones de auth entries ajenas al actor.
-- [ ] Confirmar que el fee payer firma únicamente después de validar la intención.
-- [ ] Tratar expiration insuficiente o RPC no disponible como error explícito; no generar firmas ambiguas.
+- [ ] Construir fixtures XDR reales con Stellar SDK; las pruebas actuales se apoyan principalmente en el transporte mock.
+- [x] Implementar verificación de que la auth entry firmada sobrevive `serialize -> parse`.
+- [x] Exigir exactamente una operación `invokeHostFunction`.
+- [x] Comparar el cuerpo de transacción, host function, auth entries y Soroban data contra la intención preparada.
+- [x] Permitir únicamente las transformaciones de auth esperadas por Passkey Kit.
+- [x] Verificar address y presencia de firma del actor; la expiración se aplica al firmar.
+- [x] Rechazar modificaciones de auth entries ajenas al actor.
+- [x] Confirmar que el fee payer firma únicamente después de validar la intención.
+- [ ] Probar explícitamente expiration insuficiente y RPC no disponible como errores no ambiguos.
 
 ### Matriz adversarial mínima
 
@@ -539,6 +592,8 @@ Revertir signer, validación estructural y fixtures de esta unidad. No debilitar
 
 ## Unidad 3.2 — Allowlist y procedencia de smart wallet
 
+**Estado: PARCIAL.** La validación server-side existe y falla cerrada; la allowlist aprobada y su verificación on-chain continúan pendientes.
+
 **Archivos probables:**
 
 - `src/lib/smartWallet/PasskeyKitSigner.ts`
@@ -548,11 +603,11 @@ Revertir signer, validación estructural y fixtures de esta unidad. No debilitar
 
 ### Pasos
 
-- [ ] Definir una única fuente canónica server-side de hashes aceptados por red.
-- [ ] Validar formato, normalización, duplicados y pertenencia del hash de creación a la allowlist.
+- [x] Definir una fuente server-side de hashes aceptados por red.
+- [x] Validar formato, normalización, duplicados y pertenencia del hash de creación a la allowlist.
 - [ ] Verificar el hash/código on-chain antes de crear o conectar una wallet.
-- [ ] Rechazar una wallet de otra red o con implementación no allowlisted.
-- [ ] Documentar versión, procedencia y nivel de auditoría de Passkey Kit.
+- [x] Rechazar creación con implementación no allowlisted y configuración de otra red.
+- [x] Documentar versión y procedencia de Passkey Kit en el manifiesto.
 - [ ] Obtener aceptación explícita del riesgo si la implementación no está auditada para el alcance requerido.
 
 ### Pruebas
@@ -593,11 +648,15 @@ Revertir validación y configuración de allowlist. No permitir fallback permisi
 
 # Fase 4 — Integrar el dashboard con contratos reales
 
+**Estado auditado: PARCIAL.** Los IDs y prepare server-side están integrados, pero falta firma Passkey real en la UI y evidencia de paridad multi-runtime.
+
 ## Objetivo
 
 Retirar falsos éxitos del frontend principal y conectar los casos de uso reales al pipeline `prepare -> sign -> submit -> status -> readback`.
 
 ## Unidad 4.1 — Identificadores on-chain y hash canónico
+
+**Estado: PARCIAL.** Implementación canónica y golden vectors presentes; faltan ejecución contra PostgreSQL real, paridad TS/Rust y evidencia definitiva de schemas.
 
 **Archivos probables:**
 
@@ -609,13 +668,13 @@ Retirar falsos éxitos del frontend principal y conectar los casos de uso reales
 
 ### Pasos
 
-- [ ] Ejecutar el punto `STOP` si no existe decisión para mapear UUID/string a `BytesN<32>`.
-- [ ] Definir derivación determinística, versionada y con separación de dominio para entity, credential, issuer, subject y event IDs.
-- [ ] Producir vectores dorados compartidos y detectar colisiones de namespace por diseño.
-- [ ] Sustituir `generateMetadataHash` por `CanonicalHashPort` y schemas aprobados.
-- [ ] Rechazar cualquier error de canonicalización; nunca devolver hashes aleatorios.
-- [ ] Definir exactamente qué campos y medios forman `entity.v1` y `credential.v1`.
-- [ ] Garantizar paridad navegador, Node y Rust.
+- [x] Resolver el punto `STOP` para mapear UUID/string a `BytesN<32>` mediante hashing canónico con separación de dominio.
+- [x] Definir derivación determinística y versionada para entity, credential, issuer, subject y event IDs.
+- [x] Producir vectores dorados versionados y separar namespaces por diseño.
+- [x] Sustituir el hashing legacy por `CanonicalHashPort` en gateway y metadata de credenciales.
+- [x] Rechazar errores de canonicalización; no existen hashes aleatorios de fallback.
+- [ ] Consolidar la especificación exacta y aprobada de campos/schema para `entity.v1` y `credential.v1`.
+- [ ] Garantizar con evidencia ejecutada la paridad navegador, Node, PostgreSQL real y Rust.
 
 ### Pruebas
 
@@ -657,6 +716,8 @@ Revertir derivación, schemas, fixtures y consumidores de esta unidad. No volver
 
 ## Unidad 4.2 — Cliente frontend del gateway real
 
+**Estado: PARCIAL.** Las Server Actions preparan emisión/revocación real, pero la firma/submit Passkey permanece deshabilitada fuera de `demo` y registro de entidad no está integrado de punta a punta.
+
 **Archivos probables:**
 
 - `src/components/StellarStatusBlock.tsx`
@@ -667,15 +728,15 @@ Revertir derivación, schemas, fixtures y consumidores de esta unidad. No volver
 
 ### Pasos
 
-- [ ] Separar UI presentacional de orquestación de transacciones.
-- [ ] Reemplazar imports de `src/lib/stellar.ts` por un cliente tipado del gateway real.
-- [ ] Conservar `MockStellarGateway` fiel solo para demo y tests; no usar el mock antiguo en flujos verificables.
-- [ ] Derivar la intención desde datos aprobados, sesión y actor autorizado.
-- [ ] Usar idempotency key estable por intención y reutilizarla en reintentos.
-- [ ] Mostrar red, contract ID y procedencia del estado sin jerga innecesaria para usuarios finales.
-- [ ] No actualizar la entidad/credencial como registrada hasta `confirmed`.
-- [ ] Evitar que dobles clics creen dos operaciones.
-- [ ] Integrar registro de entidad, emisión y revocación.
+- [x] Separar Server Actions de los formularios cliente para emisión y revocación.
+- [x] Eliminar imports de `src/lib/stellar.ts`; el archivo legacy ya no existe.
+- [x] Conservar `MockStellarGateway` fiel solo para demo y tests.
+- [x] Derivar emisión/revocación desde datos aprobados, sesión, issuer scope y wallet del actor.
+- [x] Usar idempotency keys con namespace `issue:`/`revoke:` y fingerprint independiente de la clave.
+- [x] Mostrar red y contract ID en el panel del organizador.
+- [x] Persistir ledger de emisión/revocación sólo tras estado `confirmed` en submit.
+- [ ] Probar que dobles clics/reintentos desde UI conservan una sola intención.
+- [ ] Integrar registro de entidad, emisión y revocación completos con firma Passkey real en Testnet.
 
 ### Pruebas positivas
 
@@ -722,11 +783,15 @@ Revertir cliente, contenedores y wiring de UI. La demo puede volver temporalment
 
 # Fase 5 — Estado visible y reconciliación
 
+**Estado auditado: PARCIAL.** Persistencia `signed`, recovery y provisioning admin están implementados; faltan consulta/polling y ejecutar el worker como proceso observable.
+
 ## Objetivo
 
 Hacer recuperables y observables las operaciones que no terminan dentro de una solicitud HTTP.
 
 ## Unidad 5.1 — Consulta de operación y UX de estados
+
+**Estado: PENDIENTE.** No existe Route Handler de lectura scoped ni polling de operaciones en la UI.
 
 **Archivos probables:**
 
@@ -785,6 +850,8 @@ Revertir endpoint, cliente de polling y copy de estados. No revertir las reglas 
 
 ## Unidad 5.2 — Reconciliación runtime mínima para Testnet
 
+**Estado: PARCIAL.** La clase, fases, persistencia y pruebas de recovery existen; no hay entrypoint runtime, heartbeat ni supervisión.
+
 **Archivos probables:**
 
 - `src/infrastructure/stellar/StellarWorker.ts`
@@ -794,13 +861,13 @@ Revertir endpoint, cliente de polling y copy de estados. No revertir las reglas 
 
 ### Pasos
 
-- [ ] Definir un proceso explícito que ejecute reconciliación en Testnet; una clase solo usada en tests no cuenta como runtime.
-- [ ] No ejecutar múltiples schedulers sin lease o coordinación.
+- [ ] Definir un proceso explícito que ejecute reconciliación en Testnet; la clase sigue usada sólo en tests.
+- [x] Implementar leases/`SKIP LOCKED` para que workers concurrentes no reclamen la misma operación.
 - [ ] Publicar heartbeat, último ciclo, lag y número de operaciones por fase.
-- [ ] Soportar shutdown graceful.
-- [ ] No afirmar durabilidad cuando el store es en memoria.
-- [ ] Documentar que reinicios pierden operaciones hasta completar la fase de Marcos.
-- [ ] Separar la reconciliación Testnet mínima de los workers durables de producción.
+- [ ] Soportar shutdown graceful en un entrypoint runtime.
+- [x] Usar PostgreSQL para operaciones durables cuando `DATABASE_URL` está configurada y no sobredeclarar el store en memoria.
+- [x] Recuperar fases `signed` y reconciliables con reintentos/backoff sin que el worker firme.
+- [ ] Separar y desplegar explícitamente reconciliación Testnet de los procesos durables de producción.
 
 ### Pruebas
 
@@ -836,7 +903,34 @@ Revertir entrypoint/scheduler, wiring y métricas. Mantener la clase y pruebas d
 
 `feat(stellar): run observable testnet reconciliation`
 
+## Unidad 5.f — Provisioning administrativo Testnet
+
+**Estado: CERRADO para el alcance funcional Testnet.** La ejecución real contra contratos y su cleanup se valida en Fase 6. No se considera durable para producción hasta cerrar el crash window administrativo descrito abajo.
+
+### Completado
+
+- [x] `getTestnetAdminSignerConfig()` falla cerrado en `demo`/Mainnet, exige `CULTURAGO_ALLOW_TESTNET_ADMIN_SIGNER=true` y valida address/secret.
+- [x] El secret admin permanece fuera de `StellarNetworkConfig` y del navegador.
+- [x] `LocalSigner` firma Ed25519 server-side y rechaza fee-bump transactions.
+- [x] `AdminStellarService` limita métodos a grant/revoke de roles y link/unlink de issuer-operator.
+- [x] Las operaciones administrativas usan idempotencia durable, polling y manejo de restore.
+- [x] Link/unlink verifican readback mediante `is_issuer_operator`.
+- [x] Grant/revoke se apoyan en ledger `SUCCESS` más semántica idempotente porque los contratos no exponen `has_role`.
+- [x] `POST /api/admin/provision` exige rol `admin`, valida UUIDs, deriva wallet/issuer desde PostgreSQL y sincroniza `issuer_operators` tras confirmación.
+- [x] Identity stores soportan `unlinkIssuerOperator`.
+- [x] `0010_admin_operation_kind.sql` agrega `admin_provision`.
+- [x] `.env.example` documenta el kill switch y las variables admin Testnet.
+
+### Pendiente de evidencia runtime y robustez productiva
+
+- [ ] Añadir pruebas focalizadas del servicio y Route Handler administrativo.
+- [ ] Ejecutar grants/link reales en la ventana E2E autorizada y registrar tx hashes/ledgers.
+- [ ] Ejecutar revoke/unlink y verificar cleanup en Fase 6.
+- [ ] Cerrar el crash window entre `transport.submit()` y la persistencia de `txHash`: hoy no se guarda XDR firmado y el worker genérico no puede reconciliar correctamente `admin_provision`.
+
 # Fase 6 — E2E real en Stellar Testnet
+
+**Estado auditado: PENDIENTE.** No hay evidencia del recorrido frontend real ni del cleanup administrativo on-chain.
 
 ## Objetivo
 
@@ -937,11 +1031,15 @@ No queda autoridad temporal asociada a la wallet E2E.
 
 # Fase 7 — Eliminar harness y mocks productivos
 
+**Estado auditado: PARCIAL.** Se retiraron mocks Stellar legacy y `grant-roles`, pero el harness `/smart-wallet` y el mock de datos `src/lib/db.ts` siguen activos.
+
 ## Objetivo
 
 Retirar superficies temporales y conservar solo componentes reutilizables del producto.
 
 ## Unidad 7.1 — Retiro del harness
+
+**Estado: PARCIAL.** El endpoint legacy `grant-roles` fue retirado; `/smart-wallet` todavía se incluye en el build y no hubo cleanup E2E.
 
 **Archivos probables:**
 
@@ -954,11 +1052,11 @@ Retirar superficies temporales y conservar solo componentes reutilizables del pr
 ### Pasos
 
 - [ ] Eliminar `/smart-wallet` después de guardar evidencia y completar cleanup.
-- [ ] Eliminar endpoints exclusivos del harness.
-- [ ] Eliminar flags, tokens y variables temporales.
-- [ ] Retirar `raw-report.json` y scripts `tmp-*` si solo son diagnósticos y su eliminación fue aprobada.
-- [ ] Conservar signer, gateway y relayer que formen parte de la arquitectura productiva.
-- [ ] Comprobar que no quedan referencias a `grant-roles`, ruta del harness o secretos públicos.
+- [x] Eliminar el endpoint legacy `/api/testnet/grant-roles`; el provisioning queda en la ruta administrativa autenticada.
+- [ ] Eliminar flags, tokens y variables temporales después del E2E.
+- [ ] Retirar residuos diagnósticos temporales si existen y su eliminación fue aprobada.
+- [x] Conservar signer, gateway y relayer que forman parte de la arquitectura productiva.
+- [ ] Comprobar que no quedan referencias al harness ni variables temporales; `/smart-wallet` todavía existe.
 
 ### Verificación
 
@@ -991,6 +1089,8 @@ Restaurar el harness solo en una rama de pruebas aislada; no reintroducirlo en e
 
 ## Unidad 7.2 — Retiro del mock legacy
 
+**Estado: PARCIAL.** Los mocks Stellar de éxito falso fueron eliminados; `src/lib/db.ts` continúa activo como fallback y tiene múltiples consumidores.
+
 **Archivos probables:**
 
 - `src/lib/stellar.ts`
@@ -1000,10 +1100,10 @@ Restaurar el harness solo en una rama de pruebas aislada; no reintroducirlo en e
 
 ### Pasos
 
-- [ ] Confirmar que no existen imports productivos.
-- [ ] Eliminar o archivar el mock que siempre devuelve éxito.
-- [ ] Mantener `MockStellarGateway` e `InMemoryChainTransport` como test doubles fieles.
-- [ ] Etiquetar claramente demo/Testnet/Mainnet en UI y datos.
+- [x] Confirmar que no existen imports productivos de `src/lib/stellar.ts` ni `src/lib/hashes.ts`.
+- [x] Eliminar el mock Stellar que siempre devolvía éxito.
+- [x] Mantener `MockStellarGateway` e `InMemoryChainTransport` como test doubles fieles.
+- [ ] Retirar `src/lib/db.ts` de consumidores productivos y etiquetar claramente demo/Testnet/Mainnet en toda la UI.
 
 ### Criterio de aceptación
 
@@ -1015,11 +1115,15 @@ Ningún registro simulado se presenta como verificado en Stellar.
 
 # Fase 8 — Supply chain, Next.js, build y CI
 
+**Estado auditado: PARCIAL.** El audit está limpio y el workflow CI cubre los gates, pero faltan cerrar overrides, branch protection y la unidad Docker/HTTPS/errores globales.
+
 ## Objetivo
 
 Convertir las verificaciones manuales en gates reproducibles y eliminar vulnerabilidades altas aplicables.
 
 ## Unidad 8.1 — Dependencias vulnerables
+
+**Estado: PARCIAL.** `pnpm audit --prod` no reporta vulnerabilidades conocidas y los gates pasan, pero los overrides abiertos y la trazabilidad por advisory todavía incumplen pasos de esta unidad.
 
 **Archivos probables:**
 
@@ -1028,12 +1132,12 @@ Convertir las verificaciones manuales en gates reproducibles y eliminar vulnerab
 
 ### Pasos
 
-- [ ] Revisar cada advisory y su aplicabilidad.
-- [ ] Actualizar Next.js y `eslint-config-next` a una versión corregida compatible.
-- [ ] Resolver `sharp`, PostCSS y nanoid mediante dependencias soportadas, sin overrides inseguros.
-- [ ] Verificar antigüedad de la versión seleccionada; aplicar el punto `STOP` si fue publicada hace menos de siete días.
-- [ ] No usar rangos flotantes ni `latest`.
-- [ ] Ejecutar pruebas y build después de cada grupo de actualización.
+- [ ] Registrar la revisión y aplicabilidad de cada advisory histórico; el resultado actual del audit es limpio.
+- [x] Actualizar Next.js y `eslint-config-next` a 16.2.11 compatible.
+- [ ] Sustituir los overrides abiertos de `sharp` y PostCSS por versiones acotadas o dependencias soportadas.
+- [ ] Registrar evidencia de antigüedad de las versiones seleccionadas cuando se incorporaron.
+- [ ] Eliminar los rangos flotantes `>=...` que permanecen en overrides.
+- [x] Ejecutar lint, typecheck, pruebas, audit y build con las versiones actuales.
 
 ### Verificación
 
@@ -1068,6 +1172,8 @@ Revertir `package.json` y `pnpm-lock.yaml` juntos. No degradar políticas de seg
 
 ## Unidad 8.2 — Build estricto y convenciones Next.js
 
+**Estado: PARCIAL.** Build y proxy están corregidos; faltan error boundaries, TLS público, health runtime e inspección de variables del artefacto Docker.
+
 **Archivos probables:**
 
 - `next.config.ts`
@@ -1078,13 +1184,13 @@ Revertir `package.json` y `pnpm-lock.yaml` juntos. No degradar políticas de seg
 
 ### Pasos
 
-- [ ] Eliminar `typescript.ignoreBuildErrors` del build Docker.
-- [ ] Ejecutar typecheck explícito dentro del pipeline de imagen.
-- [ ] Migrar la convención de `middleware` a `proxy` siguiendo la documentación instalada de Next.js 16.
+- [x] Eliminar `typescript.ignoreBuildErrors` del build Docker.
+- [x] Mantener typecheck activo en `next build` y como gate explícito de CI.
+- [x] Migrar la convención de `middleware` a `proxy` siguiendo Next.js 16.
 - [ ] Añadir UI global de error y not-found accesible si aplica al App Router actual.
-- [ ] Confirmar que Caddy limita requests, no expone Next.js directamente y aplica headers/CSP aprobados.
-- [ ] Construir y ejecutar la imagen standalone con health check.
-- [ ] Verificar que variables públicas quedan fijadas en build y secrets solo en runtime.
+- [ ] Confirmar límites de request, CSP aprobada y TLS público; Caddy todavía usa `tls internal`.
+- [ ] Construir y ejecutar la imagen standalone actual con health check reproducible.
+- [ ] Verificar en el artefacto que variables públicas quedan fijadas en build y secrets sólo en runtime.
 
 ### Verificación
 
@@ -1119,6 +1225,8 @@ Revertir configuración Next/Docker/proxy y error UI como unidad. No reactivar `
 
 ## Unidad 8.3 — CI reproducible
 
+**Estado: PARCIAL (configuración completa).** El workflow ejecuta todos los gates locales sin deploy ni mutaciones de red; la obligatoriedad por branch protection debe confirmarse en GitHub antes de cerrar la unidad.
+
 **Archivos probables:**
 
 - workflow del proveedor Git aprobado
@@ -1126,13 +1234,13 @@ Revertir configuración Next/Docker/proxy y error UI como unidad. No reactivar `
 
 ### Pasos
 
-- [ ] Confirmar el proveedor CI antes de crear configuración.
-- [ ] Usar Node y pnpm fijados.
-- [ ] Ejecutar instalación con lockfile congelado.
-- [ ] Ejecutar lint sin warnings, typecheck, tests, build, audit productiva y contratos.
-- [ ] Verificar que CI no recibe secrets para PRs no confiables.
-- [ ] No ejecutar deploy ni mutaciones Testnet/Mainnet desde CI ordinario.
-- [ ] Guardar artefactos de test/build sin `.env`, XDR o PII.
+- [x] Configurar GitHub Actions como proveedor CI del repositorio.
+- [x] Usar Node 22 y pnpm 10 fijados.
+- [x] Ejecutar instalación con lockfile congelado.
+- [x] Ejecutar lint sin warnings, typecheck, tests, build, audit productiva y contratos.
+- [x] No configurar secrets ni credenciales de red en el workflow de PR.
+- [x] No ejecutar deploy ni mutaciones Testnet/Mainnet desde CI ordinario.
+- [x] No publicar artefactos que incluyan `.env`, XDR o PII.
 
 ### Gate CI mínimo
 
@@ -1162,11 +1270,15 @@ Revertir workflow y scripts asociados. No eliminar verificaciones locales.
 
 # Fase 9 — Documentación, manifiesto y evidencia
 
+**Estado auditado: PARCIAL.** Hay evidencia histórica y manifiesto, pero varias fuentes quedaron obsoletas o contradictorias.
+
 ## Objetivo
 
 Alinear documentación con el sistema ejecutable y dejar un handoff que no dependa de memoria oral.
 
 ## Unidad 9.1 — Actualizar fuentes históricas
+
+**Estado: PARCIAL.** Los comandos principales usan pnpm, pero README/CODEMAP/arquitectura/evidence todavía contienen estados históricos incompatibles con el repo actual.
 
 **Archivos probables:**
 
@@ -1179,13 +1291,13 @@ Alinear documentación con el sistema ejecutable y dejar un handoff que no depen
 
 ### Pasos
 
-- [ ] Sustituir comandos npm por pnpm.
-- [ ] Eliminar credenciales demo presentadas como acceso administrativo productivo.
-- [ ] Documentar gateway real, demo fiel y ausencia del mock legacy.
-- [ ] Describir contratos, passkey, relayer, estados y límites de persistencia.
-- [ ] Marcar claramente qué pertenece a integración Testnet y qué queda para Marcos.
-- [ ] Actualizar checklist solo con evidencia real.
-- [ ] Mantener cero secretos y PII.
+- [x] Sustituir los comandos principales de instalación y gates por pnpm.
+- [ ] Eliminar credenciales y afirmaciones demo obsoletas presentadas como acceso vigente.
+- [ ] Documentar consistentemente gateway real, demo fiel y ausencia de los mocks Stellar legacy.
+- [ ] Actualizar contratos, passkey, relayer, estados y límites de persistencia al estado actual.
+- [ ] Marcar claramente qué pertenece a integración Testnet y qué queda para producción operativa.
+- [x] Actualizar este checklist únicamente con evidencia real.
+- [x] Mantener documentación sin secrets, XDR firmados completos ni PII.
 
 ### Criterio de aceptación
 
@@ -1197,16 +1309,18 @@ Un nuevo ejecutor puede comprender arquitectura, ejecutar tests y distinguir dem
 
 ## Unidad 9.2 — Completar manifiesto Testnet
 
+**Estado: PARCIAL.** Contract IDs, versiones y hashes WASM están registrados; faltan ledgers de despliegue y allowlist smart-wallet aprobada.
+
 **Archivo principal:** `docs/manifests/testnet-manifest.json`.
 
 ### Pasos
 
-- [ ] Mantener los contract IDs verificados.
-- [ ] Registrar ledgers y tx hashes de despliegue solo si pueden probarse.
-- [ ] Completar allowlist smart-wallet aprobada.
-- [ ] Registrar versiones exactas de herramientas y dependencias.
-- [ ] Validar hashes WASM contra artefactos reproducibles y código on-chain.
-- [ ] Corregir notas que todavía afirman que contract IDs se completarán en el futuro.
+- [x] Mantener los contract IDs Testnet verificados.
+- [ ] Registrar ledgers y tx hashes de despliegue sólo cuando puedan probarse; actualmente son `null`.
+- [ ] Completar la allowlist smart-wallet aprobada; actualmente está vacía.
+- [x] Registrar versiones de herramientas y dependencias críticas.
+- [x] Validar hashes WASM contra los artefactos reproducibles locales.
+- [ ] Validar esos hashes/código contra la smart wallet desplegada y corregir notas pendientes.
 
 ### Criterio de aceptación
 
@@ -1217,6 +1331,8 @@ El manifiesto es coherente, público, reproducible y no contiene valores `null` 
 `docs(stellar): record verified testnet manifest`
 
 # Fase 10 — Handoff operativo para Marcos Vini
+
+**Estado auditado: PARCIAL.** Parte de identidad, wallet y recovery durable está implementada; los requisitos operativos de producción siguen mayormente pendientes.
 
 ## Objetivo
 
@@ -1235,14 +1351,14 @@ Entregar decisiones y trabajo de persistencia/VPS como un paquete verificable. E
 
 ### 10.2 Identidad, wallet y durabilidad de operaciones
 
-- [ ] Definir y persistir el vínculo cuenta, sujeto, organización, credential ID WebAuthn y smart-wallet contract ID sin almacenar claves privadas ni biometría.
-- [ ] Reemplazar `InMemoryPasskeyStorage` como fuente productiva de metadata de conexión y probar reconexión después de recarga, restart y nuevo proceso.
-- [ ] Mantener separación entre passkey de autenticación de la aplicación y passkey/autorización on-chain cuando no sean la misma credencial.
-- [ ] Persistir atómicamente XDR firmado validado, signer address y fingerprint antes del submit.
-- [ ] No borrar `signed_xdr` ni `signer_address` en `save`.
-- [ ] Resolver crash windows antes y después de `sendTransaction`.
-- [ ] Recuperar `signed`, `submitted`, `confirming` y `unknown` sin duplicar efectos.
-- [ ] Ejecutar suites contractuales comunes para stores de identidad, wallet y operaciones en memoria y PostgreSQL.
+- [x] Persistir cuenta, sujeto, roles/organización, credenciales WebAuthn y smart-wallet contract ID sin almacenar claves privadas ni biometría.
+- [ ] Reemplazar `InMemoryPasskeyStorage` como metadata cliente durable y probar reconexión después de recarga, restart y nuevo proceso.
+- [x] Mantener separadas la autenticación de aplicación y la autorización on-chain en sus servicios y datos.
+- [x] Persistir XDR firmado validado, signer address y fingerprint antes del submit.
+- [x] Conservar `signed_xdr` y `signer_address` en `save`.
+- [x] Cerrar el crash window previo al submit mediante fase `signed` durable.
+- [x] Recuperar `signed` y reconciliar estados enviados sin duplicar efectos en las pruebas del worker.
+- [ ] Ejecutar suites comunes contra PostgreSQL real para stores de identidad, wallet y operaciones; 2 pruebas PG permanecen skipped sin `DATABASE_URL`.
 
 ### 10.3 Workers, indexador y TTL
 
@@ -1344,6 +1460,8 @@ Si una PR supera **400 líneas modificadas**:
 
 # Gate final de integración Testnet
 
+**Estado auditado: NO CUMPLIDO.** Los comandos locales pasan, pero faltan firma Passkey real en UI, allowlist, polling/runtime worker, E2E, cleanup y retiro del harness.
+
 ## Comandos locales
 
 ```powershell
@@ -1360,27 +1478,27 @@ pnpm contracts:build
 
 ## Checklist funcional
 
-- [ ] Ambos contratos responden en Testnet y coinciden con el manifiesto.
-- [ ] Dashboard no importa `src/lib/stellar.ts` ni `src/lib/hashes.ts`.
-- [ ] Dashboard Testnet exige sesión passkey, rol y scope resueltos server-side.
+- [x] Ambos contratos responden en Testnet y coinciden con el manifiesto según la evidencia registrada.
+- [x] Dashboard no importa `src/lib/stellar.ts` ni `src/lib/hashes.ts`.
+- [ ] Dashboard Testnet exige sesión passkey, rol y scope resueltos server-side; falta la UI WebAuthn real.
 - [ ] Sesión y wallet quedan vinculadas durante el flujo E2E sin afirmar persistencia productiva.
-- [ ] Registro de entidad llega a `confirmed` con readback exacto.
-- [ ] Emisión llega a `confirmed` con emisor, sujeto, evento, tipo, hash y schema correctos.
-- [ ] Revocación conserva historial y readback revocado.
-- [ ] Otra wallet y otro issuer son rechazados.
-- [ ] XDR alterado es rechazado antes del fee payer.
-- [ ] Timeout queda `unknown` y se reconcilia sin reenvío ciego.
-- [ ] Doble clic y retry conservan una sola intención.
-- [ ] UI no llama confirmado a una respuesta 2xx no terminal.
-- [ ] No existen secrets `NEXT_PUBLIC_*`.
-- [ ] Kill switch y controles HTTP pasan pruebas.
+- [ ] Registro de entidad llega a `confirmed` con readback exacto desde frontend.
+- [ ] Emisión llega a `confirmed` con emisor, sujeto, evento, tipo, hash y schema correctos desde frontend.
+- [ ] Revocación conserva historial y readback revocado desde frontend.
+- [ ] Otra wallet y otro issuer son rechazados en E2E.
+- [ ] XDR alterado es rechazado antes del fee payer mediante la matriz adversarial real.
+- [ ] Timeout queda `unknown` y se reconcilia sin reenvío ciego en runtime.
+- [ ] Doble clic y retry conservan una sola intención desde UI.
+- [ ] UI no llama confirmado a una respuesta 2xx no terminal en todos los flujos.
+- [x] No existen secrets `NEXT_PUBLIC_*` en el código auditado.
+- [ ] Kill switch y controles HTTP pasan la matriz completa; faltan Origin/CSRF/rate/body/schema.
 - [ ] Allowlist WASM está aprobada y verificada on-chain.
 - [ ] Cleanup on-chain fue ejecutado y verificado.
 - [ ] `/smart-wallet` y endpoints administrativos temporales fueron eliminados.
-- [ ] No quedan vulnerabilidades altas aplicables.
-- [ ] Build Docker conserva typecheck estricto.
-- [ ] CI ejecuta gates sin secrets ni mutaciones de red.
-- [ ] Evidencia no contiene PII, secrets ni XDR firmado completo.
+- [x] `pnpm audit --prod` no reporta vulnerabilidades conocidas.
+- [x] Build Next/Docker no desactiva typecheck.
+- [x] CI ejecuta gates sin secrets ni mutaciones de red.
+- [ ] Auditar la evidencia final del E2E para confirmar ausencia de PII, secrets y XDR firmado completo.
 
 ## Definition of Done — Integración Testnet
 
@@ -1396,6 +1514,8 @@ La entrega de integración queda terminada cuando:
 Este estado puede denominarse **“integración Stellar Testnet entregada”**. No denominarlo producción.
 
 # Gate de producción completa
+
+**Estado auditado: NO CUMPLIDO.** La integración Testnet aún no está cerrada y faltan controles e infraestructura operativa obligatorios.
 
 Además del gate Testnet:
 
