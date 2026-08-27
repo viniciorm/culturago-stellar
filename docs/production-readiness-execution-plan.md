@@ -394,12 +394,12 @@ Revertir Route Handlers, servicio E2E, configuración y pruebas de esta unidad. 
 ### Pasos
 
 - [x] Eliminar todo uso de `NEXT_PUBLIC_STELLAR_TESTNET_DEPLOYER_SECRET`.
-- [ ] Fallar el build o la validación si existe cualquier variable `NEXT_PUBLIC_*SECRET`. No hay usos actuales, pero falta el gate preventivo.
+- [x] Fallar el build o la validación si existe cualquier variable `NEXT_PUBLIC_*SECRET`. `assertNoPublicSecrets()` en `getPublicConfig` bloquea nombres con `SECRET/KEY/SEED/PRIVATE` y valores con semilla Stellar.
 - [x] Separar admin, deployer y fee payer en configuración y responsabilidad.
 - [x] Impedir fallbacks silenciosos entre admin, deployer y fee payer.
 - [x] Validar que la public key derivada de cada secret coincide con su address configurada para admin Testnet y fee payer cuando ambos valores están presentes.
 - [x] Limitar el fee payer a envelopes preparados y validados por el gateway.
-- [ ] Definir límites de fee, operaciones admitidas y presupuesto por sesión.
+- [x] Definir límites de fee (`STELLAR_MAX_FEE_STROKES`), operaciones admitidas (allowlist de contrato/gateway) y presupuesto por sesión (`assertRelayerBudget`/`STELLAR_RELAYER_DAILY_BUDGET`).
 - [x] Usar el relayer server-only para deploy/patrocinio de smart wallet.
 
 ### Pruebas negativas

@@ -23,6 +23,10 @@ export interface StellarNetworkConfig {
   feePayerAddress: string | null;
   /** Secret for the fee payer; only used for restore/bump in the two-phase flow. */
   feePayerSecret: string | null;
+  /** Maximum fee (in stroops) the server is willing to pay per transaction. */
+  maxFeeStrokes: number;
+  /** Maximum number of relayer-sponsored operations per actor per day. */
+  relayerDailyBudget: number;
 }
 
 export function getStellarNetworkConfig(): StellarNetworkConfig {
@@ -68,6 +72,42 @@ export function getStellarNetworkConfig(): StellarNetworkConfig {
     }
   }
 
+  // Role separation: the fee payer must never be the testnet admin or fixture signer.
+  const adminAddress = process.env.STELLAR_TESTNET_ADMIN_ADDRESS?.trim() || null;
+  if (feePayer && adminAddress && feePayer === adminAddress) {
+    throw domainError(
+      'INVALID_INPUT',
+      'STELLAR_FEEPAYER_ADDRESS must not match STELLAR_TESTNET_ADMIN_ADDRESS'
+    );
+  }
+
+  const fixtureSecret = process.env.STELLAR_TESTNET_FIXTURE_SECRET?.trim();
+  if (feePayer && fixtureSecret) {
+    const fixtureAddress = Keypair.fromSecret(fixtureSecret).publicKey();
+    if (feePayer === fixtureAddress) {
+      throw domainError(
+        'INVALID_INPUT',
+        'STELLAR_FEEPAYER_ADDRESS must not match the fixture signer address'
+      );
+    }
+  }
+
+  const maxFeeStrokes = Math.max(
+    1,
+    Number(process.env.STELLAR_MAX_FEE_STROKES ?? 500_000)
+  );
+  if (Number.isNaN(maxFeeStrokes)) {
+    throw domainError('INVALID_INPUT', 'STELLAR_MAX_FEE_STROKES must be a positive integer');
+  }
+
+  const relayerDailyBudget = Math.max(
+    1,
+    Number(process.env.STELLAR_RELAYER_DAILY_BUDGET ?? 500)
+  );
+  if (Number.isNaN(relayerDailyBudget)) {
+    throw domainError('INVALID_INPUT', 'STELLAR_RELAYER_DAILY_BUDGET must be a positive integer');
+  }
+
   console.log('[networkConfig] feePayer present:', !!feePayer, 'feePayerSecret present:', !!feePayerSecret);
 
   return {
@@ -80,6 +120,8 @@ export function getStellarNetworkConfig(): StellarNetworkConfig {
     smartWalletWasmAllowlist: allowlist,
     feePayerAddress: feePayer && feePayer.trim() !== '' ? feePayer.trim() : null,
     feePayerSecret: feePayerSecret && feePayerSecret.trim() !== '' ? feePayerSecret.trim() : null,
+    maxFeeStrokes,
+    relayerDailyBudget,
   };
 }
 

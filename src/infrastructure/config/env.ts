@@ -13,6 +13,38 @@ export interface CulturaGoConfig {
 
 const VALID_ENVIRONMENTS: readonly CulturaGoEnvironment[] = ['demo', 'testnet', 'mainnet'];
 
+const STELLAR_SECRET_PATTERN = /^S[A-Z2-7]{55}$/;
+
+/**
+ * Preventive gate: no NEXT_PUBLIC_* variable may reference secrets or carry
+ * Stellar secret seeds in its value. Fails the build/startup immediately.
+ */
+function assertNoPublicSecrets(): void {
+  for (const [key, value] of Object.entries(process.env)) {
+    if (!key?.startsWith('NEXT_PUBLIC_')) continue;
+
+    const upper = key.toUpperCase();
+    if (
+      upper.includes('SECRET') ||
+      upper.includes('_KEY') ||
+      upper.includes('SEED') ||
+      upper.includes('PRIVATE')
+    ) {
+      throw domainError(
+        'INVALID_INPUT',
+        `public environment variable must not reference secrets: ${key}`
+      );
+    }
+
+    if (value && STELLAR_SECRET_PATTERN.test(value.trim())) {
+      throw domainError(
+        'INVALID_INPUT',
+        `public environment variable ${key} appears to contain a Stellar secret; secrets must not be prefixed with NEXT_PUBLIC_`
+      );
+    }
+  }
+}
+
 function read(key: string): string | null {
   const value = process.env[key];
   return value && value.trim() !== '' ? value.trim() : null;
@@ -24,6 +56,8 @@ function read(key: string): string | null {
  * never read here for the browser: only NEXT_PUBLIC_* values are exposed.
  */
 export function getPublicConfig(): CulturaGoConfig {
+  assertNoPublicSecrets();
+
   const raw = read('NEXT_PUBLIC_CULTURAGO_ENV') ?? 'demo';
   if (!VALID_ENVIRONMENTS.includes(raw as CulturaGoEnvironment)) {
     throw domainError(

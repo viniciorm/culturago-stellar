@@ -46,8 +46,25 @@ const BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/;
 export const HARNESS_MAX_BODY_BYTES = 64 * 1024;
 const DEFAULT_RATE_LIMIT = 120;
 const DEFAULT_RATE_WINDOW_MS = 60_000;
-const DEFAULT_RELAYER_BUDGET = 500;
 const DEFAULT_RELAYER_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+function readPositiveInt(key: string, fallback: number): number {
+  const raw = process.env[key]?.trim();
+  if (!raw) return fallback;
+  const value = Number(raw);
+  if (Number.isNaN(value) || value < 1) {
+    throw domainError('INVALID_INPUT', `${key} must be a positive integer`);
+  }
+  return value;
+}
+
+function defaultRelayerBudget(): number {
+  return readPositiveInt('STELLAR_RELAYER_DAILY_BUDGET', 500);
+}
+
+function defaultRateLimit(): number {
+  return readPositiveInt('STELLAR_HARNESS_RATE_LIMIT', DEFAULT_RATE_LIMIT);
+}
 
 interface LimitEntry {
   count: number;
@@ -82,7 +99,7 @@ export function assertRateLimit(
   hitLimit(
     rateLimits,
     key,
-    options?.limit ?? DEFAULT_RATE_LIMIT,
+    options?.limit ?? defaultRateLimit(),
     options?.windowMs ?? DEFAULT_RATE_WINDOW_MS
   );
 }
@@ -94,7 +111,7 @@ export function assertRelayerBudget(
   hitLimit(
     relayerBudgets,
     key,
-    options?.limit ?? DEFAULT_RELAYER_BUDGET,
+    options?.limit ?? defaultRelayerBudget(),
     options?.windowMs ?? DEFAULT_RELAYER_WINDOW_MS
   );
 }

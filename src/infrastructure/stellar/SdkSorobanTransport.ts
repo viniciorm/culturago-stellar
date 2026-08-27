@@ -218,7 +218,7 @@ export class SdkSorobanTransport implements SorobanTransport {
       });
 
     const raw = new TransactionBuilder(account, {
-      fee: '100',
+      fee: String(this.config.maxFeeStrokes),
       networkPassphrase: this.config.networkPassphrase,
     })
       .addOperation(Operation.restoreFootprint({}))
@@ -244,7 +244,7 @@ export class SdkSorobanTransport implements SorobanTransport {
     const operation = contract.call(spec.method, ...args);
 
     return new TransactionBuilder(account, {
-      fee: '100',
+      fee: String(this.config.maxFeeStrokes),
       networkPassphrase: this.config.networkPassphrase,
     })
       .addOperation(operation)
