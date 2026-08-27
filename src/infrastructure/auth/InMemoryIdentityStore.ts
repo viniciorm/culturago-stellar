@@ -36,6 +36,12 @@ export class InMemoryIdentityStore implements IdentityStore {
     account.status = status;
   }
 
+  async updateAccountWalletContractAddress(accountId: string, walletContractAddress: string): Promise<void> {
+    const account = this.accounts.get(accountId);
+    if (!account) throw domainError('NOT_FOUND', `account ${accountId} not found`);
+    account.walletContractAddress = walletContractAddress;
+  }
+
   async grantRole(accountId: string, role: string): Promise<void> {
     const roles = this.roles.get(accountId) ?? new Set<string>();
     roles.add(role);

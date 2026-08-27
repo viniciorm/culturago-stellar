@@ -51,6 +51,7 @@ export interface IdentityStore {
   findAccountByPerson(personEntityId: string): Promise<Account | null>;
   createAccount(account: Omit<Account, 'createdAt'>): Promise<Account>;
   updateAccountStatus(accountId: string, status: Account['status']): Promise<void>;
+  updateAccountWalletContractAddress(accountId: string, walletContractAddress: string): Promise<void>;
   grantRole(accountId: string, role: string): Promise<void>;
   getRoles(accountId: string): Promise<string[]>;
   linkIssuerOperator(issuerEntityId: string, operatorAccountId: string): Promise<void>;

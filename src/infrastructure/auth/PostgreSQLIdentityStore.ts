@@ -69,6 +69,13 @@ export class PostgreSQLIdentityStore implements IdentityStore {
     ).catch(translatePgError);
   }
 
+  async updateAccountWalletContractAddress(accountId: string, walletContractAddress: string): Promise<void> {
+    await query(
+      'UPDATE accounts SET wallet_contract_address = $2, updated_at = NOW() WHERE id = $1',
+      [accountId, walletContractAddress]
+    ).catch(translatePgError);
+  }
+
   async grantRole(accountId: string, role: string): Promise<void> {
     await query(
       'INSERT INTO account_roles (account_id, role) VALUES ($1, $2) ON CONFLICT DO NOTHING',

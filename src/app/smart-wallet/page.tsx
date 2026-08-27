@@ -46,10 +46,17 @@ export default function SmartWalletPage() {
     setLoading(true);
     try {
       const { keyId: keyIdBase64, contractId: cid, signedTx } = await signer.createWallet('CulturaGO', 'test-user');
+      const res = await fetch('/api/smart-wallet/deploy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ signedTx, contractId: cid }),
+      });
+      const data = await res.json() as { success: boolean; txHash?: string; error?: string };
+      if (!res.ok || !data.success) throw new Error(data.error ?? 'deploy failed');
       setKeyId(keyIdBase64);
       setContractId(cid);
       addLog(`Wallet creada: ${cid}`);
-      addLog(`signedTx length: ${signedTx.length}`);
+      addLog(`txHash: ${data.txHash}`);
     } catch (e) {
       addLog(`Error creando wallet: ${e instanceof Error ? e.message : String(e)}`);
     } finally {

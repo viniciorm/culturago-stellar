@@ -1,19 +1,26 @@
 import 'server-only';
 import { NextResponse } from 'next/server';
 import { PasskeyServer } from 'passkey-kit/server';
-import { domainError } from '../../../../domain/errors';
+import { requireActorFromSession } from '../../../../infrastructure/auth/getActorFromSession';
+import { PostgreSQLIdentityStore } from '../../../../infrastructure/auth/PostgreSQLIdentityStore';
+import { isPersistenceConfigured } from '../../../../infrastructure/config/env';
+import { domainError, isDomainError } from '../../../../domain/errors';
 import { getStellarNetworkConfig } from '../../../../infrastructure/stellar/networkConfig';
-import { assertTestnetHarnessAllowed } from '../../../../infrastructure/stellar/harnessGuard';
 import { assertSmartWalletWasmAllowlist } from '../../../../infrastructure/stellar/SmartWalletAllowlist';
+
+const identityStore = new PostgreSQLIdentityStore();
 
 export async function POST(request: Request) {
   try {
-    await assertTestnetHarnessAllowed(request);
-    const body = (await request.json()) as { signedTx?: string };
-    const { signedTx } = body;
-    if (!signedTx || typeof signedTx !== 'string') {
-      throw domainError('INVALID_INPUT', 'signedTx is required');
+    const actor = await requireActorFromSession();
+    const body = (await request.json()) as {
+      signedTx?: unknown;
+      contractId?: unknown;
+    };
+    if (typeof body.signedTx !== 'string' || typeof body.contractId !== 'string') {
+      throw domainError('INVALID_INPUT', 'signedTx and contractId are required');
     }
+    const { signedTx, contractId } = body;
 
     const config = getStellarNetworkConfig();
     assertSmartWalletWasmAllowlist(signedTx, config.networkPassphrase, config.smartWalletWasmAllowlist);
@@ -38,9 +45,15 @@ export async function POST(request: Request) {
       );
     }
 
-    return NextResponse.json({ success: true, txHash: result.hash });
+    if (isPersistenceConfigured()) {
+      await identityStore.updateAccountWalletContractAddress(actor.accountId, contractId);
+    }
+
+    return NextResponse.json({ success: true, txHash: result.hash, contractId });
   } catch (error) {
+    const code = isDomainError(error) ? (error as { code: string }).code : undefined;
+    const status = code === 'UNAUTHORIZED' ? 401 : isDomainError(error) ? 400 : 500;
     const message = error instanceof Error ? error.message : 'unknown error';
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    return NextResponse.json({ success: false, error: message }, { status });
   }
 }
