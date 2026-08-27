@@ -34,6 +34,7 @@ export class ClaimService {
 
     const account = await this.store.getAccount(challenge.accountId);
     if (!account) throw domainError('NOT_FOUND', 'account not found');
+    if (account.status !== 'pending_claim') throw domainError('INVALID_STATE_TRANSITION', `account is ${account.status}`);
 
     await this.store.updateAccountStatus(account.id, 'active');
     return account.id;

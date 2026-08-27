@@ -1,4 +1,5 @@
 import 'server-only';
+import { createHash, randomUUID } from 'crypto';
 import { AuthenticatorTransportFuture } from '@simplewebauthn/server';
 import {
   generateAuthenticationOptions,
@@ -9,6 +10,7 @@ import {
 import { domainError } from '../../domain/errors';
 import { IdentityStore } from '../../ports/IdentityStore';
 
+const sha256Hex = (value: string): string => createHash('sha256').update(value).digest('hex');
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
 const RP_NAME = 'CulturaGO';
 
@@ -43,7 +45,7 @@ export class PasskeyService {
     });
 
     await this.store.createChallenge({
-      id: options.user.id,
+      id: randomUUID(),
       challenge: options.challenge,
       purpose: 'register_passkey',
       accountId,
@@ -54,16 +56,16 @@ export class PasskeyService {
   }
 
   async finishRegistration(accountId: string, response: Parameters<typeof verifyRegistrationResponse>[0]['response']) {
-    const challenge = await this.store.consumeChallenge(
-      this.challengeDigest(response.response.clientDataJSON)
-    );
+    const extractedChallenge = this.extractChallenge(response.response.clientDataJSON);
+    const challengeDigest = sha256Hex(extractedChallenge);
+    const challenge = await this.store.consumeChallenge(challengeDigest);
     if (!challenge) throw domainError('UNAUTHORIZED', 'challenge expired, consumed or replayed');
     if (challenge.purpose !== 'register_passkey') throw domainError('UNAUTHORIZED', 'wrong challenge purpose');
     if (challenge.accountId !== accountId) throw domainError('UNAUTHORIZED', 'challenge does not match account');
 
     const verification = await verifyRegistrationResponse({
       response,
-      expectedChallenge: challenge.challenge,
+      expectedChallenge: extractedChallenge,
       expectedOrigin: [...this.expectedOrigins],
       expectedRPID: this.rpId,
     });
@@ -100,7 +102,7 @@ export class PasskeyService {
     });
 
     await this.store.createChallenge({
-      id: options.challenge,
+      id: randomUUID(),
       challenge: options.challenge,
       purpose: 'authenticate',
       accountId,
@@ -111,9 +113,9 @@ export class PasskeyService {
   }
 
   async finishAuthentication(response: Parameters<typeof verifyAuthenticationResponse>[0]['response']) {
-    const challenge = await this.store.consumeChallenge(
-      this.challengeDigest(response.response.clientDataJSON)
-    );
+    const extractedChallenge = this.extractChallenge(response.response.clientDataJSON);
+    const challengeDigest = sha256Hex(extractedChallenge);
+    const challenge = await this.store.consumeChallenge(challengeDigest);
     if (!challenge) throw domainError('UNAUTHORIZED', 'challenge expired, consumed or replayed');
     if (challenge.purpose !== 'authenticate') throw domainError('UNAUTHORIZED', 'wrong challenge purpose');
 
@@ -122,7 +124,7 @@ export class PasskeyService {
 
     const verification = await verifyAuthenticationResponse({
       response,
-      expectedChallenge: challenge.challenge,
+      expectedChallenge: extractedChallenge,
       expectedOrigin: [...this.expectedOrigins],
       expectedRPID: this.rpId,
       credential: {
@@ -141,7 +143,7 @@ export class PasskeyService {
     return passkey.accountId;
   }
 
-  private challengeDigest(clientDataJSON: string): string {
+  private extractChallenge(clientDataJSON: string): string {
     const data = JSON.parse(Buffer.from(clientDataJSON, 'base64url').toString('utf-8')) as { challenge: string };
     return data.challenge;
   }

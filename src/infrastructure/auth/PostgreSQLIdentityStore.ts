@@ -16,7 +16,7 @@ interface AccountRow {
 interface PasskeyRow {
   id: string;
   account_id: string;
-  credential_id: string;
+  credential_id: Buffer;
   public_key: Buffer;
   sign_counter: string;
   display_name: string;
@@ -263,7 +263,7 @@ export class PostgreSQLIdentityStore implements IdentityStore {
     return {
       id: row.id,
       accountId: row.account_id,
-      credentialId: row.credential_id,
+      credentialId: row.credential_id.toString('base64url'),
       publicKey: row.public_key,
       signCounter: Number(row.sign_counter),
       displayName: row.display_name,
