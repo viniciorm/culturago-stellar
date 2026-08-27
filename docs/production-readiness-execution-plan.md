@@ -460,8 +460,8 @@ Revertir configuración, wiring del relayer y pruebas de separación. No reintro
 
 - [ ] Conectar la UI de `/login` con los endpoints WebAuthn de registro y autenticación ya existentes. La página continúa en modo demo.
 - [x] Mantener el acceso directo sin sesión únicamente en entorno `demo`, con identificación visual inequívoca.
-- [ ] Exigir sesión válida dentro de cada mutación server-side. Organizer/submit/provisioning lo hacen, pero CRUD de personas, organizaciones, proveedores y relaciones no.
-- [ ] Resolver roles y `issuer_id` dentro de cada Server Action; el modelo existe, pero no está aplicado a todas las mutaciones del dashboard.
+- [x] Exigir sesión válida dentro de cada mutación server-side. `personas`, `organizaciones`, `proveedores` y `configuracion` usan `requireDashboardAdmin`; `credenciales` ya valida sesión y `issuer_id`.
+- [x] Resolver roles y `issuer_id` dentro de cada Server Action. Admin en CRUD de entidades/relaciones; `assertIssuerScope` en credenciales.
 - [x] Redirigir/rechazar desde layouts y rutas ya protegidas cuando no existe sesión válida o falta el rol requerido.
 - [x] Vincular la sesión con la wallet autorizada antes de aceptar el submit firmado.
 - [x] Conservar challenges de un uso, expiración, anti-replay, origin y RP ID exactos en los servicios.

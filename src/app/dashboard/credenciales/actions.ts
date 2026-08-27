@@ -297,6 +297,16 @@ export async function updateCredential(
     throw domainError('INTERNAL', 'Se requiere DATABASE_URL para actualizar credenciales');
   }
 
+  const actor = await requireActorFromSession();
+  const credentialResult = await query<{ issuer_entity_id: string }>(
+    'SELECT issuer_entity_id FROM credentials WHERE id = $1',
+    [credentialId]
+  );
+  if (credentialResult.rows.length === 0) {
+    throw domainError('NOT_FOUND', `Credencial ${credentialId} no encontrada`);
+  }
+  assertIssuerScope(actor, credentialResult.rows[0].issuer_entity_id);
+
   const setFields: string[] = [];
   const values: unknown[] = [];
   let idx = 1;

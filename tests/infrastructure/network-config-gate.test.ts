@@ -2,7 +2,6 @@ import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { Keypair } from '@stellar/stellar-sdk';
 import { getPublicConfig } from '@/infrastructure/config/env';
 import { getStellarNetworkConfig } from '@/infrastructure/stellar/networkConfig';
-import { isDomainError } from '@/domain/errors';
 
 describe('public secret gate', () => {
   beforeEach(() => {

@@ -2,6 +2,7 @@
 
 import { isPersistenceConfigured } from '@/infrastructure/config/env';
 import { query } from '@/infrastructure/database/pool';
+import { requireDashboardAdmin } from '@/infrastructure/auth/dashboardGuard';
 import { domainError } from '@/domain/errors';
 import {
   type Entity,
@@ -197,6 +198,8 @@ export async function createPerson(
     throw domainError('INTERNAL', 'Se requiere DATABASE_URL para crear personas');
   }
 
+  await requireDashboardAdmin();
+
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
 
@@ -247,6 +250,8 @@ export async function updatePerson(
   if (!isPersistenceConfigured()) {
     throw domainError('INTERNAL', 'Se requiere DATABASE_URL para actualizar personas');
   }
+
+  await requireDashboardAdmin();
 
   const now = new Date().toISOString();
 
@@ -319,6 +324,8 @@ export async function deletePerson(entityId: string): Promise<void> {
   if (!isPersistenceConfigured()) {
     throw domainError('INTERNAL', 'Se requiere DATABASE_URL para eliminar personas');
   }
+
+  await requireDashboardAdmin();
 
   await query(
     "UPDATE entities SET active = false, status = 'archived', updated_at = NOW() WHERE id = $1",

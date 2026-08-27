@@ -2,6 +2,7 @@
 
 import { isPersistenceConfigured } from '@/infrastructure/config/env';
 import { query } from '@/infrastructure/database/pool';
+import { requireDashboardAdmin } from '@/infrastructure/auth/dashboardGuard';
 import { domainError } from '@/domain/errors';
 import {
   type Entity,
@@ -126,6 +127,8 @@ export async function createRelationship(
     throw domainError('INTERNAL', 'Se requiere DATABASE_URL para crear relaciones');
   }
 
+  await requireDashboardAdmin();
+
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
 
@@ -156,6 +159,8 @@ export async function deleteRelationship(id: string): Promise<void> {
   if (!isPersistenceConfigured()) {
     throw domainError('INTERNAL', 'Se requiere DATABASE_URL para eliminar relaciones');
   }
+
+  await requireDashboardAdmin();
 
   await query(
     `UPDATE relationships SET status = 'archived', updated_at = NOW() WHERE id = $1`,
