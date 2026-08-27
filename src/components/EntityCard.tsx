@@ -1,7 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { User, Building2, Truck, Calendar, MapPin, ChevronRight } from 'lucide-react';
-import { Entity, Person, Organization, Provider, Event } from '../lib/db';
+import type { Entity, Person, Organization, Provider, Event } from '@/domain/types/entities';
 import { StatusBadge, StellarStatusBadge } from './ui/Badge';
 
 interface EntityCardProps {

@@ -4,7 +4,14 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Calendar, MapPin, Trophy, Truck, ArrowLeft, ShieldCheck, Users } from 'lucide-react';
 import { PublicLayout } from '../../../components/PublicLayout';
-import { db, Event, Entity, Organization, Provider } from '../../../lib/db';
+import {
+  getPublicEventBySlug,
+  getPublicRelationships,
+  getPublicOrganizationByEntityId,
+  getPublicPersonByEntityId,
+  getPublicProviderByEntityId,
+} from '../../actions';
+import type { Event, Entity, Organization, Provider, Person } from '@/domain/types/entities';
 import { Button } from '../../../components/ui/Button';
 import { EntityCard } from '../../../components/EntityCard';
 
@@ -15,7 +22,7 @@ export default function EventPublicPage() {
 
   const [event, setEvent] = useState<(Event & { entity: Entity }) | null>(null);
   const [organizer, setOrganizer] = useState<Organization | null>(null);
-  const [participants, setParticipants] = useState<{ entity: Entity; org?: Organization | null; person?: any }[]>([]);
+  const [participants, setParticipants] = useState<{ entity: Entity; org?: Organization | null; person?: Person | null }[]>([]);
   const [providers, setProviders] = useState<{ entity: Entity; provider: Provider }[]>([]);
   
   const [isLoading, setIsLoading] = useState(true);
@@ -23,7 +30,7 @@ export default function EventPublicPage() {
   useEffect(() => {
     async function loadEventData() {
       try {
-        const ev = await db.getEventBySlug(slug);
+        const ev = await getPublicEventBySlug(slug);
         if (!ev) {
           setIsLoading(false);
           return;
@@ -32,12 +39,12 @@ export default function EventPublicPage() {
 
         // Load organizer details
         if (ev.organizer_entity_id) {
-          const orgData = await db.getOrganizationByEntityId(ev.organizer_entity_id);
+          const orgData = await getPublicOrganizationByEntityId(ev.organizer_entity_id);
           setOrganizer(orgData);
         }
 
         // Load relationships context to this event
-        const rels = await db.getRelationships();
+        const rels = await getPublicRelationships();
         const eventRels = rels.filter(r => r.context_event_id === ev.id && r.status === 'active');
 
         // Extract schools/artists (participants)
@@ -50,10 +57,10 @@ export default function EventPublicPage() {
 
           if (rel.relationship_type === 'participant_of') {
             if (fromEntity.type === 'organization') {
-              const org = await db.getOrganizationByEntityId(fromEntity.id);
+              const org = await getPublicOrganizationByEntityId(fromEntity.id);
               participantList.push({ entity: fromEntity, org });
             } else if (fromEntity.type === 'person') {
-              const person = await db.getPersonByEntityId(fromEntity.id);
+              const person = await getPublicPersonByEntityId(fromEntity.id);
               participantList.push({ entity: fromEntity, person });
             }
           } else if (
@@ -64,7 +71,7 @@ export default function EventPublicPage() {
             rel.relationship_type === 'sponsor_of'
           ) {
             if (fromEntity.type === 'provider') {
-              const provider = await db.getProviderByEntityId(fromEntity.id);
+              const provider = await getPublicProviderByEntityId(fromEntity.id);
               if (provider) {
                 providerList.push({ entity: fromEntity, provider });
               }
