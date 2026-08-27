@@ -45,7 +45,9 @@ interface ChainCredential {
   hashSchema: number;
   revoked: boolean;
   revokedReasonHash: string | null;
+  revokedLedger: number | null;
   issuedLedger: number;
+  issuedBy: string;
 }
 
 /**
@@ -84,13 +86,14 @@ export class InMemoryChainTransport implements SorobanTransport {
     }
     const txHash = createHash('sha256').update(signedXdr).digest('hex');
     const error = this.validate(spec);
+    const ledger = ++this.ledger;
     if (error) {
-      this.pending.set(txHash, { status: 'FAILED', ledger: ++this.ledger });
+      this.pending.set(txHash, { status: 'FAILED', ledger });
     } else {
       this.apply(spec);
       const status = this.nextSubmissionStaysPending ? 'PENDING' : 'SUCCESS';
       this.nextSubmissionStaysPending = false;
-      this.pending.set(txHash, { status, ledger: ++this.ledger });
+      this.pending.set(txHash, { status, ledger });
     }
     return { txHash };
   }
@@ -140,10 +143,17 @@ export class InMemoryChainTransport implements SorobanTransport {
       return {
         credential_id: record.credentialId,
         token_id: record.tokenId,
+        issuer_id: record.issuerId,
+        issued_by: record.issuedBy,
+        subject_id: record.subjectId,
+        event_id: record.eventId,
+        credential_type: record.credentialType,
         metadata_hash: record.metadataHash,
         hash_schema: record.hashSchema,
         revoked: record.revoked,
         issued_ledger: record.issuedLedger,
+        revoked_ledger: record.revokedLedger,
+        revoked_reason_hash: record.revokedReasonHash,
         matches: true,
       };
     }
@@ -280,7 +290,9 @@ export class InMemoryChainTransport implements SorobanTransport {
           hashSchema: u32Of(spec.args[7]),
           revoked: false,
           revokedReasonHash: null,
+          revokedLedger: null,
           issuedLedger: this.ledger,
+          issuedBy: (spec.args[0] as { kind: 'address'; address: string }).address,
         });
         return;
       }
@@ -289,6 +301,7 @@ export class InMemoryChainTransport implements SorobanTransport {
         if (record && !record.revoked) {
           record.revoked = true;
           record.revokedReasonHash = optHexOf(spec.args[2]);
+          record.revokedLedger = this.ledger;
         }
         return;
       }

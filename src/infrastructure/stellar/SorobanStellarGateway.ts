@@ -32,6 +32,74 @@ function assertHex32(value: string, field: string): void {
   }
 }
 
+function toHexString(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'string') return value.toLowerCase();
+  if (Buffer.isBuffer(value)) return value.toString('hex');
+  if (ArrayBuffer.isView(value)) {
+    const buf = Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+    return buf.toString('hex');
+  }
+  return null;
+}
+
+function toNumber(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'number') return value;
+  if (typeof value === 'bigint') return Number(value);
+  return null;
+}
+
+function toBool(value: unknown): boolean | null {
+  if (typeof value === 'boolean') return value;
+  return null;
+}
+
+function toAddressString(value: unknown): string | null {
+  if (typeof value === 'string') return value;
+  if (value instanceof Address) return value.toString();
+  return null;
+}
+
+function credentialRecordMatches(
+  raw: unknown,
+  expected: NonNullable<StoredOperation['intent']['expected']>,
+  ledger: number | null,
+  kind: 'issue_credential' | 'revoke_credential'
+): boolean {
+  if (!raw || typeof raw !== 'object') return false;
+  const record = raw as Record<string, unknown>;
+
+  if (expected.credentialId !== undefined && toHexString(record.credential_id) !== expected.credentialId) return false;
+  if (expected.issuerId !== undefined && toHexString(record.issuer_id) !== expected.issuerId) return false;
+  if (expected.subjectId !== undefined && toHexString(record.subject_id) !== expected.subjectId) return false;
+  if (expected.eventId !== undefined && toHexString(record.event_id) !== expected.eventId) return false;
+  if (expected.credentialType !== undefined && toNumber(record.credential_type) !== expected.credentialType) return false;
+  if (expected.metadataHash !== undefined && toHexString(record.metadata_hash) !== expected.metadataHash) return false;
+  if (expected.hashSchema !== undefined && toNumber(record.hash_schema) !== expected.hashSchema) return false;
+  if (expected.issuedBy !== undefined && toAddressString(record.issued_by) !== expected.issuedBy) return false;
+
+  const revoked = toBool(record.revoked);
+  if (expected.revoked !== undefined && revoked !== expected.revoked) return false;
+
+  if (kind === 'issue_credential') {
+    if (revoked !== false) return false;
+    const issuedLedger = toNumber(record.issued_ledger);
+    if (ledger !== null && issuedLedger !== null && issuedLedger !== ledger) return false;
+    return true;
+  }
+
+  if (kind === 'revoke_credential') {
+    if (revoked !== true) return false;
+    const revokedLedger = toNumber(record.revoked_ledger);
+    if (ledger !== null && revokedLedger !== null && revokedLedger !== ledger) return false;
+    if (expected.revokedReasonHash !== undefined && toHexString(record.revoked_reason_hash) !== expected.revokedReasonHash) return false;
+    return true;
+  }
+
+  return false;
+}
+
 type IntentKind = 'register_entity' | 'issue_credential' | 'revoke_credential';
 
 /**
@@ -383,7 +451,7 @@ export class SorobanStellarGateway implements StellarGateway {
         subjectKey: await this.subjectKeyFor(command, kind),
         prepared,
         signed: null,
-        expected: this.expectedFor(command, kind),
+        expected: await this.expectedFor(command, kind),
       },
     });
     console.log('[SorobanStellarGateway.prepare] created operation', operationId, 'phase:', phase, 'prepared null:', !prepared);
@@ -458,21 +526,20 @@ export class SorobanStellarGateway implements StellarGateway {
   }
 
   private async readbackMatches(op: StoredOperation): Promise<boolean> {
-    // Readback must verify the postcondition of each intent kind.
     const raw = await this.transport.readback(this.readbackSpecFor(op));
     if (raw === null) return false;
 
     switch (op.intent.kind) {
-      case 'register_entity':
-      case 'issue_credential': {
-        // verify_entity / verify_credential return a bool.
+      case 'register_entity': {
         return raw === true;
       }
+      case 'issue_credential': {
+        if (!op.intent.expected) return false;
+        return credentialRecordMatches(raw, op.intent.expected, op.state.ledger, 'issue_credential');
+      }
       case 'revoke_credential': {
-        const record = raw as {
-          revoked?: boolean;
-        };
-        return record.revoked === true;
+        if (!op.intent.expected) return false;
+        return credentialRecordMatches(raw, op.intent.expected, op.state.ledger, 'revoke_credential');
       }
       case 'link_wallet':
       case 'admin_provision':
@@ -504,16 +571,11 @@ export class SorobanStellarGateway implements StellarGateway {
       };
     }
 
-    if (op.intent.kind === 'issue_credential') {
-      const expected = op.intent.expected;
+    if (op.intent.kind === 'issue_credential' || op.intent.kind === 'revoke_credential') {
       return {
         contractId,
-        method: 'verify_credential',
-        args: [
-          bytes32(op.intent.subjectKey),
-          bytes32(expected?.metadataHash ?? '0'.repeat(64)),
-          u32(expected?.hashSchema ?? 0),
-        ],
+        method: 'get_credential',
+        args: [bytes32(op.intent.subjectKey)],
         actorAddress: op.intent.actorAddress,
         feePayerAddress: this.config.feePayerAddress ?? undefined,
       };
@@ -528,10 +590,10 @@ export class SorobanStellarGateway implements StellarGateway {
     };
   }
 
-  private expectedFor(
+  private async expectedFor(
     command: RegisterEntityCommand | IssueCredentialCommand | RevokeCredentialCommand,
     kind: IntentKind
-  ): StoredOperation['intent']['expected'] {
+  ): Promise<StoredOperation['intent']['expected']> {
     switch (kind) {
       case 'register_entity': {
         const c = command as RegisterEntityCommand;
@@ -539,10 +601,36 @@ export class SorobanStellarGateway implements StellarGateway {
       }
       case 'issue_credential': {
         const c = command as IssueCredentialCommand;
-        return { metadataHash: c.metadataHash, hashSchema: c.hashSchema };
+        const [credentialId, issuerId, subjectId, eventId] = await Promise.all([
+          this.canonicalHash.hashDocument('culturago.credential.v1', c.credentialId),
+          this.canonicalHash.hashDocument('culturago.entity.v1', c.issuerId),
+          this.canonicalHash.hashDocument('culturago.entity.v1', c.subjectId),
+          this.canonicalHash.hashDocument('culturago.entity.v1', c.eventId),
+        ]);
+        return {
+          credentialId,
+          issuerId,
+          subjectId,
+          eventId,
+          credentialType: c.credentialType,
+          metadataHash: c.metadataHash,
+          hashSchema: c.hashSchema,
+          issuedBy: c.actorAddress,
+          revoked: false,
+        };
       }
-      case 'revoke_credential':
-        return { revoked: true };
+      case 'revoke_credential': {
+        const c = command as RevokeCredentialCommand;
+        const credentialId = await this.canonicalHash.hashDocument(
+          'culturago.credential.v1',
+          c.credentialId
+        );
+        return {
+          credentialId,
+          revoked: true,
+          revokedReasonHash: c.reasonHash,
+        };
+      }
     }
   }
 

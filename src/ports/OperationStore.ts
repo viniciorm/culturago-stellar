@@ -28,6 +28,16 @@ export interface StoredOperation {
       metadataHash?: string;
       hashSchema?: number;
       revoked?: boolean;
+      credentialId?: string;
+      issuerId?: string;
+      subjectId?: string;
+      eventId?: string;
+      credentialType?: number;
+      issuedBy?: string;
+      tokenId?: number;
+      revokedLedger?: number;
+      revokedReasonHash?: string | null;
+      issuedLedger?: number;
     };
   };
   /** Number of processing attempts for exponential backoff. */
