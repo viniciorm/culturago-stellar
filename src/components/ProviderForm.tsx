@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Input } from './ui/Input';
 import { Select } from './ui/Select';
 import { Button } from './ui/Button';
-import { Entity, Provider } from '../lib/db';
+import type { Entity, Provider } from '@/domain/types/entities';
 
 interface ProviderFormProps {
   initialEntity?: Entity | null;

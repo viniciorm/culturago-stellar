@@ -4,7 +4,11 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Truck, Award, MapPin, Globe, Mail, Phone, User } from 'lucide-react';
 import { PublicLayout } from '../../../components/PublicLayout';
-import { db, Entity, Provider, Credential } from '../../../lib/db';
+import {
+  getPublicProviderByEntitySlug,
+  getPublicCredentialsBySubjectId,
+} from '../../actions';
+import type { Entity, Provider, Credential } from '@/domain/types/entities';
 import { QRCodeBlock } from '../../../components/ui/QRCodeBlock';
 import { StatusBadge, StellarStatusBadge } from '../../../components/ui/Badge';
 import { Button } from '../../../components/ui/Button';
@@ -21,7 +25,7 @@ export default function ProviderPublicPage() {
   useEffect(() => {
     async function loadProviderData() {
       try {
-        const data = await db.getProviderByEntitySlug(slug);
+        const data = await getPublicProviderByEntitySlug(slug);
         if (!data) {
           setIsLoading(false);
           return;
@@ -29,8 +33,8 @@ export default function ProviderPublicPage() {
         setProvider(data);
 
         // Find credentials
-        const creds = await db.getCredentials();
-        const providerCreds = creds.filter(c => c.subject_entity_id === data.entity_id && c.status === 'issued');
+        const creds = await getPublicCredentialsBySubjectId(data.entity_id);
+        const providerCreds = creds.filter(c => c.status === 'issued');
         setCredentials(providerCreds);
 
       } catch (e) {

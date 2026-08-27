@@ -836,3 +836,290 @@ export async function getPublicProviderByEntityId(
 
   return mapRowToProvider(result.rows[0]);
 }
+
+export async function getPublicOrganizationByEntitySlug(
+  slug: string
+): Promise<(Organization & { entity: Entity }) | null> {
+  if (!isPersistenceConfigured()) {
+    return null;
+  }
+
+  const result = await query<RawOrgRow>(`
+    SELECT
+      e.id,
+      e.kind,
+      e.display_name,
+      e.slug,
+      e.country,
+      e.city,
+      e.status,
+      e.is_public,
+      e.active,
+      e.latest_version,
+      e.created_at,
+      e.updated_at,
+      o.organization_type,
+      o.website,
+      o.instagram,
+      o.contact_name,
+      o.contact_email,
+      o.contact_phone,
+      w.wallet_address,
+      w.wallet_status,
+      ev.metadata_hash,
+      so.phase AS stellar_phase,
+      so.tx_hash AS stellar_tx_hash
+    FROM entities e
+    JOIN organizations o ON o.entity_id = e.id
+    LEFT JOIN LATERAL (
+      SELECT wallet_address, wallet_status
+      FROM wallets
+      WHERE entity_id = e.id
+      ORDER BY
+        CASE wallet_status
+          WHEN 'claimed' THEN 0
+          WHEN 'reserved' THEN 1
+          WHEN 'none' THEN 2
+          ELSE 3
+        END,
+        created_at DESC
+      LIMIT 1
+    ) w ON true
+    LEFT JOIN LATERAL (
+      SELECT metadata_hash
+      FROM entity_versions
+      WHERE entity_id = e.id
+      ORDER BY version DESC
+      LIMIT 1
+    ) ev ON true
+    LEFT JOIN LATERAL (
+      SELECT phase, tx_hash
+      FROM stellar_operations
+      WHERE subject_key = culturago_canonical_hash('culturago.entity.v1', to_json(e.id)::text)
+        AND operation_type = 'register_entity'
+      ORDER BY
+        CASE phase WHEN 'confirmed' THEN 0 ELSE 1 END,
+        created_at DESC
+      LIMIT 1
+    ) so ON true
+    WHERE e.kind = 'organization' AND e.active = true AND e.is_public = true AND e.slug = $1
+    LIMIT 1
+  `, [slug]);
+
+  if (result.rows.length === 0) {
+    return null;
+  }
+
+  return mapRowToOrganization(result.rows[0]);
+}
+
+export async function getPublicPersonByEntitySlug(
+  slug: string
+): Promise<(Person & { entity: Entity }) | null> {
+  if (!isPersistenceConfigured()) {
+    return null;
+  }
+
+  const result = await query<RawPersonRow>(`
+    SELECT
+      e.id,
+      e.kind,
+      e.display_name,
+      e.slug,
+      e.country,
+      e.city,
+      e.status,
+      e.is_public,
+      e.active,
+      e.latest_version,
+      e.created_at,
+      e.updated_at,
+      p.legal_name,
+      p.artistic_name,
+      p.email,
+      p.phone,
+      p.instagram,
+      p.bio,
+      p.photo_url,
+      p.main_role,
+      w.wallet_address,
+      w.wallet_status,
+      ev.metadata_hash,
+      so.phase AS stellar_phase,
+      so.tx_hash AS stellar_tx_hash
+    FROM entities e
+    JOIN people p ON p.entity_id = e.id
+    LEFT JOIN LATERAL (
+      SELECT wallet_address, wallet_status
+      FROM wallets
+      WHERE entity_id = e.id
+      ORDER BY
+        CASE wallet_status
+          WHEN 'claimed' THEN 0
+          WHEN 'reserved' THEN 1
+          WHEN 'none' THEN 2
+          ELSE 3
+        END,
+        created_at DESC
+      LIMIT 1
+    ) w ON true
+    LEFT JOIN LATERAL (
+      SELECT metadata_hash
+      FROM entity_versions
+      WHERE entity_id = e.id
+      ORDER BY version DESC
+      LIMIT 1
+    ) ev ON true
+    LEFT JOIN LATERAL (
+      SELECT phase, tx_hash
+      FROM stellar_operations
+      WHERE subject_key = culturago_canonical_hash('culturago.entity.v1', to_json(e.id)::text)
+        AND operation_type = 'register_entity'
+      ORDER BY
+        CASE phase WHEN 'confirmed' THEN 0 ELSE 1 END,
+        created_at DESC
+      LIMIT 1
+    ) so ON true
+    WHERE e.kind = 'person' AND e.active = true AND e.is_public = true AND e.slug = $1
+    LIMIT 1
+  `, [slug]);
+
+  if (result.rows.length === 0) {
+    return null;
+  }
+
+  return mapRowToPerson(result.rows[0]);
+}
+
+export async function getPublicProviderByEntitySlug(
+  slug: string
+): Promise<(Provider & { entity: Entity }) | null> {
+  if (!isPersistenceConfigured()) {
+    return null;
+  }
+
+  const result = await query<RawProviderRow>(`
+    SELECT
+      e.id,
+      e.kind,
+      e.display_name,
+      e.slug,
+      e.country,
+      e.city,
+      e.status,
+      e.is_public,
+      e.active,
+      e.latest_version,
+      e.created_at,
+      e.updated_at,
+      p.provider_type,
+      p.contact_name,
+      p.email,
+      p.phone,
+      p.instagram,
+      p.website,
+      p.public_description,
+      w.wallet_address,
+      w.wallet_status,
+      ev.metadata_hash,
+      so.phase AS stellar_phase,
+      so.tx_hash AS stellar_tx_hash
+    FROM entities e
+    JOIN providers p ON p.entity_id = e.id
+    LEFT JOIN LATERAL (
+      SELECT wallet_address, wallet_status
+      FROM wallets
+      WHERE entity_id = e.id
+      ORDER BY
+        CASE wallet_status
+          WHEN 'claimed' THEN 0
+          WHEN 'reserved' THEN 1
+          WHEN 'none' THEN 2
+          ELSE 3
+        END,
+        created_at DESC
+      LIMIT 1
+    ) w ON true
+    LEFT JOIN LATERAL (
+      SELECT metadata_hash
+      FROM entity_versions
+      WHERE entity_id = e.id
+      ORDER BY version DESC
+      LIMIT 1
+    ) ev ON true
+    LEFT JOIN LATERAL (
+      SELECT phase, tx_hash
+      FROM stellar_operations
+      WHERE subject_key = culturago_canonical_hash('culturago.entity.v1', to_json(e.id)::text)
+        AND operation_type = 'register_entity'
+      ORDER BY
+        CASE phase WHEN 'confirmed' THEN 0 ELSE 1 END,
+        created_at DESC
+      LIMIT 1
+    ) so ON true
+    WHERE e.kind = 'provider' AND e.active = true AND e.is_public = true AND e.slug = $1
+    LIMIT 1
+  `, [slug]);
+
+  if (result.rows.length === 0) {
+    return null;
+  }
+
+  return mapRowToProvider(result.rows[0]);
+}
+
+export async function getPublicCredentialsBySubjectId(
+  subjectEntityId: string
+): Promise<PopulatedCredential[]> {
+  if (!isPersistenceConfigured()) {
+    return [];
+  }
+
+  const result = await query<PublicCredentialRow>(`
+    SELECT
+      c.id,
+      c.credential_code,
+      c.issuer_entity_id,
+      c.subject_entity_id,
+      c.event_id,
+      c.credential_type,
+      c.metadata_hash,
+      c.hash_schema,
+      c.status,
+      c.issued_intent_at,
+      c.issued_ledger,
+      c.revoked_ledger,
+      c.revoked_reason_hash,
+      c.revoked_at,
+      c.created_at,
+      c.updated_at,
+      c.title,
+      c.description,
+      ie.display_name AS issuer_display_name,
+      se.display_name AS subject_display_name,
+      e.name AS event_name,
+      e.slug AS event_slug,
+      e.year AS event_year,
+      e.start_date AS event_start_date,
+      so.phase AS stellar_phase,
+      so.tx_hash AS stellar_tx_hash
+    FROM credentials c
+    JOIN entities ie ON ie.id = c.issuer_entity_id
+    JOIN entities se ON se.id = c.subject_entity_id
+    JOIN events e ON e.entity_id = c.event_id
+    LEFT JOIN LATERAL (
+      SELECT phase, tx_hash
+      FROM stellar_operations
+      WHERE subject_key = culturago_canonical_hash('culturago.credential.v1', to_json(c.id)::text)
+        AND operation_type = 'issue_credential'
+      ORDER BY
+        CASE phase WHEN 'confirmed' THEN 0 ELSE 1 END,
+        created_at DESC
+      LIMIT 1
+    ) so ON true
+    WHERE c.subject_entity_id = $1
+    ORDER BY c.issued_intent_at DESC
+  `, [subjectEntityId]);
+
+  return result.rows.map(mapRowToPopulatedCredential);
+}

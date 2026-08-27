@@ -14,9 +14,9 @@ import {
   Cpu,
   Search
 } from 'lucide-react';
-import { 
-  db, 
-  Event, 
+import { db } from '../../../../lib/db';
+import type {
+  Event,
   Entity, 
   Person, 
   Organization, 
@@ -25,7 +25,7 @@ import {
   PopulatedRelationship,
   PopulatedCredential,
   StellarStatus
-} from '../../../../lib/db';
+} from '@/domain/types/entities';
 import { Button } from '../../../../components/ui/Button';
 import { Tabs } from '../../../../components/ui/Tabs';
 import { Table } from '../../../../components/ui/Table';

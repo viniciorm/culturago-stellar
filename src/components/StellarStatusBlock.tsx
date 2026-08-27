@@ -9,7 +9,7 @@ import {
   Globe,
   Loader2
 } from 'lucide-react';
-import { Entity, Credential } from '../lib/db';
+import type { Entity, Credential } from '@/domain/types/entities';
 import { Button } from './ui/Button';
 
 interface StellarStatusBlockProps {

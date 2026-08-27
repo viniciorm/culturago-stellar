@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Input } from './ui/Input';
 import { Select } from './ui/Select';
 import { Button } from './ui/Button';
-import { Entity } from '../lib/db';
+import type { Entity } from '@/domain/types/entities';
 
 interface CredentialFormProps {
   entities: Entity[];

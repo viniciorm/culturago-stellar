@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Plus, Building2, Search, Trash2, Edit2, ExternalLink } from 'lucide-react';
-import { Entity, Organization } from '../../../lib/db';
+import type { Entity, Organization } from '@/domain/types/entities';
 import { Button } from '../../../components/ui/Button';
 import { Table } from '../../../components/ui/Table';
 import { StellarStatusBadge } from '../../../components/ui/Badge';

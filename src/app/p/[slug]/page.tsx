@@ -4,7 +4,12 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Award, Key } from 'lucide-react';
 import { PublicLayout } from '../../../components/PublicLayout';
-import { db, Entity, Person, Credential } from '../../../lib/db';
+import {
+  getPublicPersonByEntitySlug,
+  getPublicRelationships,
+  getPublicCredentialsBySubjectId,
+} from '../../actions';
+import type { Entity, Person, Credential } from '@/domain/types/entities';
 import { PassportCard } from '../../../components/PassportCard';
 import { QRCodeBlock } from '../../../components/ui/QRCodeBlock';
 import { Button } from '../../../components/ui/Button';
@@ -22,7 +27,7 @@ export default function PersonPublicPassportPage() {
   useEffect(() => {
     async function loadPassportData() {
       try {
-        const data = await db.getPersonByEntitySlug(slug);
+        const data = await getPublicPersonByEntitySlug(slug);
         if (!data) {
           setIsLoading(false);
           return;
@@ -30,7 +35,7 @@ export default function PersonPublicPassportPage() {
         setPerson(data);
 
         // Find associated school (relationship: member_of, teacher_at, director_of)
-        const rels = await db.getRelationships();
+        const rels = await getPublicRelationships();
         const schoolRel = rels.find(
           r => r.from_entity_id === data.entity_id && 
           (r.relationship_type === 'member_of' || r.relationship_type === 'teacher_at' || r.relationship_type === 'director_of') &&
@@ -41,8 +46,8 @@ export default function PersonPublicPassportPage() {
         }
 
         // Find associated credentials
-        const creds = await db.getCredentials();
-        const userCreds = creds.filter(c => c.subject_entity_id === data.entity_id && c.status === 'issued');
+        const creds = await getPublicCredentialsBySubjectId(data.entity_id);
+        const userCreds = creds.filter(c => c.status === 'issued');
         setCredentials(userCreds);
 
       } catch (e) {

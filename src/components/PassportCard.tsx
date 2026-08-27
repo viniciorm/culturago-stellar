@@ -1,6 +1,6 @@
 import React from 'react';
 import { User, Award } from 'lucide-react';
-import { Entity, Person } from '../lib/db';
+import type { Entity, Person } from '@/domain/types/entities';
 import { VerificationBadge, StellarStatusBadge } from './ui/Badge';
 
 interface PassportCardProps {

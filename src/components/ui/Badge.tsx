@@ -1,6 +1,6 @@
 import React from 'react';
 import { CheckCircle2, AlertTriangle, XCircle, Clock, ShieldCheck, Wallet, RefreshCw } from 'lucide-react';
-import { EntityStatus, StellarStatus, WalletStatus } from '../../lib/db';
+import type { EntityStatus, StellarStatus, WalletStatus } from '@/domain/types/entities';
 
 // --- Verification Status Badge ---
 interface StatusBadgeProps {

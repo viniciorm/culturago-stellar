@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Plus, Award, Search, Cpu, ExternalLink } from 'lucide-react';
-import { Entity, PopulatedCredential } from '../../../lib/db';
+import type { Entity, PopulatedCredential } from '@/domain/types/entities';
 import {
   listCredentials,
   listEntities,

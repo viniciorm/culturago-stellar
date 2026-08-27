@@ -4,7 +4,13 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Building2, Award, MapPin, Globe, Users } from 'lucide-react';
 import { PublicLayout } from '../../../components/PublicLayout';
-import { db, Entity, Organization, Credential, Person } from '../../../lib/db';
+import {
+  getPublicOrganizationByEntitySlug,
+  getPublicRelationships,
+  getPublicPersonByEntityId,
+  getPublicCredentialsBySubjectId,
+} from '../../actions';
+import type { Entity, Organization, Credential, Person } from '@/domain/types/entities';
 import { QRCodeBlock } from '../../../components/ui/QRCodeBlock';
 import { StatusBadge, StellarStatusBadge } from '../../../components/ui/Badge';
 import { Button } from '../../../components/ui/Button';
@@ -22,7 +28,7 @@ export default function OrganizationPublicPage() {
   useEffect(() => {
     async function loadOrgData() {
       try {
-        const data = await db.getOrganizationByEntitySlug(slug);
+        const data = await getPublicOrganizationByEntitySlug(slug);
         if (!data) {
           setIsLoading(false);
           return;
@@ -30,14 +36,14 @@ export default function OrganizationPublicPage() {
         setOrg(data);
 
         // Find associated members (relationship where to_entity_id = org.entity_id)
-        const rels = await db.getRelationships();
+        const rels = await getPublicRelationships();
         const orgRels = rels.filter(r => r.to_entity_id === data.entity_id && r.status === 'active');
         
         const memberList: typeof members = [];
         for (const rel of orgRels) {
           const fromEntity = rel.fromEntity;
           if (fromEntity && fromEntity.type === 'person') {
-            const person = await db.getPersonByEntityId(fromEntity.id);
+            const person = await getPublicPersonByEntityId(fromEntity.id);
             if (person) {
               memberList.push({ entity: fromEntity, person, relType: rel.relationship_type });
             }
@@ -46,8 +52,8 @@ export default function OrganizationPublicPage() {
         setMembers(memberList);
 
         // Find credentials
-        const creds = await db.getCredentials();
-        const orgCreds = creds.filter(c => c.subject_entity_id === data.entity_id && c.status === 'issued');
+        const creds = await getPublicCredentialsBySubjectId(data.entity_id);
+        const orgCreds = creds.filter(c => c.status === 'issued');
         setCredentials(orgCreds);
 
       } catch (e) {
