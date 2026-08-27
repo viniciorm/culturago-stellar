@@ -17,6 +17,8 @@ export interface ActorContext {
   issuerEntityIds: readonly string[];
   /** Person entity linked to this account, if any. */
   personEntityId: string | null;
+  /** On-chain address (classic G... or smart-wallet C...) used to sign operations. */
+  walletAddress: string | null;
   /** True only for controlled test/service identities, never for real users. */
   isServiceIdentity: boolean;
 }
@@ -48,6 +50,7 @@ export function createTestActor(overrides: Partial<ActorContext> = {}): ActorCon
     role: 'admin',
     issuerEntityIds: [],
     personEntityId: null,
+    walletAddress: 'G_DEMO_ACTOR',
     isServiceIdentity: true,
     ...overrides,
   };

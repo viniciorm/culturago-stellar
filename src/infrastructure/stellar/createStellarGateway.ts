@@ -1,4 +1,5 @@
 import 'server-only';
+import { OperationStore } from '../../ports/OperationStore';
 import { StellarGateway } from '../../ports/StellarGateway';
 import { createMockStellarGateway } from './MockStellarGateway';
 import { InMemoryOperationStore } from './InMemoryOperationStore';
@@ -18,7 +19,12 @@ const inMemoryStore = new InMemoryOperationStore();
  * - testnet/mainnet: PostgreSQL operation store when DATABASE_URL is set;
  *   otherwise in-memory (local dev / demo fallback only).
  */
-export function createStellarGateway(): { gateway: StellarGateway } {
+export interface StellarGatewayBundle {
+  gateway: StellarGateway;
+  store: OperationStore;
+}
+
+export function createStellarGateway(): StellarGatewayBundle {
   const env = process.env.NEXT_PUBLIC_CULTURAGO_ENV;
   if (env === 'demo') {
     return createMockStellarGateway({ signer: null });
@@ -28,5 +34,5 @@ export function createStellarGateway(): { gateway: StellarGateway } {
   const store = isPersistenceConfigured() ? new PostgreSQLOperationStore() : inMemoryStore;
   console.log('[createStellarGateway] persistence configured:', isPersistenceConfigured(), 'store:', store.constructor.name);
   const gateway = new SorobanStellarGateway(config, transport, store, null);
-  return { gateway };
+  return { gateway, store };
 }

@@ -276,8 +276,9 @@ export class SorobanStellarGateway implements StellarGateway {
     command: RegisterEntityCommand | IssueCredentialCommand | RevokeCredentialCommand,
     kind: IntentKind
   ): Promise<OperationState> {
+    const idempotencyKey = this.canonicalIdempotencyKey(command, kind);
     // Idempotency: the key binds to exactly one operation; never resubmit blind.
-    const existing = await this.store.findByIdempotencyKey(command.idempotencyKey);
+    const existing = await this.store.findByIdempotencyKey(idempotencyKey);
     if (existing) {
       if (existing.intent.fingerprint === (await this.fingerprintOfCommand(command, kind))) {
         return existing.state;
@@ -299,7 +300,7 @@ export class SorobanStellarGateway implements StellarGateway {
     if (sim.contractError) {
       const state: OperationState = {
         operationId,
-        idempotencyKey: command.idempotencyKey,
+        idempotencyKey,
         phase: 'failed_terminal',
         txHash: null,
         ledger: null,
@@ -331,7 +332,7 @@ export class SorobanStellarGateway implements StellarGateway {
       if (sim2.contractError) {
         const state2: OperationState = {
           operationId,
-          idempotencyKey: command.idempotencyKey,
+          idempotencyKey,
           phase: 'failed_terminal',
           txHash,
           ledger: null,
@@ -360,7 +361,7 @@ export class SorobanStellarGateway implements StellarGateway {
 
     const state: OperationState = {
       operationId,
-      idempotencyKey: command.idempotencyKey,
+      idempotencyKey,
       phase,
       txHash: null,
       ledger: null,
@@ -622,11 +623,29 @@ export class SorobanStellarGateway implements StellarGateway {
     return this.canonicalHash.hashDocument(schema, id);
   }
 
+  private canonicalIdempotencyKey(
+    command: RegisterEntityCommand | IssueCredentialCommand | RevokeCredentialCommand,
+    kind: IntentKind
+  ): string {
+    if (kind === 'issue_credential') {
+      const c = command as IssueCredentialCommand;
+      return `issue:${c.credentialId}`;
+    }
+    if (kind === 'revoke_credential') {
+      const c = command as RevokeCredentialCommand;
+      return `revoke:${c.credentialId}:${c.reasonHash ?? ''}`;
+    }
+    const c = command as RegisterEntityCommand;
+    return `register:${c.entityId}`;
+  }
+
   private async fingerprintOfCommand(
     command: RegisterEntityCommand | IssueCredentialCommand | RevokeCredentialCommand,
     kind: IntentKind
   ): Promise<string> {
-    return this.canonicalHash.hashDocument('culturago.fingerprint.v1', { kind, command });
+    const commandWithoutId = { ...command } as { idempotencyKey?: unknown };
+    delete commandWithoutId.idempotencyKey;
+    return this.canonicalHash.hashDocument('culturago.fingerprint.v1', { kind, command: commandWithoutId });
   }
 
   private async transition(

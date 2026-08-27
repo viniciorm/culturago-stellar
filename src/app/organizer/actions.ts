@@ -4,6 +4,8 @@ import { randomUUID } from 'crypto';
 import { redirect } from 'next/navigation';
 import { isPersistenceConfigured } from '@/infrastructure/config/env';
 import { requireActorFromSession } from '@/infrastructure/auth/getActorFromSession';
+import { assertIssuerScope } from '@/infrastructure/auth/actorContext';
+import { createStellarGateway } from '@/infrastructure/stellar/createStellarGateway';
 import { domainError } from '@/domain/errors';
 import { PostgreSQLDatabaseGateway } from '@/infrastructure/database/PostgreSQLDatabaseGateway';
 import {
@@ -85,10 +87,11 @@ export async function checkIn(formData: FormData): Promise<void> {
 }
 
 /**
- * Emite una credencial una vez confirmada la participación, y avanza el
- * estado de participación a credential_issued.
+ * Emite una credencial una vez confirmada la participación, guarda el registro
+ * local y prepara la operación on-chain. El cliente firma el payload y lo
+ * reenvía a /api/sign/submit.
  */
-export async function issueCredential(formData: FormData): Promise<void> {
+export async function issueCredential(formData: FormData) {
   const actor = await requireActorFromSession();
   ensurePersistence();
 
@@ -102,6 +105,12 @@ export async function issueCredential(formData: FormData): Promise<void> {
 
   if (!issuerId || !subjectId || !eventId || !credentialType || !title) {
     throw domainError('INVALID_INPUT', 'Faltan campos obligatorios');
+  }
+
+  assertIssuerScope(actor, issuerId);
+
+  if (!actor.walletAddress) {
+    throw domainError('UNAUTHORIZED', 'El operador no tiene una wallet on-chain configurada');
   }
 
   const participation = await db.getParticipation(subjectId, eventId);
@@ -132,7 +141,7 @@ export async function issueCredential(formData: FormData): Promise<void> {
   const metadataHash = await computeMetadataHash(metadataPayload);
   const hashSchema = 1;
 
-  await issueCredentialUseCase(
+  const record = await issueCredentialUseCase(
     { db, newId, now },
     {
       issuerId,
@@ -148,18 +157,34 @@ export async function issueCredential(formData: FormData): Promise<void> {
     }
   );
 
+  const bundle = createStellarGateway();
+  const state = await bundle.gateway.prepareIssueCredential({
+    idempotencyKey: `issue:${record.credentialId}`,
+    actorAddress: actor.walletAddress,
+    credentialId: record.credentialId,
+    issuerId,
+    subjectId,
+    eventId,
+    credentialType: record.credentialType,
+    metadataHash,
+    hashSchema,
+  });
+
+  const prepared = await bundle.gateway.getPreparedPayload(state.operationId);
+
   await advanceParticipation(
     { db, newId, now },
     { subjectId, eventId, to: 'credential_issued', actorId: actor.accountId }
   );
 
-  redirect('/organizer?ok=issue');
+  return { success: true as const, operation: state, prepared };
 }
 
 /**
- * Revoca una credencial previamente emitida.
+ * Revoca una credencial previamente emitida y prepara la operación on-chain.
+ * El cliente firma el payload y lo reenvía a /api/sign/submit.
  */
-export async function revokeCredential(formData: FormData): Promise<void> {
+export async function revokeCredential(formData: FormData) {
   const actor = await requireActorFromSession();
   ensurePersistence();
 
@@ -170,12 +195,28 @@ export async function revokeCredential(formData: FormData): Promise<void> {
     throw domainError('INVALID_INPUT', 'Se requiere credentialId');
   }
 
+  if (!actor.walletAddress) {
+    throw domainError('UNAUTHORIZED', 'El operador no tiene una wallet on-chain configurada');
+  }
+
   const reasonHash = await parseReasonHash(reason);
 
-  await revokeCredentialUseCase(
+  const record = await revokeCredentialUseCase(
     { db, now },
     { credentialId, operatorId: actor.accountId, reasonHash }
   );
 
-  redirect('/organizer?ok=revoke');
+  assertIssuerScope(actor, record.issuerId);
+
+  const bundle = createStellarGateway();
+  const state = await bundle.gateway.prepareRevokeCredential({
+    idempotencyKey: `revoke:${record.credentialId}:${record.revokedReasonHash ?? ''}`,
+    actorAddress: actor.walletAddress,
+    credentialId: record.credentialId,
+    reasonHash: record.revokedReasonHash,
+  });
+
+  const prepared = await bundle.gateway.getPreparedPayload(state.operationId);
+
+  return { success: true as const, operation: state, prepared };
 }

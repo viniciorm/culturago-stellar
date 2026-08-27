@@ -3,8 +3,9 @@ import { isPersistenceConfigured, getPublicConfig } from '@/infrastructure/confi
 import { getActorFromSession } from '@/infrastructure/auth/getActorFromSession';
 import { assertRole } from '@/infrastructure/auth/actorContext';
 import { listEntities, listCredentials } from '@/app/dashboard/credenciales/actions';
-import { CREDENTIAL_TYPES } from '@/domain/credentials/catalog';
-import { checkIn, issueCredential, revokeCredential } from './actions';
+import { checkIn } from './actions';
+import IssueCredentialForm from './IssueCredentialForm';
+import RevokeCredentialForm from './RevokeCredentialForm';
 
 interface PageProps {
   searchParams?: { ok?: string; error?: string };
@@ -83,55 +84,29 @@ export default async function OrganizerPanel({ searchParams }: PageProps) {
           <div className="bg-slate-900 rounded-lg p-6">
             <h2 className="font-semibold mb-2">Emitir credencial</h2>
             <p className="text-sm text-slate-400">Prepara y registra la emisión de una credencial.</p>
-            <form action={issueCredential} className="mt-4 space-y-3">
-              <select name="issuerId" required disabled={!persistence} className="w-full bg-slate-800 rounded p-2 text-sm disabled:opacity-50">
-                <option value="">Organización emisora</option>
-                {organizations.map((o) => (
-                  <option key={o.id} value={o.id}>{o.display_name}</option>
-                ))}
-              </select>
-              <select name="subjectId" required disabled={!persistence} className="w-full bg-slate-800 rounded p-2 text-sm disabled:opacity-50">
-                <option value="">Sujeto (persona)</option>
-                {people.map((p) => (
-                  <option key={p.id} value={p.id}>{p.display_name}</option>
-                ))}
-              </select>
-              <select name="eventId" required disabled={!persistence} className="w-full bg-slate-800 rounded p-2 text-sm disabled:opacity-50">
-                <option value="">Evento</option>
-                {events.map((e) => (
-                  <option key={e.id} value={e.id}>{e.display_name}</option>
-                ))}
-              </select>
-              <select name="credentialType" required disabled={!persistence} className="w-full bg-slate-800 rounded p-2 text-sm disabled:opacity-50">
-                <option value="">Tipo de credencial</option>
-                {Object.keys(CREDENTIAL_TYPES).map((type) => (
-                  <option key={type} value={type}>{type.replace(/_/g, ' ')}</option>
-                ))}
-              </select>
-              <input name="title" placeholder="Título" required disabled={!persistence} className="w-full bg-slate-800 rounded p-2 text-sm disabled:opacity-50" />
-              <input name="description" placeholder="Descripción" disabled={!persistence} className="w-full bg-slate-800 rounded p-2 text-sm disabled:opacity-50" />
-              <input name="credentialCode" placeholder="Código (opcional, autogenerado si vacío)" disabled={!persistence} className="w-full bg-slate-800 rounded p-2 text-sm disabled:opacity-50" />
-              <button type="submit" disabled={!persistence} className="w-full px-4 py-2 bg-slate-800 rounded hover:bg-slate-700 disabled:opacity-50">
-                Preparar
-              </button>
-            </form>
+            <IssueCredentialForm
+              environment={config.environment}
+              walletAddress={actor.walletAddress ?? ''}
+              people={people}
+              organizations={organizations}
+              events={events}
+              disabled={!persistence}
+            />
           </div>
 
           <div className="bg-slate-900 rounded-lg p-6">
             <h2 className="font-semibold mb-2">Revocar</h2>
             <p className="text-sm text-slate-400">Revoca una credencial vigente con motivo.</p>
-            <form action={revokeCredential} className="mt-4 space-y-3">
-              <select name="credentialId" required disabled={!persistence} className="w-full bg-slate-800 rounded p-2 text-sm disabled:opacity-50">
-                <option value="">Credencial</option>
-                {credentials.map((c) => (
-                  <option key={c.id} value={c.id}>{c.title} — {c.subjectEntity?.display_name}</option>
-                ))}
-              </select>
-              <input name="reason" placeholder="Motivo de revocación" disabled={!persistence} className="w-full bg-slate-800 rounded p-2 text-sm disabled:opacity-50" />
-              <button type="submit" disabled={!persistence} className="w-full px-4 py-2 bg-slate-800 rounded hover:bg-slate-700 disabled:opacity-50">
-                Revocar
-              </button>
-            </form>
+            <RevokeCredentialForm
+              environment={config.environment}
+              walletAddress={actor.walletAddress ?? ''}
+              credentials={credentials.map((c) => ({
+                id: c.id,
+                title: c.title,
+                subject_name: c.subjectEntity?.display_name,
+              }))}
+              disabled={!persistence}
+            />
           </div>
         </div>
       </div>

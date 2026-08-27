@@ -26,6 +26,7 @@ export async function resolveActor(
     role: (roles[0] as ActorContext['role']) ?? 'visitor',
     issuerEntityIds,
     personEntityId: account.personEntityId,
+    walletAddress: account.walletContractAddress,
     isServiceIdentity: false,
   };
 }
