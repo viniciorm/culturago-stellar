@@ -7,7 +7,6 @@ export class InMemoryOperationStore implements OperationStore {
   private byIdempotencyKey = new Map<string, string>();
   private claims = new Map<string, { workerId: string; until: number }>();
   private actionable = new Set<string>([
-    'awaiting_signature',
     'signed',
     'submitted',
     'confirming',

@@ -3,7 +3,6 @@ import { domainError } from '../../domain/errors';
 import { Logger } from '../observability/Logger';
 import { metrics } from '../observability/Metrics';
 import { OperationStore, StoredOperation } from '../../ports/OperationStore';
-import { SignerPort } from '../../ports/SignerPort';
 import { StellarGateway } from '../../ports/StellarGateway';
 
 /**
@@ -11,8 +10,10 @@ import { StellarGateway } from '../../ports/StellarGateway';
  * two-phase chain gateway. It never re-sends blind: `claimBatch` is the only
  * source of work and the store owns the locking.
  *
- * - `awaiting_signature` → signer produces payload → gateway.submitSigned.
- * - `submitted`/`confirming`/`unknown`/`restoring`/`failed_retryable` → reconcile.
+ * The worker does NOT sign. Client-side signers produce the payload and the
+ * relay endpoint persists it in the `signed` phase. The worker only:
+ * - resubmits `signed` payloads after a crash,
+ * - reconciles `submitted`/`confirming`/`unknown`/`restoring`/`failed_retryable`.
  */
 export class StellarWorker {
   private running = false;
@@ -21,7 +22,6 @@ export class StellarWorker {
   constructor(
     private readonly store: OperationStore,
     private readonly gateway: StellarGateway,
-    private readonly signer: SignerPort | null,
     private readonly options: {
       batchSize: number;
       workerId: string;
@@ -87,17 +87,6 @@ export class StellarWorker {
       workerId: this.options.workerId,
     });
     switch (op.state.phase) {
-      case 'awaiting_signature':
-        metrics.increment('stellar.worker.signature');
-        if (!this.signer) {
-          throw domainError('UNAUTHORIZED', `worker ${this.options.workerId} has no signer for ${id}`);
-        }
-        if (!op.intent.prepared) {
-          throw domainError('INVALID_STATE_TRANSITION', `operation ${id} is missing prepared payload`);
-        }
-        const signed = await this.signer.sign(op.intent.prepared);
-        await this.gateway.submitSigned(id, signed.signedXdr, signed.signerAddress);
-        return;
       case 'signed':
         metrics.increment('stellar.worker.resubmit');
         if (!op.intent.signed) {

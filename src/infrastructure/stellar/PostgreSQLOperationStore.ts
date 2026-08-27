@@ -154,7 +154,7 @@ export class PostgreSQLOperationStore implements OperationStore {
          WHERE id IN (
            SELECT id
            FROM stellar_operations
-           WHERE phase IN ('awaiting_signature','signed','submitted','confirming','failed_retryable','unknown','restoring')
+           WHERE phase IN ('signed','submitted','confirming','failed_retryable','unknown','restoring')
              AND (next_retry_at IS NULL OR next_retry_at <= NOW())
              AND (claimed_until IS NULL OR claimed_until <= NOW())
              AND attempt_count < max_attempts

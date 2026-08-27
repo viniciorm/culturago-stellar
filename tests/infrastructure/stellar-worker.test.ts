@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { InMemoryIndexer } from '@/infrastructure/stellar/InMemoryIndexer';
 import { InMemoryTtlQueue } from '@/infrastructure/stellar/InMemoryTtlQueue';
-import { createMockStellarGateway, MockSigner } from '@/infrastructure/stellar/MockStellarGateway';
+import { createMockStellarGateway } from '@/infrastructure/stellar/MockStellarGateway';
 import { StellarWorker } from '@/infrastructure/stellar/StellarWorker';
 import { OperationStore, StoredOperation } from '@/ports/OperationStore';
 
@@ -129,7 +129,7 @@ function signedOperation(
 }
 
 describe('StellarWorker', () => {
-  it('processes an awaiting_signature operation to confirmed', async () => {
+  it('does not claim awaiting_signature operations', async () => {
     const bundle = createMockStellarGateway({ signer: null });
     const store = bundle.store;
     const gateway = bundle.gateway;
@@ -141,7 +141,7 @@ describe('StellarWorker', () => {
       { metadataHash: hex(9), hashSchema: 1 }
     );
 
-    const worker = new StellarWorker(store, gateway, new MockSigner(ACTOR), {
+    const worker = new StellarWorker(store, gateway, {
       batchSize: 10,
       workerId: 'w1',
       claimTtlSeconds: 10,
@@ -150,11 +150,10 @@ describe('StellarWorker', () => {
     });
 
     const count = await worker.runOneBatch();
-    expect(count).toBe(1);
+    expect(count).toBe(0);
 
     const final = await store.get(op.state.operationId);
-    expect(final?.state.phase).toBe('confirmed');
-    expect(final?.state.ledger).not.toBeNull();
+    expect(final?.state.phase).toBe('awaiting_signature');
   });
 
   it('reconciles an unknown operation', async () => {
@@ -165,7 +164,7 @@ describe('StellarWorker', () => {
     // converge to unknown (which is still the only safe non-dup answer).
     const op = await pendingReconcile(store, 'missing-tx-hash', hex(1));
 
-    const worker = new StellarWorker(store, gateway, null, {
+    const worker = new StellarWorker(store, gateway, {
       batchSize: 10,
       workerId: 'w2',
       claimTtlSeconds: 10,
@@ -189,7 +188,7 @@ describe('StellarWorker', () => {
     const signedXdr = JSON.stringify(envelope);
     const op = await signedOperation(store, hex(1), signedXdr);
 
-    const worker = new StellarWorker(store, gateway, null, {
+    const worker = new StellarWorker(store, gateway, {
       batchSize: 10,
       workerId: 'w3',
       claimTtlSeconds: 10,
@@ -209,16 +208,20 @@ describe('StellarWorker', () => {
     const store = bundle.store;
     const gateway = bundle.gateway;
     const prepared = `{"v":1,"mode":"unsigned","signature":null,"spec":{"method":"register_entity","args":[]}}`;
-    await pendingOperation(store, 'register_entity', hex(1), prepared);
+    const envelope = JSON.parse(prepared) as Record<string, unknown>;
+    envelope.mode = 'signed';
+    envelope.signature = 'demo-sig';
+    const signedXdr = JSON.stringify(envelope);
+    await signedOperation(store, hex(1), signedXdr);
 
-    const workerA = new StellarWorker(store, gateway, new MockSigner(ACTOR), {
+    const workerA = new StellarWorker(store, gateway, {
       batchSize: 10,
       workerId: 'A',
       claimTtlSeconds: 10,
       pollIntervalMs: 100,
       maxAttempts: 5,
     });
-    const workerB = new StellarWorker(store, gateway, null, {
+    const workerB = new StellarWorker(store, gateway, {
       batchSize: 10,
       workerId: 'B',
       claimTtlSeconds: 10,
