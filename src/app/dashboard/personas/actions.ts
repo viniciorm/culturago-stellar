@@ -2,7 +2,13 @@
 
 import { isPersistenceConfigured } from '@/infrastructure/config/env';
 import { query } from '@/infrastructure/database/pool';
-import { db, Entity, Person, StellarStatus, WalletStatus } from '@/lib/db';
+import { domainError } from '@/domain/errors';
+import {
+  type Entity,
+  type Person,
+  type StellarStatus,
+  type WalletStatus,
+} from '@/domain/types/entities';
 
 interface PersonFormEntityData {
   display_name: string;
@@ -105,12 +111,12 @@ function mapRowToPerson(row: RawPersonRow): Person & { entity: Entity } {
 }
 
 /**
- * Lists people from the real PostgreSQL persistence when configured,
- * otherwise falls back to the in-memory demo mock.
+ * Lists people from PostgreSQL. Returns an empty list when no DB is
+ * configured; the demo mock is no longer used.
  */
 export async function listPeople(): Promise<(Person & { entity: Entity })[]> {
   if (!isPersistenceConfigured()) {
-    return db.getPeople();
+    return [];
   }
 
   const result = await query<RawPersonRow>(`
@@ -188,8 +194,7 @@ export async function createPerson(
   personData: PersonFormPersonData
 ): Promise<void> {
   if (!isPersistenceConfigured()) {
-    await db.createPerson(entityData as any, personData as any);
-    return;
+    throw domainError('INTERNAL', 'Se requiere DATABASE_URL para crear personas');
   }
 
   const id = crypto.randomUUID();
@@ -240,8 +245,7 @@ export async function updatePerson(
   personData: Partial<PersonFormPersonData>
 ): Promise<void> {
   if (!isPersistenceConfigured()) {
-    await db.updatePerson(entityId, entityData as any, personData as any);
-    return;
+    throw domainError('INTERNAL', 'Se requiere DATABASE_URL para actualizar personas');
   }
 
   const now = new Date().toISOString();
@@ -313,8 +317,7 @@ export async function updatePerson(
  */
 export async function deletePerson(entityId: string): Promise<void> {
   if (!isPersistenceConfigured()) {
-    await db.deleteEntity(entityId);
-    return;
+    throw domainError('INTERNAL', 'Se requiere DATABASE_URL para eliminar personas');
   }
 
   await query(

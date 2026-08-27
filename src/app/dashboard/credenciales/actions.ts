@@ -13,14 +13,13 @@ import {
   numberToCredentialType,
 } from '@/lib/credentialMetadata';
 import {
-  db,
-  Credential,
-  Entity,
-  Event,
-  PopulatedCredential,
-  StellarStatus,
-  WalletStatus,
-} from '@/lib/db';
+  type Credential,
+  type Entity,
+  type Event,
+  type PopulatedCredential,
+  type StellarStatus,
+  type WalletStatus,
+} from '@/domain/types/entities';
 
 function deriveStellarStatus(phase: string | null): StellarStatus {
   if (!phase) return 'not_registered';
@@ -150,7 +149,7 @@ function mapRowToCredential(row: RawCredentialRow): PopulatedCredential {
  */
 export async function listCredentials(): Promise<PopulatedCredential[]> {
   if (!isPersistenceConfigured()) {
-    return db.getCredentials();
+    return [];
   }
 
   const result = await query<RawCredentialRow>(`
@@ -216,17 +215,12 @@ interface CreateCredentialInput {
 /**
  * Inserts a new credential into PostgreSQL. The metadata hash is a SHA-256 of
  * the canonical credential payload; the hash_schema is fixed at 1 for the
- * dashboard admin UI. Falls back to the demo mock when no DB is configured.
+ * dashboard admin UI.
+ * @param input
  */
 export async function createCredential(input: CreateCredentialInput): Promise<void> {
   if (!isPersistenceConfigured()) {
-    await db.createCredential({
-      ...input,
-      metadata_hash: null,
-      stellar_status: 'not_registered',
-      stellar_tx: null,
-    });
-    return;
+    throw domainError('INTERNAL', 'Se requiere DATABASE_URL para crear credenciales');
   }
 
   const credentialType = credentialTypeToNumber[input.credential_type];
@@ -300,8 +294,7 @@ export async function updateCredential(
   input: UpdateCredentialInput
 ): Promise<void> {
   if (!isPersistenceConfigured()) {
-    await db.updateCredential(credentialId, input);
-    return;
+    throw domainError('INTERNAL', 'Se requiere DATABASE_URL para actualizar credenciales');
   }
 
   const setFields: string[] = [];
@@ -380,7 +373,7 @@ function mapRowToEntity(row: RawEntityRow): Entity {
  */
 export async function listEntities(): Promise<Entity[]> {
   if (!isPersistenceConfigured()) {
-    return db.getEntities();
+    return [];
   }
 
   const result = await query<RawEntityRow>(`

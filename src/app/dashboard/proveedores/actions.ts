@@ -2,7 +2,13 @@
 
 import { isPersistenceConfigured } from '@/infrastructure/config/env';
 import { query } from '@/infrastructure/database/pool';
-import { db, Entity, Provider, StellarStatus, WalletStatus } from '@/lib/db';
+import { domainError } from '@/domain/errors';
+import {
+  type Entity,
+  type Provider,
+  type StellarStatus,
+  type WalletStatus,
+} from '@/domain/types/entities';
 
 interface ProviderFormEntityData {
   display_name: string;
@@ -105,7 +111,7 @@ function mapRowToProvider(row: RawProviderRow): Provider & { entity: Entity } {
 
 export async function listProviders(): Promise<(Provider & { entity: Entity })[]> {
   if (!isPersistenceConfigured()) {
-    return db.getProviders();
+    return [];
   }
 
   const result = await query<RawProviderRow>(`
@@ -178,8 +184,7 @@ export async function createProvider(
   providerData: ProviderFormProviderData
 ): Promise<void> {
   if (!isPersistenceConfigured()) {
-    await db.createProvider(entityData as any, providerData as any);
-    return;
+    throw domainError('INTERNAL', 'Se requiere DATABASE_URL para crear proveedores');
   }
 
   const id = crypto.randomUUID();
@@ -226,8 +231,7 @@ export async function updateProvider(
   providerData: Partial<ProviderFormProviderData>
 ): Promise<void> {
   if (!isPersistenceConfigured()) {
-    await db.updateProvider(entityId, entityData as any, providerData as any);
-    return;
+    throw domainError('INTERNAL', 'Se requiere DATABASE_URL para actualizar proveedores');
   }
 
   const now = new Date().toISOString();
@@ -294,8 +298,7 @@ export async function updateProvider(
 
 export async function deleteProvider(entityId: string): Promise<void> {
   if (!isPersistenceConfigured()) {
-    await db.deleteEntity(entityId);
-    return;
+    throw domainError('INTERNAL', 'Se requiere DATABASE_URL para eliminar proveedores');
   }
 
   await query(

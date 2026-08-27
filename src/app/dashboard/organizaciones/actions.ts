@@ -2,7 +2,13 @@
 
 import { isPersistenceConfigured } from '@/infrastructure/config/env';
 import { query } from '@/infrastructure/database/pool';
-import { db, Entity, Organization, StellarStatus, WalletStatus } from '@/lib/db';
+import { domainError } from '@/domain/errors';
+import {
+  type Entity,
+  type Organization,
+  type StellarStatus,
+  type WalletStatus,
+} from '@/domain/types/entities';
 
 interface OrgFormEntityData {
   display_name: string;
@@ -100,9 +106,13 @@ function mapRowToOrg(row: RawOrgRow): Organization & { entity: Entity } {
   return { ...org, entity };
 }
 
+/**
+ * Lists organizations from PostgreSQL. Returns an empty list when no DB is
+ * configured; the demo mock is no longer used.
+ */
 export async function listOrganizations(): Promise<(Organization & { entity: Entity })[]> {
   if (!isPersistenceConfigured()) {
-    return db.getOrganizations();
+    return [];
   }
 
   const result = await query<RawOrgRow>(`
@@ -174,8 +184,7 @@ export async function createOrganization(
   orgData: OrgFormOrgData
 ): Promise<void> {
   if (!isPersistenceConfigured()) {
-    await db.createOrganization(entityData as any, orgData as any);
-    return;
+    throw domainError('INTERNAL', 'Se requiere DATABASE_URL para crear organizaciones');
   }
 
   const id = crypto.randomUUID();
@@ -221,8 +230,7 @@ export async function updateOrganization(
   orgData: Partial<OrgFormOrgData>
 ): Promise<void> {
   if (!isPersistenceConfigured()) {
-    await db.updateOrganization(entityId, entityData as any, orgData as any);
-    return;
+    throw domainError('INTERNAL', 'Se requiere DATABASE_URL para actualizar organizaciones');
   }
 
   const now = new Date().toISOString();
@@ -288,8 +296,7 @@ export async function updateOrganization(
 
 export async function deleteOrganization(entityId: string): Promise<void> {
   if (!isPersistenceConfigured()) {
-    await db.deleteEntity(entityId);
-    return;
+    throw domainError('INTERNAL', 'Se requiere DATABASE_URL para eliminar organizaciones');
   }
 
   await query(
