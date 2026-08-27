@@ -32,9 +32,12 @@
     ]
   },
   "smartWallet": {
-    "wasmHashAllowlist": [],
+    "wasmHashAllowlist": [
+      "fdefad64b96837147e1c333e51f537b696eab925e9f147e63d597c04e3c903f0"
+    ],
     "implementation": "passkey-kit",
-    "version": "0.16.5"
+    "version": "0.16.5",
+    "source": "https://github.com/stellar/passkey-kit/tree/main/docs/deployments-testnet-2026-07-11.md"
   },
   "tools": {
     "stellarCli": "27.1.0",

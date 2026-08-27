@@ -130,6 +130,7 @@ export class PasskeyKitSigner implements SignerPort {
     try {
       const options: import('passkey-kit').ConnectOptions = {
         getContractId: async () => this.contractId,
+        verifyWasmHash: true,
       };
       if (keyIdBase64) {
         options.keyId = keyIdBase64;

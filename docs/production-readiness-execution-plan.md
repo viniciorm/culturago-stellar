@@ -36,8 +36,8 @@ Este estado fue contrastado con el código y con gates locales ejecutados nuevam
 | F2.1 — Perímetro HTTP | PARCIAL | Submit, deploy y provisioning autentican actor; `/api/sign/prepare` sigue dependiendo de un token opcional y faltan Origin/CSRF, rate/body limits y schemas estrictos. |
 | F2.2 — Separación de claves | PARCIAL | Admin Testnet, fee payer, deployer y signer de usuario están separados; faltan presupuesto/límites de fee y pruebas negativas completas de configuración. |
 | F2.3 — Identidad UI | PARCIAL | Sesiones, roles, issuer scope y vínculo cuenta-wallet existen server-side; `/login` continúa en modo demo y no ejecuta WebAuthn real. |
-| F3.1 — XDR/passkey | PARCIAL | La comparación estructural y el round trip están implementados; falta demostrar la matriz adversarial con fixtures XDR reales. |
-| F3.2 — Allowlist wallet | PARCIAL | La validación falla cerrada, pero el manifiesto mantiene la allowlist vacía y falta procedencia on-chain/riesgo aprobado. |
+| F3.1 — XDR/passkey | PARCIAL | La comparación estructural y el round trip están implementados; `PasskeyKitSigner` ahora fuerza `verifyWasmHash: true` para verificar el WASM on-chain al conectar. |
+| F3.2 — Allowlist wallet | PARCIAL | El manifiesto Testnet ahora incluye el hash canónico v1 del smart-wallet; `networkConfig` lo usa como respaldo cuando el env está vacío; la ruta `/api/smart-wallet/deploy` rechaza despliegues fuera de la allowlist. Falta evidencia runtime en Testnet. |
 | F4.1 — IDs/hash canónico | PARCIAL | Derivación, golden vectors y función SQL corregida existen; faltan paridad ejecutada contra PostgreSQL real y evidencia TS/Rust. |
 | F4.2 — Gateway en UI | PARCIAL | Emisión/revocación en organizer ahora usan `PasskeyKitSigner` real para testnet/mainnet y rechazan la firma fake; el registro de entidad aún no completa el flujo productivo. |
 | F5.1 — Estado/polling | PENDIENTE | No existe consulta HTTP scoped por operation ID ni polling acotado en UI. |
@@ -69,7 +69,7 @@ Este estado fue contrastado con el código y con gates locales ejecutados nuevam
 
 1. Completar el readback exacto de emisión/revocación para todos los campos exigidos por F1.
 2. Conectar `PasskeyKitSigner` a organizer/dashboard: implementado en emisión/revocación; pendiente de E2E real con WebAuthn.
-3. Completar allowlist WASM y verificar procedencia/código on-chain.
+3. Completar allowlist WASM y verificación on-chain: hash canónico agregado al manifiesto, `PasskeyKitSigner` fuerza `verifyWasmHash` y `networkConfig` lo usa; pendiente de E2E real con wallet desplegada.
 4. Crear consulta scoped de operación, polling UI y un proceso runtime observable para `StellarWorker`.
 5. Ejecutar provisioning F5-f, E2E frontend y cleanup real en Testnet; luego cerrar el crash window de `admin_provision` para producción.
 6. Retirar `/smart-wallet` y los consumidores productivos de `src/lib/db.ts` después del E2E.

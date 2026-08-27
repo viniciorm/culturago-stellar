@@ -2,10 +2,11 @@ import 'server-only';
 import { Keypair } from '@stellar/stellar-sdk';
 import { domainError } from '../../domain/errors';
 import { getPublicConfig, CulturaGoEnvironment } from '../config/env';
+import manifestJson from '../../../docs/manifests/testnet-manifest.json';
 
 /**
  * Typed, server-only network configuration. Networks never mix: passphrase,
- * RPC, contract IDs, explorer and the future smart-wallet WASM allowlist all
+ * RPC, contract IDs, explorer and the smart-wallet WASM allowlist all
  * come from the same environment selection.
  */
 export interface StellarNetworkConfig {
@@ -15,8 +16,8 @@ export interface StellarNetworkConfig {
   entityRegistryContractId: string;
   credentialRegistryContractId: string;
   explorerBase: string | null;
-  /** Future allowlist of approved smart-wallet WASM hashes. Empty until
-   *  Phase 8 deploys a wallet contract. */
+  /** Approved smart-wallet WASM hashes. Filled from the environment allowlist
+   *  and, for testnet, from `docs/manifests/testnet-manifest.json`. */
   smartWalletWasmAllowlist: readonly string[];
   /** Funded G-account that pays fees when the actor is a smart-wallet contract. */
   feePayerAddress: string | null;
@@ -41,10 +42,18 @@ export function getStellarNetworkConfig(): StellarNetworkConfig {
     );
   }
 
-  const allowlist = (process.env.STELLAR_SMART_WALLET_WASM_ALLOWLIST ?? '')
+  const envAllowlist = (process.env.STELLAR_SMART_WALLET_WASM_ALLOWLIST ?? '')
     .split(',')
-    .map((s) => s.trim())
+    .map((s) => s.trim().toLowerCase().replace(/^0x/, ''))
     .filter((s) => s.length > 0);
+
+  const manifest = manifestJson as { environment?: string; smartWallet?: { wasmHashAllowlist?: string[] } };
+  const manifestList =
+    publicConfig.environment === 'testnet' && manifest.environment === 'testnet'
+      ? (manifest.smartWallet?.wasmHashAllowlist ?? []).map((s) => s.trim().toLowerCase().replace(/^0x/, ''))
+      : [];
+
+  const allowlist = [...new Set([...envAllowlist, ...manifestList])];
 
   const feePayer = process.env.STELLAR_FEEPAYER_ADDRESS?.trim() || null;
   const feePayerSecret = process.env.STELLAR_FEEPAYER_SECRET?.trim() || null;
