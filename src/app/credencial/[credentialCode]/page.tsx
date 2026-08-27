@@ -5,7 +5,8 @@ import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, CheckCircle2, XCircle, Clock, Database } from 'lucide-react';
 import { PublicLayout } from '../../../components/PublicLayout';
 import { StellarVerificationLinks } from '../../../components/StellarVerificationLinks';
-import { db, PopulatedCredential } from '../../../lib/db';
+import { getPublicCredentialByCode } from '../../actions';
+import type { PopulatedCredential } from '@/domain/types/entities';
 import { QRCodeBlock } from '../../../components/ui/QRCodeBlock';
 import { CredentialCard } from '../../../components/CredentialCard';
 import { Button } from '../../../components/ui/Button';
@@ -21,7 +22,7 @@ export default function CredentialValidationPage() {
   useEffect(() => {
     async function loadCredentialData() {
       try {
-        const data = await db.getCredentialByCode(credentialCode);
+        const data = await getPublicCredentialByCode(credentialCode);
         setCredential(data);
       } catch (e) {
         console.error('Error loading public credential data:', e);

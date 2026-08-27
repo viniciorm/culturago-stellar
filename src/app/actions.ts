@@ -2,7 +2,8 @@
 
 import { isPersistenceConfigured } from '@/infrastructure/config/env';
 import { query } from '@/infrastructure/database/pool';
-import type { Entity } from '@/domain/types/entities';
+import { numberToCredentialType } from '@/lib/credentialMetadata';
+import type { Entity, Credential, PopulatedCredential, Event } from '@/domain/types/entities';
 
 interface RawEntityRow {
   id: string;
@@ -128,4 +129,171 @@ export async function getPublicEntities(): Promise<Entity[]> {
   `);
 
   return result.rows.map(mapRowToEntity);
+}
+
+interface PublicCredentialRow {
+  id: string;
+  credential_code: string;
+  issuer_entity_id: string;
+  subject_entity_id: string;
+  event_id: string;
+  credential_type: number;
+  title: string;
+  description: string | null;
+  metadata_hash: string;
+  hash_schema: number;
+  status: 'draft' | 'issued' | 'revoked';
+  issued_intent_at: string | Date;
+  issued_ledger: number | null;
+  revoked_ledger: number | null;
+  revoked_reason_hash: string | null;
+  revoked_at: string | Date | null;
+  created_at: string | Date;
+  updated_at: string | Date;
+  issuer_display_name: string;
+  subject_display_name: string;
+  event_name: string;
+  event_slug: string;
+  event_year: number;
+  event_start_date: string;
+  stellar_phase: string | null;
+  stellar_tx_hash: string | null;
+}
+
+function mapRowToPopulatedCredential(row: PublicCredentialRow): PopulatedCredential {
+  const issuedAt = toDateString(row.issued_intent_at) ?? new Date().toISOString();
+  const createdAt = toDateString(row.created_at) ?? new Date().toISOString();
+  const updatedAt = toDateString(row.updated_at) ?? new Date().toISOString();
+
+  const credential: Credential = {
+    id: row.id,
+    credential_code: row.credential_code,
+    issuer_entity_id: row.issuer_entity_id,
+    subject_entity_id: row.subject_entity_id,
+    event_id: row.event_id,
+    credential_type: numberToCredentialType[row.credential_type] ?? String(row.credential_type),
+    title: row.title,
+    description: row.description,
+    status: row.status,
+    metadata_hash: row.metadata_hash,
+    stellar_status: deriveStellarStatus(row.stellar_phase),
+    stellar_tx: row.stellar_tx_hash,
+    issued_at: issuedAt,
+    revoked_at: toDateString(row.revoked_at),
+    created_at: createdAt,
+    updated_at: updatedAt,
+  };
+
+  const issuerEntity: Entity = {
+    id: row.issuer_entity_id,
+    type: 'organization',
+    display_name: row.issuer_display_name,
+    slug: '',
+    country: 'Chile',
+    city: 'Santiago',
+    status: 'verified',
+    is_public: true,
+    stellar_status: 'not_registered',
+    wallet_status: 'none',
+    created_at: createdAt,
+    updated_at: updatedAt,
+  };
+
+  const subjectEntity: Entity = {
+    id: row.subject_entity_id,
+    type: 'person',
+    display_name: row.subject_display_name,
+    slug: '',
+    country: 'Chile',
+    city: 'Santiago',
+    status: 'verified',
+    is_public: true,
+    stellar_status: 'not_registered',
+    wallet_status: 'none',
+    created_at: createdAt,
+    updated_at: updatedAt,
+  };
+
+  const event: Event = {
+    id: row.event_id,
+    entity_id: row.event_id,
+    name: row.event_name,
+    slug: row.event_slug,
+    year: row.event_year,
+    start_date: row.event_start_date,
+    end_date: null,
+    location: null,
+    address: null,
+    description: null,
+    organizer_entity_id: null,
+    created_at: createdAt,
+    updated_at: updatedAt,
+  };
+
+  return {
+    ...credential,
+    title: row.title,
+    description: row.description,
+    issuerEntity,
+    subjectEntity,
+    event,
+  };
+}
+
+export async function getPublicCredentialByCode(code: string): Promise<PopulatedCredential | null> {
+  if (!isPersistenceConfigured()) {
+    return null;
+  }
+
+  const result = await query<PublicCredentialRow>(`
+    SELECT
+      c.id,
+      c.credential_code,
+      c.issuer_entity_id,
+      c.subject_entity_id,
+      c.event_id,
+      c.credential_type,
+      c.metadata_hash,
+      c.hash_schema,
+      c.status,
+      c.issued_intent_at,
+      c.issued_ledger,
+      c.revoked_ledger,
+      c.revoked_reason_hash,
+      c.revoked_at,
+      c.created_at,
+      c.updated_at,
+      c.title,
+      c.description,
+      ie.display_name AS issuer_display_name,
+      se.display_name AS subject_display_name,
+      e.name AS event_name,
+      e.slug AS event_slug,
+      e.year AS event_year,
+      e.start_date AS event_start_date,
+      so.phase AS stellar_phase,
+      so.tx_hash AS stellar_tx_hash
+    FROM credentials c
+    JOIN entities ie ON ie.id = c.issuer_entity_id
+    JOIN entities se ON se.id = c.subject_entity_id
+    JOIN events e ON e.entity_id = c.event_id
+    LEFT JOIN LATERAL (
+      SELECT phase, tx_hash
+      FROM stellar_operations
+      WHERE subject_key = culturago_canonical_hash('culturago.credential.v1', c.id::text)
+        AND operation_type = 'issue_credential'
+      ORDER BY
+        CASE phase WHEN 'confirmed' THEN 0 ELSE 1 END,
+        created_at DESC
+      LIMIT 1
+    ) so ON true
+    WHERE c.credential_code = $1
+    LIMIT 1
+  `, [code]);
+
+  if (result.rows.length === 0) {
+    return null;
+  }
+
+  return mapRowToPopulatedCredential(result.rows[0]);
 }

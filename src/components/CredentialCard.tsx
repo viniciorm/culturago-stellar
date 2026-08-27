@@ -1,6 +1,6 @@
 import React from 'react';
 import { Award, ShieldCheck, Calendar, Hash, FileCode } from 'lucide-react';
-import { Credential, Entity } from '../lib/db';
+import type { Credential, Entity } from '@/domain/types/entities';
 import { StatusBadge, StellarStatusBadge } from './ui/Badge';
 
 interface CredentialCardProps {
