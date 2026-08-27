@@ -16,6 +16,8 @@ const DEMO_CONFIG: StellarNetworkConfig = {
   smartWalletWasmAllowlist: [],
   feePayerAddress: null,
   feePayerSecret: null,
+  adminAddress: null,
+  adminSecret: null,
 };
 
 /**

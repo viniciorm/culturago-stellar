@@ -22,6 +22,10 @@ export interface StellarNetworkConfig {
   feePayerAddress: string | null;
   /** Secret for the fee payer; only used for restore/bump in the two-phase flow. */
   feePayerSecret: string | null;
+  /** Server-controlled admin account used to grant registrar/issuer/revoker roles and link issuers/operators. */
+  adminAddress: string | null;
+  /** Secret for the admin account. Testnet only; mainnet must refuse plain secrets. */
+  adminSecret: string | null;
 }
 
 export function getStellarNetworkConfig(): StellarNetworkConfig {
@@ -59,6 +63,16 @@ export function getStellarNetworkConfig(): StellarNetworkConfig {
     }
   }
 
+  const adminAddress = process.env.STELLAR_ADMIN_ADDRESS?.trim() || null;
+  const adminSecret = process.env.STELLAR_ADMIN_SECRET?.trim() || null;
+
+  if (adminAddress && adminSecret) {
+    const derived = Keypair.fromSecret(adminSecret).publicKey();
+    if (derived !== adminAddress) {
+      throw domainError('INVALID_INPUT', 'STELLAR_ADMIN_SECRET does not match STELLAR_ADMIN_ADDRESS');
+    }
+  }
+
   console.log('[networkConfig] feePayer present:', !!feePayer, 'feePayerSecret present:', !!feePayerSecret);
 
   return {
@@ -71,6 +85,8 @@ export function getStellarNetworkConfig(): StellarNetworkConfig {
     smartWalletWasmAllowlist: allowlist,
     feePayerAddress: feePayer && feePayer.trim() !== '' ? feePayer.trim() : null,
     feePayerSecret: feePayerSecret && feePayerSecret.trim() !== '' ? feePayerSecret.trim() : null,
+    adminAddress: adminAddress && adminAddress.trim() !== '' ? adminAddress.trim() : null,
+    adminSecret: adminSecret && adminSecret.trim() !== '' ? adminSecret.trim() : null,
   };
 }
 
