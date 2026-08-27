@@ -1,9 +1,14 @@
 import { NextResponse } from 'next/server';
 import { createStellarGateway } from '@/infrastructure/stellar/createStellarGateway';
-import { requireActorFromSession } from '@/infrastructure/auth/getActorFromSession';
 import { PostgreSQLDatabaseGateway } from '@/infrastructure/database/PostgreSQLDatabaseGateway';
 import { isPersistenceConfigured } from '@/infrastructure/config/env';
 import { isDomainError, domainError } from '@/domain/errors';
+import {
+  assertRelayerBudget,
+  parseStrictJson,
+  requireHarnessActor,
+  validateSubmitBody,
+} from '@/infrastructure/harness/harnessHandler';
 
 const db = new PostgreSQLDatabaseGateway();
 
@@ -29,36 +34,29 @@ function parseIdempotencyKey(
 
 export async function POST(request: Request) {
   try {
-    const actor = await requireActorFromSession();
-    if (!actor.walletAddress) {
-      throw domainError('UNAUTHORIZED', 'actor has no on-chain wallet configured');
-    }
+    const actor = await requireHarnessActor(request, {
+      tokenEnvVar: 'CULTURAGO_TESTNET_HARNESS_TOKEN',
+    });
 
-    const body = (await request.json()) as {
-      operationId?: unknown;
-      signedXdr?: unknown;
-      signerAddress?: unknown;
-    };
-    if (
-      typeof body.operationId !== 'string' ||
-      typeof body.signedXdr !== 'string' ||
-      typeof body.signerAddress !== 'string'
-    ) {
-      throw domainError('INVALID_INPUT', 'operationId, signedXdr and signerAddress are required');
-    }
+    const { parsed } = await parseStrictJson(request);
+    const body = validateSubmitBody(parsed);
 
-    const { operationId, signedXdr, signerAddress } = body;
     const bundle = createStellarGateway();
 
-    const op = await bundle.store.get(operationId);
+    const op = await bundle.store.get(body.operationId);
     if (!op) {
-      throw domainError('NOT_FOUND', `operation ${operationId} not found`);
+      throw domainError('NOT_FOUND', `operation ${body.operationId} not found`);
     }
     if (op.intent.actorAddress !== actor.walletAddress) {
       throw domainError('UNAUTHORIZED', 'signer address does not match the operation intent actor');
     }
 
-    const state = await bundle.gateway.submitSigned(operationId, signedXdr, signerAddress);
+    assertRelayerBudget(actor.accountId ?? actor.walletAddress!);
+    const state = await bundle.gateway.submitSigned(
+      body.operationId,
+      body.signedXdr,
+      body.signerAddress
+    );
 
     if (state.phase === 'confirmed' && isPersistenceConfigured()) {
       const parsed = parseIdempotencyKey(state.idempotencyKey);
@@ -81,7 +79,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ operation: state });
   } catch (error) {
     const code = isDomainError(error) ? (error as { code: string }).code : undefined;
-    const status = code === 'UNAUTHORIZED' ? 401 : isDomainError(error) ? 400 : 500;
+    const status =
+      code === 'UNAUTHORIZED' ? 401 :
+      code === 'RATE_LIMITED' ? 429 :
+      isDomainError(error) ? 400 :
+      500;
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'internal error' },
       { status }

@@ -326,11 +326,11 @@ Impedir que endpoints de firma, deploy o administración Testnet puedan ser usad
 ### Pasos
 
 - [x] Añadir un kill switch server-only para el harness E2E.
-- [ ] Exigir simultáneamente entorno Testnet, passphrase exacta, IDs del manifiesto, flag y sesión/token interno autorizado. La ruta `prepare` usa un token opcional.
-- [ ] Validar sesión y permiso dentro de cada Route Handler; no confiar solo en layout, proxy o visibilidad de página. `submit`, deploy y provisioning lo hacen; `prepare` no.
-- [ ] Validar `Origin` y aplicar protección CSRF a mutaciones.
-- [ ] Limitar tamaño de body, frecuencia por sesión/IP/wallet y presupuesto de relayer.
-- [ ] Usar schemas estrictos para comandos; rechazar campos desconocidos y tipos implícitos.
+- [x] Exigir simultáneamente entorno Testnet, passphrase exacta, IDs del manifiesto, flag y sesión/token interno autorizado. `prepare`, `submit` y `deploy` usan `requireHarnessActor` con `assertTestnetHarnessAllowed`.
+- [x] Validar sesión y permiso dentro de cada Route Handler; no confiar solo en layout, proxy o visibilidad de página. `prepare`, `submit`, `deploy` y `admin/provision` validan origen y sesión.
+- [x] Validar `Origin`/`Referer` y aplicar protección same-origin a mutaciones mediante `assertOriginAllowed`.
+- [x] Limitar tamaño de body con `parseStrictJson`, frecuencia por actor con `assertRateLimit` y presupuesto de relayer con `assertRelayerBudget`.
+- [x] Usar schemas estrictos para comandos; rechazar campos desconocidos y tipos implícitos en `prepare`, `submit` y `deploy`.
 - [x] Derivar server-side el actor autorizado y vincularlo a la sesión en submit, deploy y provisioning.
 - [x] Construir métodos administrativos desde una allowlist interna; nunca aceptar método, contract ID o XDR administrativo arbitrario.
 - [x] Mantener respuestas sin secretos, cookies ni XDR administrativos.

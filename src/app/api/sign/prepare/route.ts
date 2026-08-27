@@ -1,12 +1,21 @@
 import { NextResponse } from 'next/server';
 import { createStellarGateway } from '@/infrastructure/stellar/createStellarGateway';
-import { assertTestnetHarnessAllowed } from '@/infrastructure/stellar/harnessGuard';
+import {
+  parseStrictJson,
+  requireHarnessActor,
+  validatePrepareCommand,
+} from '@/infrastructure/harness/harnessHandler';
 import { isDomainError } from '@/domain/errors';
 
 export async function POST(request: Request) {
   try {
-    await assertTestnetHarnessAllowed(request);
-    const command = await request.json();
+    const actor = await requireHarnessActor(request, {
+      tokenEnvVar: 'CULTURAGO_TESTNET_HARNESS_TOKEN',
+    });
+
+    const { parsed } = await parseStrictJson(request);
+    const command = validatePrepareCommand(parsed, actor.walletAddress!);
+
     const bundle = createStellarGateway();
     console.log('[/api/sign/prepare] command:', command);
     let state;
@@ -27,7 +36,12 @@ export async function POST(request: Request) {
     const prepared = await bundle.gateway.getPreparedPayload(state.operationId);
     return NextResponse.json({ operation: state, prepared });
   } catch (error) {
-    const status = isDomainError(error) ? 400 : 500;
+    const code = isDomainError(error) ? (error as { code: string }).code : undefined;
+    const status =
+      code === 'UNAUTHORIZED' ? 401 :
+      code === 'RATE_LIMITED' ? 429 :
+      isDomainError(error) ? 400 :
+      500;
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'internal error' },
       { status }

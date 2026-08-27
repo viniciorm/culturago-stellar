@@ -15,6 +15,10 @@ import {
 import { CanonicalHashService } from '../../../../infrastructure/hashing/CanonicalHashService';
 import { getStellarNetworkConfig } from '../../../../infrastructure/stellar/networkConfig';
 import { domainError, isDomainError } from '../../../../domain/errors';
+import {
+  assertOriginAllowed,
+  parseStrictJson,
+} from '../../../../infrastructure/harness/harnessHandler';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -30,8 +34,10 @@ export async function POST(request: Request) {
   try {
     const actor = await requireActorFromSession();
     assertRole(actor, 'admin');
+    assertOriginAllowed(request);
 
-    const body = (await request.json()) as Record<string, unknown>;
+    const { parsed } = await parseStrictJson(request);
+    const body = parsed as Record<string, unknown>;
     const { accountId, issuerEntityId, operations } = body;
 
     if (typeof accountId !== 'string' || !UUID_RE.test(accountId)) {

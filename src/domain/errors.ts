@@ -11,6 +11,7 @@ export type DomainErrorCode =
   | 'ISSUER_OPERATOR_NOT_LINKED'
   | 'UNKNOWN_CREDENTIAL_TYPE'
   | 'INVALID_RELATIONSHIP'
+  | 'RATE_LIMITED'
   | 'INTERNAL';
 
 export class DomainError extends Error {
