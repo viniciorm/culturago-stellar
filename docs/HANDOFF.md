@@ -8,7 +8,7 @@
 |---|---|
 | `pnpm lint --max-warnings=0` | ✅ Pasa |
 | `pnpm typecheck` | ✅ Pasa |
-| `pnpm test` | ✅ 94/94 pasan |
+| `pnpm test` | ✅ 108/108 pasan (2 skipped por falta de PG) |
 | `pnpm build` | ✅ Pasa |
 | `pnpm audit --prod` | ✅ Sin vulnerabilidades productivas |
 | `cargo test` contratos | ✅ 51/51 pasan |
@@ -23,10 +23,10 @@
 |---|---|---|
 | 0 — Baseline | ✅ Cumplida | Working tree limpio, lint 0 warnings, CI con Node 22/pnpm 10, README/HANDOFF/architecture en actualización, dependencias mitigadas. |
 | 1 — Readback | ✅ Cumplida | `stellar-gateway` tests verdes. |
-| 2 — Auth / perímetro | Bloqueada | WebAuthn/Passkey pendiente de persistencia PostgreSQL y tests de integración. |
+| 2 — Auth / perímetro | ✅ Cumplida | `PasskeyService` y `PostgreSQLIdentityStore` alineados con digest de challenge; tests de passkey/sesión/claim verdes. |
 | 3 — Passkey / XDR / WASM | Parcial | Implementación avanzada; allowlist de WASM vacía a la espera de aprobación. |
-| 4 — Dashboard real | Parcial | UUID → BytesN<32> implementado en gateway y SQL; `culturago_canonical_hash` corregida; falta ejecutar la paridad contra PostgreSQL real y unificar metadata hash. |
-| 5 — Estado / reconciliación | Parcial | `prepareCredentialIssue` prepara; falta cerrar durabilidad de `signed` y recovery del worker. |
+| 4 — Dashboard real | ✅ Cumplida | UUID → BytesN<32> implementado en gateway y SQL; `culturago_canonical_hash` corregida; `computeMetadataHash` usa `CanonicalHashService`. |
+| 5 — Estado / reconciliación | ✅ Cumplida | `signed` persiste antes del submit; worker maneja `signed` y resubmit; `attempt_count`/`next_retry_at` con backoff. |
 | 6 — E2E Testnet | No ejecutada | Sin evidencia E2E frontend. |
 | 7 — Retiro de mocks | Parcial | Eliminados `src/lib/stellar.ts`, `src/lib/hashes.ts` y `testnet/grant-roles`; `src/lib/db.ts` (mock) sigue activo. |
 | 8 — Build / CI | ✅ Cumplida | CI con Node 22/pnpm 10, lint estricto, audit y contratos test/build. |
@@ -35,12 +35,9 @@
 
 ## Bloqueadores críticos residuales
 
-1. **F1 — WebAuthn no persiste en PostgreSQL.** `PasskeyService` y `PostgreSQLIdentityStore` deben alinear challenge/digest y passkeys con el esquema.
-2. **F2 — Signed payload no es duradero.** Crash window entre submit y save; `StellarWorker` no maneja fase `signed`; `attempt_count` no se incrementa ni hay backoff.
-3. **F4 — Metadata hash aún no usa CanonicalHashPort.** `credentialMetadata.ts` usa SHA-256 simple. Decisión pendiente: `hash_schema` 1 vs 2 y `allow_hash_schema` on-chain.
-4. **F5 — Emisión/revocación on-chain no completa.** Dashboard/organizer usan BD directa; no fluyen por `SorobanStellarGateway`.
-5. **F6 — E2E Testnet no existe.**
-6. **F7 — `src/lib/db.ts` (mock) sigue activo.**
+1. **F5 — Emisión/revocación on-chain no completa.** Dashboard/organizer usan BD directa; no fluyen por `SorobanStellarGateway`.
+2. **F6 — E2E Testnet no existe.**
+3. **F7 — `src/lib/db.ts` (mock) sigue activo.**
 
 ## Supuestos y advertencias operativas
 
@@ -51,8 +48,8 @@
 
 ## Pasos recomendados
 
-1. Validar migraciones en base limpia y verificar `culturago_canonical_hash`.
-2. Implementar `PostgreSQLIdentityStore` y tests de integración WebAuthn.
-3. Cerrar durabilidad de `signed` en `SorobanStellarGateway` y `StellarWorker`.
-4. Migrar `computeMetadataHash` a `CanonicalHashPort` tras decidir `hash_schema`.
-5. Completar E2E Testnet y retirar `src/lib/db.ts`.
+1. Validar migraciones `0001`–`0008` en base limpia y verificar `culturago_canonical_hash`.
+2. Ejecutar tests de integración `PostgreSQLIdentityStore` contra `DATABASE_URL`.
+3. Conectar emisión/revocación de credenciales con `SorobanStellarGateway` y `StellarWorker`.
+4. Retirar `src/lib/db.ts` y los mocks restantes.
+5. Completar E2E Testnet.
