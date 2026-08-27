@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Search, Award, ShieldCheck, ArrowRight, Sparkles } from 'lucide-react';
 import { PublicLayout } from '../components/PublicLayout';
-import { db, Entity } from '../lib/db';
+import { getPublicEntities } from './actions';
+import type { Entity } from '@/domain/types/entities';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 
@@ -19,7 +20,7 @@ export default function HomePage() {
   useEffect(() => {
     async function loadEntities() {
       try {
-        const data = await db.getEntities();
+        const data = await getPublicEntities();
         // filter out event itself to show only artists/orgs/providers
         setEntities(data.filter(e => e.type !== 'event'));
       } catch (e) {
