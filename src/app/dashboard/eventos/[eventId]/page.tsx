@@ -14,7 +14,40 @@ import {
   Cpu,
   Search
 } from 'lucide-react';
-import { db } from '../../../../lib/db';
+import {
+  getEventBySlug,
+  getOrganizationByEntityId,
+  getEntities,
+  getRelationships,
+  getCredentials,
+  getPeople,
+  getOrganizations,
+  getProviders,
+  createPerson,
+  createOrganization,
+  createProvider,
+  createCredential,
+  createRelationship,
+  updateCredential,
+} from '../actions';
+
+const db = {
+  getEventBySlug,
+  getOrganizationByEntityId,
+  getEntities,
+  getRelationships,
+  getCredentials,
+  getPeople,
+  getOrganizations,
+  getProviders,
+  createPerson,
+  createOrganization,
+  createProvider,
+  createCredential,
+  createRelationship,
+  updateCredential,
+};
+
 import type {
   Event,
   Entity, 

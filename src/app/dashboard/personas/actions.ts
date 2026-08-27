@@ -193,7 +193,7 @@ export async function listPeople(): Promise<(Person & { entity: Entity })[]> {
 export async function createPerson(
   entityData: PersonFormEntityData,
   personData: PersonFormPersonData
-): Promise<void> {
+): Promise<string> {
   if (!isPersistenceConfigured()) {
     throw domainError('INTERNAL', 'Se requiere DATABASE_URL para crear personas');
   }
@@ -237,6 +237,8 @@ export async function createPerson(
       personData.main_role,
     ]
   );
+
+  return id;
 }
 
 /**

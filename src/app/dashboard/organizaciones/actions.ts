@@ -183,7 +183,7 @@ export async function listOrganizations(): Promise<(Organization & { entity: Ent
 export async function createOrganization(
   entityData: OrgFormEntityData,
   orgData: OrgFormOrgData
-): Promise<void> {
+): Promise<string> {
   if (!isPersistenceConfigured()) {
     throw domainError('INTERNAL', 'Se requiere DATABASE_URL para crear organizaciones');
   }
@@ -225,6 +225,8 @@ export async function createOrganization(
       orgData.contact_phone,
     ]
   );
+
+  return id;
 }
 
 export async function updateOrganization(

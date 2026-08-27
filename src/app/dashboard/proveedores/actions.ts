@@ -183,7 +183,7 @@ export async function listProviders(): Promise<(Provider & { entity: Entity })[]
 export async function createProvider(
   entityData: ProviderFormEntityData,
   providerData: ProviderFormProviderData
-): Promise<void> {
+): Promise<string> {
   if (!isPersistenceConfigured()) {
     throw domainError('INTERNAL', 'Se requiere DATABASE_URL para crear proveedores');
   }
@@ -226,6 +226,8 @@ export async function createProvider(
       providerData.public_description,
     ]
   );
+
+  return id;
 }
 
 export async function updateProvider(
