@@ -61,7 +61,7 @@ function toAddressString(value: unknown): string | null {
   return null;
 }
 
-function credentialRecordMatches(
+export function credentialRecordMatches(
   raw: unknown,
   expected: NonNullable<StoredOperation['intent']['expected']>,
   ledger: number | null,
@@ -514,9 +514,10 @@ export class SorobanStellarGateway implements StellarGateway {
         break;
       case 'SUCCESS': {
         // Ledger inclusion is not enough: readback before confirmed.
+        // Assign ledger first so readback can validate issued/revoked ledger equality.
+        op.state.ledger = result.ledger;
         const ok = await this.readbackMatches(op);
         op.state.phase = ok ? 'confirmed' : 'failed_terminal';
-        op.state.ledger = result.ledger;
         op.state.errorCode = ok ? null : 'READBACK_MISMATCH';
         break;
       }

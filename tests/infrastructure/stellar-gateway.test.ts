@@ -4,6 +4,7 @@ import {
   createMockStellarGateway,
   MockSigner,
 } from '@/infrastructure/stellar/MockStellarGateway';
+import { credentialRecordMatches } from '@/infrastructure/stellar/SorobanStellarGateway';
 import { StellarGateway } from '@/ports/StellarGateway';
 
 const ACTOR = 'G_DEMO_ACTOR';
@@ -229,5 +230,253 @@ describe.each([['mock', () => createMockStellarGateway().gateway]] as const)(
       });
       expect(result).toMatchObject({ exists: false, matches: false, revoked: false });
     });
+
+    it('issue: readback detects mismatched metadata hash and fails terminal', async () => {
+      const bundle = createMockStellarGateway({ signer: null });
+      gateway = bundle.gateway;
+      const prepared = await gateway.prepareIssueCredential(issueCommand('k-readback-hash'));
+
+      const op = (await bundle.store.get(prepared.operationId))!;
+      op.intent.expected!.metadataHash = hex(99);
+      await bundle.store.save(op);
+
+      const payload = await gateway.getPreparedPayload(prepared.operationId);
+      const signed = await new MockSigner(ACTOR).sign(payload);
+      const final = await gateway.submitSigned(
+        prepared.operationId,
+        signed.signedXdr,
+        signed.signerAddress
+      );
+
+      expect(final.phase).toBe('failed_terminal');
+      expect(final.errorCode).toBe('READBACK_MISMATCH');
+    });
+
+    it('issue: readback detects mismatched hash schema and fails terminal', async () => {
+      const bundle = createMockStellarGateway({ signer: null });
+      gateway = bundle.gateway;
+      const prepared = await gateway.prepareIssueCredential(issueCommand('k-readback-schema'));
+
+      const op = (await bundle.store.get(prepared.operationId))!;
+      op.intent.expected!.hashSchema = 99;
+      await bundle.store.save(op);
+
+      const payload = await gateway.getPreparedPayload(prepared.operationId);
+      const signed = await new MockSigner(ACTOR).sign(payload);
+      const final = await gateway.submitSigned(
+        prepared.operationId,
+        signed.signedXdr,
+        signed.signerAddress
+      );
+
+      expect(final.phase).toBe('failed_terminal');
+      expect(final.errorCode).toBe('READBACK_MISMATCH');
+    });
+
+    it('issue: readback detects mismatched issuer id and fails terminal', async () => {
+      const bundle = createMockStellarGateway({ signer: null });
+      gateway = bundle.gateway;
+      const prepared = await gateway.prepareIssueCredential(issueCommand('k-readback-issuer'));
+
+      const op = (await bundle.store.get(prepared.operationId))!;
+      op.intent.expected!.issuerId = hex(88);
+      await bundle.store.save(op);
+
+      const payload = await gateway.getPreparedPayload(prepared.operationId);
+      const signed = await new MockSigner(ACTOR).sign(payload);
+      const final = await gateway.submitSigned(
+        prepared.operationId,
+        signed.signedXdr,
+        signed.signerAddress
+      );
+
+      expect(final.phase).toBe('failed_terminal');
+      expect(final.errorCode).toBe('READBACK_MISMATCH');
+    });
+
+    it('register: readback detects mismatched metadata hash and fails terminal', async () => {
+      const bundle = createMockStellarGateway({ signer: null });
+      gateway = bundle.gateway;
+      const prepared = await gateway.prepareRegisterEntity(registerCommand('k-readback-entity'));
+
+      const op = (await bundle.store.get(prepared.operationId))!;
+      op.intent.expected!.metadataHash = hex(99);
+      await bundle.store.save(op);
+
+      const payload = await gateway.getPreparedPayload(prepared.operationId);
+      const signed = await new MockSigner(ACTOR).sign(payload);
+      const final = await gateway.submitSigned(
+        prepared.operationId,
+        signed.signedXdr,
+        signed.signerAddress
+      );
+
+      expect(final.phase).toBe('failed_terminal');
+      expect(final.errorCode).toBe('READBACK_MISMATCH');
+    });
+
+    it('revoke: readback detects mismatched reason hash and fails terminal', async () => {
+      const bundle = createMockStellarGateway();
+      gateway = bundle.gateway;
+      await gateway.issueCredential(issueCommand('k-revoke-reason'));
+
+      const prepared = await gateway.prepareRevokeCredential({
+        idempotencyKey: 'k-revoke-reason-post',
+        actorAddress: ACTOR,
+        credentialId: hex(2),
+        reasonHash: null,
+      });
+
+      const op = (await bundle.store.get(prepared.operationId))!;
+      op.intent.expected!.revokedReasonHash = hex(99);
+      await bundle.store.save(op);
+
+      const payload = await gateway.getPreparedPayload(prepared.operationId);
+      const signed = await new MockSigner(ACTOR).sign(payload);
+      const final = await gateway.submitSigned(
+        prepared.operationId,
+        signed.signedXdr,
+        signed.signerAddress
+      );
+
+      expect(final.phase).toBe('failed_terminal');
+      expect(final.errorCode).toBe('READBACK_MISMATCH');
+    });
   }
 );
+
+describe('credentialRecordMatches readback validation', () => {
+  const baseRecord = () => ({
+    credential_id: hex(2),
+    issuer_id: hex(7),
+    issued_by: ACTOR,
+    subject_id: hex(3),
+    event_id: hex(4),
+    credential_type: 1,
+    metadata_hash: hex(10),
+    hash_schema: 1,
+    revoked: false,
+    issued_ledger: 1001,
+    revoked_ledger: null as number | null,
+    revoked_reason_hash: null as string | null,
+  });
+
+  const baseExpected = () => ({
+    credentialId: hex(2),
+    issuerId: hex(7),
+    issuedBy: ACTOR,
+    subjectId: hex(3),
+    eventId: hex(4),
+    credentialType: 1,
+    metadataHash: hex(10),
+    hashSchema: 1,
+    revoked: false,
+  });
+
+  it('accepts a fully matching issue record', () => {
+    expect(credentialRecordMatches(baseRecord(), baseExpected(), 1001, 'issue_credential')).toBe(true);
+  });
+
+  it('rejects a record with the wrong credential id', () => {
+    const record = { ...baseRecord(), credential_id: hex(99) };
+    expect(credentialRecordMatches(record, baseExpected(), 1001, 'issue_credential')).toBe(false);
+  });
+
+  it('rejects a record with the wrong issuer id', () => {
+    const record = { ...baseRecord(), issuer_id: hex(99) };
+    expect(credentialRecordMatches(record, baseExpected(), 1001, 'issue_credential')).toBe(false);
+  });
+
+  it('rejects a record with the wrong subject id', () => {
+    const record = { ...baseRecord(), subject_id: hex(99) };
+    expect(credentialRecordMatches(record, baseExpected(), 1001, 'issue_credential')).toBe(false);
+  });
+
+  it('rejects a record with the wrong event id', () => {
+    const record = { ...baseRecord(), event_id: hex(99) };
+    expect(credentialRecordMatches(record, baseExpected(), 1001, 'issue_credential')).toBe(false);
+  });
+
+  it('rejects a record with the wrong credential type', () => {
+    const record = { ...baseRecord(), credential_type: 2 };
+    expect(credentialRecordMatches(record, baseExpected(), 1001, 'issue_credential')).toBe(false);
+  });
+
+  it('rejects a record with the wrong metadata hash', () => {
+    const record = { ...baseRecord(), metadata_hash: hex(99) };
+    expect(credentialRecordMatches(record, baseExpected(), 1001, 'issue_credential')).toBe(false);
+  });
+
+  it('rejects a record with the wrong hash schema', () => {
+    const record = { ...baseRecord(), hash_schema: 2 };
+    expect(credentialRecordMatches(record, baseExpected(), 1001, 'issue_credential')).toBe(false);
+  });
+
+  it('rejects a record with the wrong issued_by address', () => {
+    const record = { ...baseRecord(), issued_by: 'G_OTHER' };
+    expect(credentialRecordMatches(record, baseExpected(), 1001, 'issue_credential')).toBe(false);
+  });
+
+  it('rejects an issue record that is already revoked', () => {
+    const record = { ...baseRecord(), revoked: true };
+    expect(credentialRecordMatches(record, baseExpected(), 1001, 'issue_credential')).toBe(false);
+  });
+
+  it('rejects an issue record whose issued ledger does not match the confirmation ledger', () => {
+    const record = { ...baseRecord(), issued_ledger: 1002 };
+    expect(credentialRecordMatches(record, baseExpected(), 1001, 'issue_credential')).toBe(false);
+  });
+
+  it('rejects a record whose confirmation ledger differs from the recorded issued ledger', () => {
+    const record = baseRecord();
+    expect(credentialRecordMatches(record, baseExpected(), 1002, 'issue_credential')).toBe(false);
+  });
+
+  it('accepts a fully matching revoke record', () => {
+    const record = {
+      ...baseRecord(),
+      revoked: true,
+      issued_ledger: 1001,
+      revoked_ledger: 1002,
+      revoked_reason_hash: hex(11),
+    };
+    const expected = {
+      ...baseExpected(),
+      revoked: true,
+      revokedReasonHash: hex(11),
+    };
+    expect(credentialRecordMatches(record, expected, 1002, 'revoke_credential')).toBe(true);
+  });
+
+  it('rejects a revoke record whose revoked ledger does not match the confirmation ledger', () => {
+    const record = {
+      ...baseRecord(),
+      revoked: true,
+      issued_ledger: 1001,
+      revoked_ledger: 1002,
+      revoked_reason_hash: hex(11),
+    };
+    const expected = {
+      ...baseExpected(),
+      revoked: true,
+      revokedReasonHash: hex(11),
+    };
+    expect(credentialRecordMatches(record, expected, 1003, 'revoke_credential')).toBe(false);
+  });
+
+  it('rejects a revoke record whose reason hash does not match', () => {
+    const record = {
+      ...baseRecord(),
+      revoked: true,
+      issued_ledger: 1001,
+      revoked_ledger: 1002,
+      revoked_reason_hash: hex(11),
+    };
+    const expected = {
+      ...baseExpected(),
+      revoked: true,
+      revokedReasonHash: hex(99),
+    };
+    expect(credentialRecordMatches(record, expected, 1002, 'revoke_credential')).toBe(false);
+  });
+});
