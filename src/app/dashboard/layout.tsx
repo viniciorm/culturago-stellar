@@ -9,7 +9,7 @@ export default async function AdminDashboardLayout({
   children: React.ReactNode;
 }) {
   const actor = await getActorFromSession();
-  if (!actor) {
+  if (!actor || actor.role !== 'admin') {
     redirect('/login');
   }
 

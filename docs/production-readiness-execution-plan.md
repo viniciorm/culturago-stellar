@@ -458,7 +458,7 @@ Revertir configuración, wiring del relayer y pruebas de separación. No reintro
 
 ### Pasos
 
-- [ ] Conectar la UI de `/login` con los endpoints WebAuthn de registro y autenticación ya existentes. La página continúa en modo demo.
+- [x] Conectar la UI de `/login` con los endpoints WebAuthn de registro y autenticación ya existentes. `src/app/login/page.tsx` conecta `/api/auth/login/*` y `/api/auth/register/*`; el modo demo se mantiene.
 - [x] Mantener el acceso directo sin sesión únicamente en entorno `demo`, con identificación visual inequívoca.
 - [x] Exigir sesión válida dentro de cada mutación server-side. `personas`, `organizaciones`, `proveedores` y `configuracion` usan `requireDashboardAdmin`; `credenciales` ya valida sesión y `issuer_id`.
 - [x] Resolver roles y `issuer_id` dentro de cada Server Action. Admin en CRUD de entidades/relaciones; `assertIssuerScope` en credenciales.
