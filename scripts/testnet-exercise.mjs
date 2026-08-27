@@ -54,11 +54,12 @@ const baseInvoke = (contract, fn, args) => {
   return run('stellar', callArgs, signEnv);
 };
 
-const entity_id = bytes32Hex('entity-1');
-const metadata_hash = bytes32Hex('metadata-1');
-const issuer_id = bytes32Hex('issuer-1');
-const subject_id = bytes32Hex('subject-1');
-const event_id = bytes32Hex('event-1');
+const entity_id = bytes32Hex(randomBytes(32));
+const metadata_hash = bytes32Hex(randomBytes(32));
+const issuer_id = bytes32Hex(randomBytes(32));
+const subject_id = bytes32Hex(randomBytes(32));
+const event_id = bytes32Hex(randomBytes(32));
+const credential_id = bytes32Hex(randomBytes(32));
 
 console.log(`Source: ${source}`);
 console.log(`Entity contract: ${entityId}`);
@@ -73,7 +74,7 @@ console.log(baseInvoke(credentialId, 'link_issuer_operator', ['--issuer_id', iss
 console.log('\n3. issue_credential');
 console.log(baseInvoke(credentialId, 'issue_credential', [
   '--operator', source,
-  '--credential_id', bytes32Hex(randomBytes(32)),
+  '--credential_id', credential_id,
   '--issuer_id', issuer_id,
   '--subject_id', subject_id,
   '--event_id', event_id,
@@ -82,4 +83,34 @@ console.log(baseInvoke(credentialId, 'issue_credential', [
   '--hash_schema', '1',
 ]));
 
-console.log('\nSmoke exercise complete.');
+console.log('\n4. revoke_credential');
+console.log(baseInvoke(credentialId, 'revoke_credential', [
+  '--operator', source,
+  '--credential_id', credential_id,
+]));
+
+console.log('\n5. unlink_issuer_operator');
+console.log(baseInvoke(credentialId, 'unlink_issuer_operator', [
+  '--issuer_id', issuer_id,
+  '--operator', source,
+]));
+
+console.log('\n6. revoke_issuer');
+console.log(baseInvoke(credentialId, 'revoke_issuer', [
+  '--caller', source,
+  '--account', source,
+]));
+
+console.log('\n7. revoke_revoker');
+console.log(baseInvoke(credentialId, 'revoke_revoker', [
+  '--caller', source,
+  '--account', source,
+]));
+
+console.log('\n8. revoke_registrar');
+console.log(baseInvoke(entityId, 'revoke_registrar', [
+  '--caller', source,
+  '--account', source,
+]));
+
+console.log('\nE2E exercise complete.');
