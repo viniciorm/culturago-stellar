@@ -251,7 +251,7 @@ export async function updateOrganization(
 
     if (setFields.length > 0) {
       await query(
-        `UPDATE entities SET ${setFields.join(', ')} WHERE id = $${idx - 1}`,
+        `UPDATE entities SET ${setFields.join(', ')} WHERE id = $${idx}`,
         values
       );
     }

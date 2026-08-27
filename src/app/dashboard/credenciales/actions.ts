@@ -245,6 +245,9 @@ export async function createCredential(input: CreateCredentialInput): Promise<vo
     issued_at: input.issued_at,
   };
 
+  const actor = await requireActorFromSession();
+  assertIssuerScope(actor, input.issuer_entity_id);
+
   const metadataHash = computeMetadataHash(metadataPayload);
   const hashSchema = 1;
 
@@ -262,7 +265,7 @@ export async function createCredential(input: CreateCredentialInput): Promise<vo
       id,
       input.credential_code,
       input.issuer_entity_id,
-      input.issuer_entity_id,
+      actor.accountId,
       input.subject_entity_id,
       input.event_id,
       credentialType,
