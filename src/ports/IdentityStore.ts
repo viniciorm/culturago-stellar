@@ -55,6 +55,7 @@ export interface IdentityStore {
   grantRole(accountId: string, role: string): Promise<void>;
   getRoles(accountId: string): Promise<string[]>;
   linkIssuerOperator(issuerEntityId: string, operatorAccountId: string): Promise<void>;
+  unlinkIssuerOperator(issuerEntityId: string, operatorAccountId: string): Promise<void>;
   getIssuerScopes(operatorAccountId: string): Promise<string[]>;
 
   // Challenges (anti-replay)

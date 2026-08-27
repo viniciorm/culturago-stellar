@@ -58,6 +58,13 @@ export class InMemoryIdentityStore implements IdentityStore {
     this.issuerScopes.set(operatorAccountId, scopes);
   }
 
+  async unlinkIssuerOperator(issuerEntityId: string, operatorAccountId: string): Promise<void> {
+    const scopes = this.issuerScopes.get(operatorAccountId);
+    if (scopes) {
+      scopes.delete(issuerEntityId);
+    }
+  }
+
   async getIssuerScopes(operatorAccountId: string): Promise<string[]> {
     return [...(this.issuerScopes.get(operatorAccountId) ?? [])];
   }

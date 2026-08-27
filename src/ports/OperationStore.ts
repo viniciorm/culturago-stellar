@@ -5,10 +5,17 @@ import { PreparedTransactionPayload, SignedTransactionPayload } from './SignerPo
  * Durable record of a chain operation: state machine + stored intent for
  * idempotency and signed-payload verification.
  */
+export type OperationKind =
+  | 'register_entity'
+  | 'issue_credential'
+  | 'revoke_credential'
+  | 'link_wallet'
+  | 'admin_provision';
+
 export interface StoredOperation {
   state: OperationState;
   intent: {
-    kind: 'register_entity' | 'issue_credential' | 'revoke_credential';
+    kind: OperationKind;
     actorAddress: string;
     fingerprint: string;
     /** Domain key used by readback: entityId for register, credentialId otherwise. */

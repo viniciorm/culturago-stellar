@@ -32,7 +32,7 @@ function assertHex32(value: string, field: string): void {
   }
 }
 
-type IntentKind = StoredOperation['intent']['kind'];
+type IntentKind = 'register_entity' | 'issue_credential' | 'revoke_credential';
 
 /**
  * Real chain gateway. The pipeline stops at the signing limit: the server
@@ -474,6 +474,10 @@ export class SorobanStellarGateway implements StellarGateway {
         };
         return record.revoked === true;
       }
+      case 'link_wallet':
+      case 'admin_provision':
+        // These intents are not processed by SorobanStellarGateway.
+        return false;
     }
   }
 

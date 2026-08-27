@@ -98,6 +98,13 @@ export class PostgreSQLIdentityStore implements IdentityStore {
     ).catch(translatePgError);
   }
 
+  async unlinkIssuerOperator(issuerEntityId: string, operatorAccountId: string): Promise<void> {
+    await query(
+      'DELETE FROM issuer_operators WHERE issuer_entity_id = $1 AND operator_account_id = $2',
+      [issuerEntityId, operatorAccountId]
+    ).catch(translatePgError);
+  }
+
   async getIssuerScopes(operatorAccountId: string): Promise<string[]> {
     const result = await query<{ issuer_entity_id: string }>(
       'SELECT issuer_entity_id FROM issuer_operators WHERE operator_account_id = $1 AND active',
