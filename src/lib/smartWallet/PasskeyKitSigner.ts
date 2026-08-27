@@ -4,6 +4,16 @@ import { PreparedTransactionPayload, SignedTransactionPayload, SignerPort } from
 import { Address, Transaction, TransactionBuilder, xdr } from '@stellar/stellar-sdk';
 import type { StorageAdapter, StoredPasskey } from 'passkey-kit';
 
+async function buildStorage(): Promise<StorageAdapter> {
+  try {
+    const { IndexedDBStorage } = await import('passkey-kit/storage');
+    return new IndexedDBStorage('culturago-passkeys');
+  } catch (error) {
+    console.warn('[PasskeyKitSigner] IndexedDB storage unavailable, using in-memory fallback', error);
+    return new InMemoryPasskeyStorage();
+  }
+}
+
 class InMemoryPasskeyStorage implements StorageAdapter {
   private store = new Map<string, StoredPasskey>();
 
@@ -49,7 +59,14 @@ export class PasskeyKitSigner implements SignerPort {
   private keyId: string | undefined;
   private contractId: string | undefined;
   private kit: import('passkey-kit').PasskeyKit | undefined;
-  private storage = new InMemoryPasskeyStorage();
+  private storagePromise: Promise<StorageAdapter> | null = null;
+
+  private async getStorage(): Promise<StorageAdapter> {
+    if (!this.storagePromise) {
+      this.storagePromise = buildStorage();
+    }
+    return this.storagePromise;
+  }
 
   constructor(
     private readonly rpcUrl: string,
@@ -61,13 +78,14 @@ export class PasskeyKitSigner implements SignerPort {
 
   private async buildKit(): Promise<import('passkey-kit').PasskeyKit> {
     const { PasskeyKit } = await import('passkey-kit');
+    const storage = await this.getStorage();
     return new PasskeyKit({
       rpcUrl: this.rpcUrl,
       networkPassphrase: this.networkPassphrase,
       walletWasmHash: this.walletWasmHash,
       acceptedWasmHashes: [...this.acceptedWasmHashes],
       rpId: this.rpId,
-      storage: this.storage,
+      storage,
       // Deployment is always server-side; the client never has a deployer secret.
       deploySource: undefined,
     });
@@ -91,7 +109,8 @@ export class PasskeyKitSigner implements SignerPort {
       throw domainError('INVALID_STATE_TRANSITION', `wallet deployment failed: ${deployResult.error ?? deployRes.statusText}`);
     }
 
-    await this.storage.save({
+    const storage = await this.getStorage();
+    await storage.save({
       keyId: keyIdBase64,
       publicKey: new Uint8Array(0),
       contractId,
@@ -103,16 +122,22 @@ export class PasskeyKitSigner implements SignerPort {
     return { keyId: keyIdBase64, contractId, signedTx };
   }
 
-  async connectWallet(keyIdBase64: string): Promise<string> {
+  async connectWallet(keyIdBase64?: string, contractId?: string): Promise<string> {
     this.kit = await this.buildKit();
-    try {
-      const { contractId } = await this.kit.connectWallet({
-        keyId: keyIdBase64,
-        getContractId: async () => this.contractId,
-      });
-      this.keyId = keyIdBase64;
+    if (contractId) {
       this.contractId = contractId;
-      return contractId;
+    }
+    try {
+      const options: import('passkey-kit').ConnectOptions = {
+        getContractId: async () => this.contractId,
+      };
+      if (keyIdBase64) {
+        options.keyId = keyIdBase64;
+      }
+      const result = await this.kit.connectWallet(options);
+      this.keyId = result.keyIdBase64;
+      this.contractId = result.contractId;
+      return result.contractId;
     } catch (error) {
       const detail = error instanceof Error ? error.message : JSON.stringify(error);
       throw new Error(`Could not connect passkey wallet: ${detail}`);
@@ -151,7 +176,7 @@ export class PasskeyKitSigner implements SignerPort {
   }
 
   async sign(prepared: PreparedTransactionPayload): Promise<SignedTransactionPayload> {
-    if (!this.kit || !this.keyId || !this.contractId) {
+    if (!this.contractId) {
       throw domainError('INVALID_STATE_TRANSITION', 'Wallet must be created or connected before signing');
     }
     if (prepared.networkPassphrase !== this.networkPassphrase) {
@@ -159,11 +184,16 @@ export class PasskeyKitSigner implements SignerPort {
     }
 
     // Asegurar que el kit tiene el wallet conectado antes de firmar
-    if (!this.kit.wallet) {
-      await this.kit.connectWallet({
-        keyId: this.keyId,
+    if (!this.kit || !this.kit.wallet) {
+      const kit = await this.buildKit();
+      const options: import('passkey-kit').ConnectOptions = {
         getContractId: async () => this.contractId,
-      });
+      };
+      if (this.keyId) {
+        options.keyId = this.keyId;
+      }
+      await kit.connectWallet(options);
+      this.kit = kit;
     }
 
     const tx = TransactionBuilder.fromXDR(prepared.unsignedXdr, this.networkPassphrase) as Transaction;

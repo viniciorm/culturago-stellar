@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { revokeCredential } from './actions';
+import { signAndSubmitOperation } from '@/lib/smartWallet/signAndSubmitOperation';
 import type { OperationState } from '@/ports/StellarGateway';
 import type { PreparedTransactionPayload } from '@/ports/SignerPort';
 
@@ -16,41 +17,6 @@ interface Props {
   walletAddress: string;
   credentials: CredentialOption[];
   disabled?: boolean;
-}
-
-async function signAndSubmit(
-  environment: string,
-  walletAddress: string,
-  operation: OperationState,
-  prepared: PreparedTransactionPayload
-): Promise<{ ok: boolean; message: string }> {
-  if (environment !== 'demo') {
-    return {
-      ok: false,
-      message: 'Firma con passkey (PasskeyKit) no está conectada en este ambiente.',
-    };
-  }
-
-  const unsigned = JSON.parse(prepared.unsignedXdr) as { mode?: string; signature?: string | null };
-  unsigned.mode = 'signed';
-  unsigned.signature = 'client-sig';
-  const signedXdr = JSON.stringify(unsigned);
-
-  const res = await fetch('/api/sign/submit', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      operationId: operation.operationId,
-      signedXdr,
-      signerAddress: walletAddress,
-    }),
-  });
-  const body = (await res.json()) as { operation?: OperationState; error?: string };
-  if (!res.ok) {
-    return { ok: false, message: body.error ?? `HTTP ${res.status}` };
-  }
-  const phase = body.operation?.phase ?? 'unknown';
-  return { ok: phase === 'confirmed', message: `Fase: ${phase} — ledger: ${body.operation?.ledger ?? 'n/a'}` };
 }
 
 export default function RevokeCredentialForm({
@@ -86,7 +52,7 @@ export default function RevokeCredentialForm({
   const handleSign = async () => {
     if (!prepared || !operation) return;
     setStatus('Firmando y enviando...');
-    const result = await signAndSubmit(environment, walletAddress, operation, prepared);
+    const result = await signAndSubmitOperation(environment, walletAddress, operation, prepared);
     setStatus(result.message);
     if (result.ok) {
       setPrepared(null);

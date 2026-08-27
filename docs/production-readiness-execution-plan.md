@@ -39,7 +39,7 @@ Este estado fue contrastado con el código y con gates locales ejecutados nuevam
 | F3.1 — XDR/passkey | PARCIAL | La comparación estructural y el round trip están implementados; falta demostrar la matriz adversarial con fixtures XDR reales. |
 | F3.2 — Allowlist wallet | PARCIAL | La validación falla cerrada, pero el manifiesto mantiene la allowlist vacía y falta procedencia on-chain/riesgo aprobado. |
 | F4.1 — IDs/hash canónico | PARCIAL | Derivación, golden vectors y función SQL corregida existen; faltan paridad ejecutada contra PostgreSQL real y evidencia TS/Rust. |
-| F4.2 — Gateway en UI | PARCIAL | Emisión/revocación preparan operaciones reales, pero los formularios rechazan explícitamente la firma fuera de `demo`; registro de entidad tampoco completa el flujo productivo. |
+| F4.2 — Gateway en UI | PARCIAL | Emisión/revocación en organizer ahora usan `PasskeyKitSigner` real para testnet/mainnet y rechazan la firma fake; el registro de entidad aún no completa el flujo productivo. |
 | F5.1 — Estado/polling | PENDIENTE | No existe consulta HTTP scoped por operation ID ni polling acotado en UI. |
 | F5.2 — Worker runtime | PARCIAL | Recovery `signed`, lease y reconciliación están implementados y probados; no existe proceso runtime, heartbeat ni shutdown supervisado. |
 | F5-f — Provisioning admin Testnet | CERRADO para alcance funcional Testnet | Signer, servicio, endpoint, stores y migración existen. Grant/revoke dependen de ledger success; link/unlink sí tienen readback. Falta E2E en F6 y el pipeline admin conserva un crash window, por lo que no se considera durable para producción. |
@@ -68,7 +68,7 @@ Este estado fue contrastado con el código y con gates locales ejecutados nuevam
 ### Pendientes prioritarios
 
 1. Completar el readback exacto de emisión/revocación para todos los campos exigidos por F1.
-2. Conectar `PasskeyKitSigner` a organizer/dashboard; hoy esos formularios sólo simulan firma en `demo`.
+2. Conectar `PasskeyKitSigner` a organizer/dashboard: implementado en emisión/revocación; pendiente de E2E real con WebAuthn.
 3. Completar allowlist WASM y verificar procedencia/código on-chain.
 4. Crear consulta scoped de operación, polling UI y un proceso runtime observable para `StellarWorker`.
 5. Ejecutar provisioning F5-f, E2E frontend y cleanup real en Testnet; luego cerrar el crash window de `admin_provision` para producción.
