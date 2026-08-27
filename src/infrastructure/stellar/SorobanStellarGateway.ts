@@ -19,6 +19,8 @@ import {
   StellarGateway,
 } from '../../ports/StellarGateway';
 import { StellarNetworkConfig } from './networkConfig';
+import { CanonicalHashPort, HashSchemaId } from '../../ports/CanonicalHashPort';
+import { CanonicalHashService } from '../hashing/CanonicalHashService';
 
 const bytes32 = (hex: string): ContractArgValue => ({ kind: 'bytes32', hex });
 const u32 = (value: number): ContractArgValue => ({ kind: 'u32', value });
@@ -44,7 +46,8 @@ export class SorobanStellarGateway implements StellarGateway {
     private readonly transport: SorobanTransport,
     private readonly store: OperationStore,
     private readonly signer: SignerPort | null,
-    private readonly newId: () => string = () => randomUUID()
+    private readonly newId: () => string = () => randomUUID(),
+    private readonly canonicalHash: CanonicalHashPort = new CanonicalHashService()
   ) {}
 
   // ---------- full pipeline (fixture signer only) ----------
@@ -179,13 +182,16 @@ export class SorobanStellarGateway implements StellarGateway {
     metadataHash: string;
     hashSchema: number;
   }): Promise<ChainVerification> {
-    assertHex32(query.credentialId, 'credentialId');
     assertHex32(query.metadataHash, 'metadataHash');
+    const credentialHash = await this.canonicalHash.hashDocument(
+      'culturago.credential.v1',
+      query.credentialId
+    );
     const raw = await this.transport.readback({
       contractId: this.config.credentialRegistryContractId,
       method: 'get_credential',
-      args: [bytes32(query.credentialId)],
-      actorAddress: query.credentialId, // read-only: no auth
+      args: [bytes32(credentialHash)],
+      actorAddress: this.config.feePayerAddress ?? query.credentialId,
     });
     if (raw === null) {
       return { exists: false, matches: false, revoked: false, ledger: null };
@@ -241,8 +247,8 @@ export class SorobanStellarGateway implements StellarGateway {
       );
     }
 
-    const spec = this.specFor(command, kind);
-    const sim = await this.transport.simulate(spec);
+    const contractCall = await this.specFor(command, kind);
+    const sim = await this.transport.simulate(contractCall);
     const operationId = this.newId();
     const fingerprint = this.fingerprintOfCommand(command, kind);
 
@@ -264,7 +270,7 @@ export class SorobanStellarGateway implements StellarGateway {
           kind,
           actorAddress: command.actorAddress,
           fingerprint,
-          subjectKey: this.subjectKeyFor(command, kind),
+          subjectKey: await this.subjectKeyFor(command, kind),
           prepared: null,
         },
       });
@@ -279,7 +285,7 @@ export class SorobanStellarGateway implements StellarGateway {
       const signed = this.signWithFeePayer(unsignedXdr);
       const { txHash } = await this.transport.submit(signed);
       await this.waitForSuccess(txHash);
-      const sim2 = await this.transport.simulate(spec);
+      const sim2 = await this.transport.simulate(contractCall);
       if (sim2.contractError) {
         const state2: OperationState = {
           operationId,
@@ -295,7 +301,7 @@ export class SorobanStellarGateway implements StellarGateway {
             kind,
             actorAddress: command.actorAddress,
             fingerprint,
-            subjectKey: this.subjectKeyFor(command, kind),
+            subjectKey: await this.subjectKeyFor(command, kind),
             prepared: null,
           },
         });
@@ -330,7 +336,7 @@ export class SorobanStellarGateway implements StellarGateway {
         kind,
         actorAddress: command.actorAddress,
         fingerprint,
-        subjectKey: this.subjectKeyFor(command, kind),
+        subjectKey: await this.subjectKeyFor(command, kind),
         prepared,
         expected: this.expectedFor(command, kind),
       },
@@ -491,39 +497,44 @@ export class SorobanStellarGateway implements StellarGateway {
     }
   }
 
-  private specFor(
+  private async specFor(
     command: RegisterEntityCommand | IssueCredentialCommand | RevokeCredentialCommand,
     kind: IntentKind
-  ): ContractCallSpec {
+  ): Promise<ContractCallSpec> {
     switch (kind) {
       case 'register_entity': {
         const c = command as RegisterEntityCommand;
-        assertHex32(c.entityId, 'entityId');
         assertHex32(c.metadataHash, 'metadataHash');
+        const entityHash = await this.canonicalHash.hashDocument(
+          'culturago.entity.v1',
+          c.entityId
+        );
         return {
           contractId: this.config.entityRegistryContractId,
           method: 'register_entity',
-          args: [addr(c.actorAddress), bytes32(c.entityId), bytes32(c.metadataHash), u32(c.hashSchema)],
+          args: [addr(c.actorAddress), bytes32(entityHash), bytes32(c.metadataHash), u32(c.hashSchema)],
           actorAddress: c.actorAddress,
           feePayerAddress: this.config.feePayerAddress ?? undefined,
         };
       }
       case 'issue_credential': {
         const c = command as IssueCredentialCommand;
-        assertHex32(c.credentialId, 'credentialId');
-        assertHex32(c.issuerId, 'issuerId');
-        assertHex32(c.subjectId, 'subjectId');
-        assertHex32(c.eventId, 'eventId');
         assertHex32(c.metadataHash, 'metadataHash');
+        const [credentialHash, issuerHash, subjectHash, eventHash] = await Promise.all([
+          this.canonicalHash.hashDocument('culturago.credential.v1', c.credentialId),
+          this.canonicalHash.hashDocument('culturago.entity.v1', c.issuerId),
+          this.canonicalHash.hashDocument('culturago.entity.v1', c.subjectId),
+          this.canonicalHash.hashDocument('culturago.entity.v1', c.eventId),
+        ]);
         return {
           contractId: this.config.credentialRegistryContractId,
           method: 'issue_credential',
           args: [
             addr(c.actorAddress),
-            bytes32(c.credentialId),
-            bytes32(c.issuerId),
-            bytes32(c.subjectId),
-            bytes32(c.eventId),
+            bytes32(credentialHash),
+            bytes32(issuerHash),
+            bytes32(subjectHash),
+            bytes32(eventHash),
             u32(c.credentialType),
             bytes32(c.metadataHash),
             u32(c.hashSchema),
@@ -534,14 +545,17 @@ export class SorobanStellarGateway implements StellarGateway {
       }
       case 'revoke_credential': {
         const c = command as RevokeCredentialCommand;
-        assertHex32(c.credentialId, 'credentialId');
+        const credentialHash = await this.canonicalHash.hashDocument(
+          'culturago.credential.v1',
+          c.credentialId
+        );
         if (c.reasonHash) assertHex32(c.reasonHash, 'reasonHash');
         return {
           contractId: this.config.credentialRegistryContractId,
           method: 'revoke_credential',
           args: [
             addr(c.actorAddress),
-            bytes32(c.credentialId),
+            bytes32(credentialHash),
             { kind: 'optional_bytes32', hex: c.reasonHash },
           ],
           actorAddress: c.actorAddress,
@@ -551,12 +565,17 @@ export class SorobanStellarGateway implements StellarGateway {
     }
   }
 
-  private subjectKeyFor(
+  private async subjectKeyFor(
     command: RegisterEntityCommand | IssueCredentialCommand | RevokeCredentialCommand,
     kind: IntentKind
-  ): string {
-    if (kind === 'register_entity') return (command as RegisterEntityCommand).entityId;
-    return (command as IssueCredentialCommand | RevokeCredentialCommand).credentialId;
+  ): Promise<string> {
+    const schema: HashSchemaId =
+      kind === 'register_entity' ? 'culturago.entity.v1' : 'culturago.credential.v1';
+    const id =
+      kind === 'register_entity'
+        ? (command as RegisterEntityCommand).entityId
+        : (command as IssueCredentialCommand | RevokeCredentialCommand).credentialId;
+    return this.canonicalHash.hashDocument(schema, id);
   }
 
   private fingerprintOfCommand(

@@ -165,7 +165,7 @@ export async function listPeople(): Promise<(Person & { entity: Entity })[]> {
     LEFT JOIN LATERAL (
       SELECT phase, tx_hash
       FROM stellar_operations
-      WHERE subject_key = e.id::text
+      WHERE subject_key = culturago_canonical_hash('culturago.entity.v1', e.id::text)
         AND operation_type = 'register_entity'
       ORDER BY
         CASE phase WHEN 'confirmed' THEN 0 ELSE 1 END,

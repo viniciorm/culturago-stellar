@@ -188,7 +188,7 @@ export async function listCredentials(): Promise<PopulatedCredential[]> {
     LEFT JOIN LATERAL (
       SELECT phase, tx_hash
       FROM stellar_operations
-      WHERE subject_key = c.id::text
+      WHERE subject_key = culturago_canonical_hash('culturago.credential.v1', c.id::text)
         AND operation_type = 'issue_credential'
       ORDER BY
         CASE phase WHEN 'confirmed' THEN 0 ELSE 1 END,
@@ -427,7 +427,7 @@ export async function listEntities(): Promise<Entity[]> {
     LEFT JOIN LATERAL (
       SELECT phase, tx_hash
       FROM stellar_operations
-      WHERE subject_key = e.id::text
+      WHERE subject_key = culturago_canonical_hash('culturago.entity.v1', e.id::text)
         AND operation_type = 'register_entity'
       ORDER BY
         CASE phase WHEN 'confirmed' THEN 0 ELSE 1 END,
