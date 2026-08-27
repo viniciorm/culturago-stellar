@@ -32,7 +32,7 @@ export async function signAndSubmitOperation(
   walletAddress: string,
   operation: OperationState,
   prepared: PreparedTransactionPayload
-): Promise<{ ok: boolean; message: string }> {
+): Promise<{ ok: boolean; message: string; operation?: OperationState }> {
   if (environment === 'demo') {
     try {
       const unsigned = JSON.parse(prepared.unsignedXdr) as { mode?: string; signature?: string | null };
@@ -54,7 +54,11 @@ export async function signAndSubmitOperation(
         return { ok: false, message: body.error ?? `HTTP ${res.status}` };
       }
       const phase = body.operation?.phase ?? 'unknown';
-      return { ok: phase === 'confirmed', message: `Fase: ${phase} — ledger: ${body.operation?.ledger ?? 'n/a'}` };
+      return {
+        ok: phase === 'confirmed',
+        message: `Fase: ${phase} — ledger: ${body.operation?.ledger ?? 'n/a'}`,
+        operation: body.operation,
+      };
     } catch (error) {
       return { ok: false, message: error instanceof Error ? error.message : 'Error firmando en demo' };
     }
@@ -100,7 +104,11 @@ export async function signAndSubmitOperation(
       return { ok: false, message: body.error ?? `HTTP ${res.status}` };
     }
     const phase = body.operation?.phase ?? 'unknown';
-    return { ok: phase === 'confirmed', message: `Fase: ${phase} — ledger: ${body.operation?.ledger ?? 'n/a'}` };
+    return {
+      ok: phase === 'confirmed',
+      message: `Fase: ${phase} — ledger: ${body.operation?.ledger ?? 'n/a'}`,
+      operation: body.operation,
+    };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : 'Error firmando con passkey' };
   }

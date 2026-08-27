@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useState, useTransition, useCallback } from 'react';
 import { revokeCredential } from './actions';
 import { signAndSubmitOperation } from '@/lib/smartWallet/signAndSubmitOperation';
+import { useOperationPoller } from '@/lib/hooks/useOperationPoller';
 import type { OperationState } from '@/ports/StellarGateway';
 import type { PreparedTransactionPayload } from '@/ports/SignerPort';
 
@@ -30,6 +31,19 @@ export default function RevokeCredentialForm({
   const [operation, setOperation] = useState<OperationState | null>(null);
   const [status, setStatus] = useState<string | null>(null);
 
+  const onOperationUpdate = useCallback(
+    (op: OperationState) => {
+      setOperation(op);
+      setStatus(`Fase: ${op.phase} — ledger: ${op.ledger ?? 'n/a'}`);
+      if (op.phase === 'confirmed' || op.phase === 'failed_terminal') {
+        setPrepared(null);
+      }
+    },
+    [setOperation, setStatus, setPrepared]
+  );
+
+  useOperationPoller(operation, onOperationUpdate);
+
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
@@ -54,9 +68,11 @@ export default function RevokeCredentialForm({
     setStatus('Firmando y enviando...');
     const result = await signAndSubmitOperation(environment, walletAddress, operation, prepared);
     setStatus(result.message);
+    if (result.operation) {
+      setOperation(result.operation);
+    }
     if (result.ok) {
       setPrepared(null);
-      setOperation(null);
     }
   };
 

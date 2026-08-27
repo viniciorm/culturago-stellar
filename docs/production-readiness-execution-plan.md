@@ -40,8 +40,8 @@ Este estado fue contrastado con el código y con gates locales ejecutados nuevam
 | F3.2 — Allowlist wallet | PARCIAL | El manifiesto Testnet ahora incluye el hash canónico v1 del smart-wallet; `networkConfig` lo usa como respaldo cuando el env está vacío; la ruta `/api/smart-wallet/deploy` rechaza despliegues fuera de la allowlist. Falta evidencia runtime en Testnet. |
 | F4.1 — IDs/hash canónico | PARCIAL | Derivación, golden vectors y función SQL corregida existen; faltan paridad ejecutada contra PostgreSQL real y evidencia TS/Rust. |
 | F4.2 — Gateway en UI | PARCIAL | Emisión/revocación en organizer ahora usan `PasskeyKitSigner` real para testnet/mainnet y rechazan la firma fake; el registro de entidad aún no completa el flujo productivo. |
-| F5.1 — Estado/polling | PENDIENTE | No existe consulta HTTP scoped por operation ID ni polling acotado en UI. |
-| F5.2 — Worker runtime | PARCIAL | Recovery `signed`, lease y reconciliación están implementados y probados; no existe proceso runtime, heartbeat ni shutdown supervisado. |
+| F5.1 — Estado/polling | PARCIAL | Endpoint `GET /api/operations/[operationId]` valida actor y owner; `useOperationPoller` actualiza el estado en emisión/revocación; falta rate-limiting y polling adaptativo/exponencial. |
+| F5.2 — Worker runtime | PARCIAL | Recovery `signed`, lease y reconciliación están implementados y probados; `StellarWorkerManager` inicia el loop en `src/instrumentation.ts` y gestiona shutdown por señal; faltan heartbeat, métricas y supervisión en producción. |
 | F5-f — Provisioning admin Testnet | CERRADO para alcance funcional Testnet | Signer, servicio, endpoint, stores y migración existen. Grant/revoke dependen de ledger success; link/unlink sí tienen readback. Falta E2E en F6 y el pipeline admin conserva un crash window, por lo que no se considera durable para producción. |
 | F6 — E2E Testnet/cleanup | PENDIENTE | No existe evidencia del flujo completo desde frontend ni del cleanup on-chain. |
 | F7 — Retiro de temporales | PARCIAL | `src/lib/stellar.ts`, `src/lib/hashes.ts` y `grant-roles` fueron retirados; `/smart-wallet` y los consumidores de `src/lib/db.ts` permanecen. |
@@ -70,7 +70,7 @@ Este estado fue contrastado con el código y con gates locales ejecutados nuevam
 1. Completar el readback exacto de emisión/revocación para todos los campos exigidos por F1.
 2. Conectar `PasskeyKitSigner` a organizer/dashboard: implementado en emisión/revocación; pendiente de E2E real con WebAuthn.
 3. Completar allowlist WASM y verificación on-chain: hash canónico agregado al manifiesto, `PasskeyKitSigner` fuerza `verifyWasmHash` y `networkConfig` lo usa; pendiente de E2E real con wallet desplegada.
-4. Crear consulta scoped de operación, polling UI y un proceso runtime observable para `StellarWorker`.
+4. Crear consulta scoped de operación, polling UI y un proceso runtime observable para `StellarWorker`: endpoint `/api/operations/[operationId]`, `useOperationPoller` en organizer y `StellarWorkerManager` + `instrumentation.ts` implementados; falta observabilidad/heartbeat y rate-limiting.
 5. Ejecutar provisioning F5-f, E2E frontend y cleanup real en Testnet; luego cerrar el crash window de `admin_provision` para producción.
 6. Retirar `/smart-wallet` y los consumidores productivos de `src/lib/db.ts` después del E2E.
 7. Ejecutar migraciones y tests contra PostgreSQL real; resolver el upgrade desde esquemas previos donde `0007` llega después del índice de `0003`.
