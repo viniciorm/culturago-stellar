@@ -1,5 +1,5 @@
 import 'server-only';
-import { createHash, randomUUID } from 'crypto';
+import { randomUUID } from 'crypto';
 import { Address, Keypair, Transaction, TransactionBuilder, scValToNative, xdr } from '@stellar/stellar-sdk';
 import { domainError } from '../../domain/errors';
 import { assertTransition, mustNotResubmit } from '../../domain/operations/operationState';
@@ -243,7 +243,7 @@ export class SorobanStellarGateway implements StellarGateway {
     // Idempotency: the key binds to exactly one operation; never resubmit blind.
     const existing = await this.store.findByIdempotencyKey(command.idempotencyKey);
     if (existing) {
-      if (existing.intent.fingerprint === this.fingerprintOfCommand(command, kind)) {
+      if (existing.intent.fingerprint === (await this.fingerprintOfCommand(command, kind))) {
         return existing.state;
       }
       throw domainError(
@@ -255,7 +255,7 @@ export class SorobanStellarGateway implements StellarGateway {
     const contractCall = await this.specFor(command, kind);
     const sim = await this.transport.simulate(contractCall);
     const operationId = this.newId();
-    const fingerprint = this.fingerprintOfCommand(command, kind);
+    const fingerprint = await this.fingerprintOfCommand(command, kind);
 
     console.log('[SorobanStellarGateway.prepare] kind:', kind, 'opId:', operationId, 'needsRestore:', sim.needsRestore, 'contractError:', sim.contractError);
     console.log('[SorobanStellarGateway.prepare] feePayerSecret present:', !!this.config.feePayerSecret);
@@ -586,11 +586,11 @@ export class SorobanStellarGateway implements StellarGateway {
     return this.canonicalHash.hashDocument(schema, id);
   }
 
-  private fingerprintOfCommand(
+  private async fingerprintOfCommand(
     command: RegisterEntityCommand | IssueCredentialCommand | RevokeCredentialCommand,
     kind: IntentKind
-  ): string {
-    return createHash('sha256').update(kind).update(JSON.stringify(command)).digest('hex');
+  ): Promise<string> {
+    return this.canonicalHash.hashDocument('culturago.fingerprint.v1', { kind, command });
   }
 
   private async transition(

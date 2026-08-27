@@ -3,11 +3,15 @@
  * produce identical bytes and digests for the same document and schema.
  * Any failure MUST throw a DomainError: silent fallbacks are forbidden.
  */
-export type HashSchemaId = 'culturago.entity.v1' | 'culturago.credential.v1';
+export type HashSchemaId =
+  | 'culturago.entity.v1'
+  | 'culturago.credential.v1'
+  | 'culturago.fingerprint.v1';
 
 export const HASH_SCHEMA_CODES: Readonly<Record<HashSchemaId, number>> = {
   'culturago.entity.v1': 1,
   'culturago.credential.v1': 2,
+  'culturago.fingerprint.v1': 0,
 };
 
 export interface CanonicalHashPort {
