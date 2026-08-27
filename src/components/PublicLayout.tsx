@@ -22,7 +22,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({ children }) => {
               <div className="w-8 h-8 rounded-lg bg-[#5C061E] flex items-center justify-center text-[#C5A880] font-semibold text-base transition-transform group-hover:scale-105">
                 C
               </div>
-              <span className="font-serif text-lg tracking-wide font-bold bg-gradient-to-r from-[#5C061E] to-[#8A1434] bg-clip-text text-transparent">
+              <span className="font-serif text-lg tracking-wide font-bold bg-linear-to-r from-[#5C061E] to-[#8A1434] bg-clip-text text-transparent">
                 CulturaGO
               </span>
             </Link>

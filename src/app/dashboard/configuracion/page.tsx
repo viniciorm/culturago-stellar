@@ -1,51 +1,20 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import {
-  Settings,
-  Database,
-  RefreshCw,
-  Link2,
-  AlertTriangle,
-  FolderOpen
-} from 'lucide-react';
-import {
-  db,
-  mockDb,
-  Entity
-} from '../../../lib/db';
-import { Button } from '../../../components/ui/Button';
+import { Settings, Link2 } from 'lucide-react';
+import { type Entity } from '@/domain/types/entities';
+import { listEntities } from '../credenciales/actions';
 import { RelationshipManager } from '../../../components/RelationshipManager';
 
 export default function ConfiguracionPage() {
   const [entities, setEntities] = useState<Entity[]>([]);
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({
-    entities: 0,
-    people: 0,
-    organizations: 0,
-    providers: 0,
-    relationships: 0,
-    credentials: 0,
-    wallets: 0,
-  });
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const entData = await db.getEntities();
+      const entData = await listEntities();
       setEntities(entData);
-
-      // Extract statistics from the demo engine
-      setStats({
-        entities: mockDb.entities.length,
-        people: mockDb.people.length,
-        organizations: mockDb.organizations.length,
-        providers: mockDb.providers.length,
-        relationships: mockDb.relationships.length,
-        credentials: mockDb.credentials.length,
-        wallets: mockDb.wallets.length,
-      });
     } catch (e) {
       console.error(e);
     } finally {
@@ -56,13 +25,6 @@ export default function ConfiguracionPage() {
   useEffect(() => {
     loadData();
   }, []);
-
-  const handleResetDb = () => {
-    if (confirm('¿Estás completamente seguro de querer reiniciar la base de datos mock local a los datos semilla? Se perderán todas tus modificaciones locales.')) {
-      mockDb.reset();
-      window.location.reload();
-    }
-  };
 
   return (
     <div className="space-y-8 text-left">
@@ -75,81 +37,8 @@ export default function ConfiguracionPage() {
         <p className="text-xs text-stone-500 mt-1">Monitorea el estado del motor de datos y vincula relaciones entre artistas, escuelas y proveedores.</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-        {/* Left Column: Database state & stats */}
-        <div className="space-y-6 lg:col-span-1">
-          {/* DB Engine Info */}
-          <div className="bg-white border border-stone-200 rounded-xl p-5 shadow-xs space-y-4">
-            <h3 className="text-sm font-bold text-stone-750 flex items-center gap-2 border-b border-stone-100 pb-2">
-              <Database className="w-4.5 h-4.5 text-[#C5A880]" />
-              Estado del Motor de Datos
-            </h3>
-
-            <div className="p-3 bg-amber-50 text-amber-800 border border-amber-100 rounded-lg text-xs space-y-2">
-              <div className="flex items-center gap-1.5 font-bold">
-                <AlertTriangle className="w-4 h-4 text-amber-600" />
-                Modo Demo Local Activo
-              </div>
-              <p className="leading-relaxed opacity-95">
-                El sistema corre localmente con persistencia en <code className="font-mono bg-amber-100 px-1 rounded">localStorage</code>. La persistencia real se realiza vía backend con PostgreSQL privado (server-only).
-              </p>
-            </div>
-
-            {/* Actions for local db */}
-            <div className="pt-2 text-xs">
-              <span className="text-stone-400 block mb-2 leading-relaxed">
-                Puedes resetear los datos a los valores semilla preestablecidos de la danza oriental en Chile.
-              </span>
-              <Button
-                variant="secondary"
-                size="sm"
-                className="w-full justify-center text-xs font-semibold"
-                onClick={handleResetDb}
-              >
-                <RefreshCw className="w-3.5 h-3.5 mr-1" />
-                Restablecer Datos Semilla
-              </Button>
-            </div>
-          </div>
-
-          {/* Table Counts */}
-          <div className="bg-white border border-stone-200 rounded-xl p-5 shadow-xs space-y-4">
-            <h3 className="text-sm font-bold text-stone-750 flex items-center gap-2 border-b border-stone-100 pb-2">
-              <FolderOpen className="w-4.5 h-4.5 text-[#C5A880]" />
-              Auditoría de Tablas (CRUD)
-            </h3>
-
-            <div className="space-y-2.5 text-xs text-stone-600">
-              <div className="flex justify-between">
-                <span>Entidades Totales (entities):</span>
-                <span className="font-bold text-[#1C1A17]">{stats.entities}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Personas (people):</span>
-                <span className="font-bold text-[#1C1A17]">{stats.people}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Organizaciones (organizations):</span>
-                <span className="font-bold text-[#1C1A17]">{stats.organizations}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Proveedores (providers):</span>
-                <span className="font-bold text-[#1C1A17]">{stats.providers}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Relaciones (relationships):</span>
-                <span className="font-bold text-[#1C1A17]">{stats.relationships}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Credenciales (credentials):</span>
-                <span className="font-bold text-[#1C1A17]">{stats.credentials}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Right 2 Columns: Relationship Manager */}
-        <div className="lg:col-span-2 bg-white border border-stone-200 rounded-xl p-6 shadow-xs space-y-4">
+      <div className="grid grid-cols-1 gap-8 items-start">
+        <div className="bg-white border border-stone-200 rounded-xl p-6 shadow-xs space-y-4">
           <h3 className="text-base font-serif font-bold text-stone-850 flex items-center gap-2 border-b border-stone-100 pb-2">
             <Link2 className="w-5 h-5 text-[#C5A880]" />
             Administrador de Relaciones

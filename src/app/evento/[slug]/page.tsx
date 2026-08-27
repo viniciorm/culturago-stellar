@@ -155,7 +155,7 @@ export default function EventPublicPage() {
           </div>
         </div>
 
-        <div className="w-full md:w-auto flex-shrink-0 flex flex-col items-stretch gap-3 bg-stone-50 border border-stone-200 rounded-xl p-4">
+        <div className="w-full md:w-auto shrink-0 flex flex-col items-stretch gap-3 bg-stone-50 border border-stone-200 rounded-xl p-4">
           <span className="text-[10px] uppercase font-bold text-stone-400 tracking-wider">
             Organizador Oficial
           </span>

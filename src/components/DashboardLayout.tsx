@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { 
@@ -14,11 +14,8 @@ import {
   LogOut, 
   Menu, 
   X,
-  Database,
-  RefreshCw,
   Globe
 } from 'lucide-react';
-import { mockDb } from '../lib/db';
 import { ActorContext } from '../infrastructure/auth/actorContext';
 
 interface DashboardLayoutProps {
@@ -30,22 +27,10 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, acto
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [isClient, setIsClient] = useState(false);
-
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
     router.push('/login');
-  };
-
-  const handleResetMockDb = () => {
-    if (confirm('¿Estás seguro de que quieres restablecer la base de datos local a su estado semilla inicial?')) {
-      mockDb.reset();
-      window.location.reload();
-    }
   };
 
   const menuItems = [
@@ -70,25 +55,6 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, acto
             Panel CulturaGO
           </span>
         </div>
-
-        {/* Database indicator */}
-        {isClient && (
-          <div className="px-4 py-3 mx-4 mt-4 rounded-lg bg-stone-50 border border-stone-200 flex flex-col gap-2">
-            <div className="flex items-center gap-2 text-xs font-semibold text-stone-600">
-              <Database className="w-3.5 h-3.5 text-[#C5A880]" />
-              Motor: Demo local
-            </div>
-            {(
-              <button 
-                onClick={handleResetMockDb}
-                className="text-[10px] text-[#5C061E] hover:underline flex items-center gap-1 font-medium text-left self-start mt-1"
-              >
-                <RefreshCw className="w-3 h-3" />
-                Reiniciar datos semilla
-              </button>
-            )}
-          </div>
-        )}
 
         <nav className="flex-1 px-4 py-6 space-y-1.5 overflow-y-auto">
           {menuItems.map((item) => {

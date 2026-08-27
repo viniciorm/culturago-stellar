@@ -249,7 +249,7 @@ export default function OrganizationPublicPage() {
                         {c.credential_code}
                       </span>
                     </div>
-                    <Award className="w-5 h-5 text-[#C5A880] flex-shrink-0" />
+                    <Award className="w-5 h-5 text-[#C5A880] shrink-0" />
                   </div>
                 ))}
               </div>

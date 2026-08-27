@@ -67,7 +67,7 @@ export default function HomePage() {
         
         <h1 className="font-serif text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-[#1C1A17] leading-tight">
           Pasaportes Culturales <br />
-          <span className="bg-gradient-to-r from-[#5C061E] to-[#C5A880] bg-clip-text text-transparent">
+          <span className="bg-linear-to-r from-[#5C061E] to-[#C5A880] bg-clip-text text-transparent">
             Digitales y Verificables
           </span>
         </h1>
@@ -110,7 +110,7 @@ export default function HomePage() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
-            <Button type="submit" variant="primary" className="h-[38px] flex-shrink-0">
+            <Button type="submit" variant="primary" className="h-9.5 shrink-0">
               Buscar
             </Button>
           </form>
@@ -133,7 +133,7 @@ export default function HomePage() {
               value={verifyCode}
               onChange={(e) => setVerifyCode(e.target.value)}
             />
-            <Button type="submit" variant="accent" className="h-[38px] flex-shrink-0">
+            <Button type="submit" variant="accent" className="h-9.5 shrink-0">
               Validar
             </Button>
           </form>
@@ -157,7 +157,7 @@ export default function HomePage() {
             </p>
           </div>
 
-          <Link href="/evento/fdvc-2026" className="flex-shrink-0">
+          <Link href="/evento/fdvc-2026" className="shrink-0">
             <Button variant="secondary" className="bg-[#FCFBF7] text-[#5C061E] border-none hover:bg-stone-100 py-3 px-5 font-semibold text-sm">
               Visitar Página del Evento
               <ArrowRight className="w-4 h-4 ml-2 text-[#5C061E]" />

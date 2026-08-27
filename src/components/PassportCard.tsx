@@ -50,7 +50,7 @@ export const PassportCard: React.FC<PassportCardProps> = ({
       {/* Main Body */}
       <div className="flex flex-col sm:flex-row gap-5 items-center sm:items-start">
         {/* Photo Container */}
-        <div className="flex-shrink-0 relative w-32 h-36 rounded-xl border border-stone-200 bg-[#FCFBF7] shadow-inner flex flex-col items-center justify-center overflow-hidden">
+        <div className="shrink-0 relative w-32 h-36 rounded-xl border border-stone-200 bg-[#FCFBF7] shadow-inner flex flex-col items-center justify-center overflow-hidden">
           {person.photo_url ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img

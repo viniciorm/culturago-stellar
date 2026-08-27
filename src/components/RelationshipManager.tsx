@@ -2,11 +2,15 @@
 
 import React, { useState, useEffect } from 'react';
 import { Link2, Trash2, UserPlus } from 'lucide-react';
-import { 
-  Entity, 
-  PopulatedRelationship, 
-  db 
-} from '../lib/db';
+import {
+  type Entity,
+  type PopulatedRelationship,
+} from '@/domain/types/entities';
+import {
+  listRelationships,
+  createRelationship,
+  deleteRelationship,
+} from '@/app/dashboard/configuracion/actions';
 import { Button } from './ui/Button';
 import { Select } from './ui/Select';
 import { Table } from './ui/Table';
@@ -34,7 +38,7 @@ export const RelationshipManager: React.FC<RelationshipManagerProps> = ({
   const loadRelationships = async () => {
     setLoading(true);
     try {
-      const data = await db.getRelationships();
+      const data = await listRelationships();
       setRelationships(data);
     } catch (e) {
       console.error('Error loading relationships:', e);
@@ -70,10 +74,10 @@ export const RelationshipManager: React.FC<RelationshipManagerProps> = ({
     setError('');
 
     try {
-      await db.createRelationship({
+      await createRelationship({
         from_entity_id: fromId,
         to_entity_id: toId,
-        relationship_type: relType as any,
+        relationship_type: relType as PopulatedRelationship['relationship_type'],
         status: 'active',
         context_event_id: '22222222-2222-2222-2222-333333333333', // Default FDVC 2026
         notes: notes || null
@@ -91,7 +95,7 @@ export const RelationshipManager: React.FC<RelationshipManagerProps> = ({
   const handleDeleteRelationship = async (id: string) => {
     if (confirm('¿Estás seguro de que quieres desvincular estas entidades?')) {
       try {
-        await db.deleteRelationship(id);
+        await deleteRelationship(id);
         await loadRelationships();
         onUpdate();
       } catch (e) {
@@ -226,7 +230,7 @@ export const RelationshipManager: React.FC<RelationshipManagerProps> = ({
               placeholder="Ej. Bailarina solista estelar, Maestra del taller, etc."
             />
           </div>
-          <Button variant="primary" type="submit" isLoading={submitting} className="w-full md:w-auto h-[38px] flex-shrink-0">
+          <Button variant="primary" type="submit" isLoading={submitting} className="w-full md:w-auto h-9.5 shrink-0">
             Establecer Vínculo
           </Button>
         </div>
