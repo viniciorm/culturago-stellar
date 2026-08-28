@@ -4,6 +4,8 @@ import { createCanonicalHashPort } from '@/infrastructure/hashing/canonicalHash'
 import { canonicalizeJson } from '@/infrastructure/hashing/canonicalize';
 import { sha256Node } from '@/infrastructure/hashing/sha256Node';
 import { buildDigestInput } from '@/infrastructure/hashing/canonicalize';
+import { isPersistenceConfigured } from '@/infrastructure/config/env';
+import { getPool, closePool } from '@/infrastructure/database/pool';
 
 const nodePort = createCanonicalHashPort(sha256Node);
 const service = new CanonicalHashService();
@@ -53,4 +55,20 @@ describe('UUID TS ↔ SQL parity', () => {
     // SELECT culturago_canonical_hash('culturago.entity.v1', to_json('a1a1a1a1-...')::text);
     // to_json(id) gives a JSON string, ::text yields the quoted canonical form.
   });
+
+  it.skipIf(!isPersistenceConfigured())(
+    'matches the installed PostgreSQL culturago_canonical_hash function',
+    async () => {
+      const id = 'a1a1a1a1-a1a1-a1a1-a1a1-a1a1a1a1a1a1';
+      const canonical = canonicalizeJson(id);
+      const expectedDigest = await sha256Node(buildDigestInput('culturago.entity.v1', canonical));
+
+      const result = await getPool().query<{ h: string }>(
+        'SELECT culturago_canonical_hash($1, to_json($2)::text) AS h',
+        ['culturago.entity.v1', id]
+      );
+      expect(result.rows[0].h).toBe(expectedDigest);
+      await closePool();
+    }
+  );
 });

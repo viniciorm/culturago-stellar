@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { PassportService } from '@/infrastructure/stellar/PassportService';
+import { PassportService, toPublicCredentialView } from '@/infrastructure/stellar/PassportService';
 import { getPublicConfig } from '@/infrastructure/config/env';
 
 export async function GET(
@@ -14,15 +14,10 @@ export async function GET(
   }
 
   const config = getPublicConfig();
+  const view = toPublicCredentialView(event);
   return NextResponse.json({
-    credentialId,
-    status: event.eventType === 'CredentialRevoked' ? 'revoked' : 'issued',
-    ledger: event.ledger,
+    ...view,
     network: config.environment,
-    contractId: config.credentialRegistryContractId ?? '',
-    subjectId: event.subjectId,
-    issuerId: event.issuerId,
-    eventId: event.eventEntityId,
-    data: event.data,
+    contractId: config.credentialRegistryContractId ?? event.contractId,
   });
 }

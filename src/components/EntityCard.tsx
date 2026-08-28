@@ -44,7 +44,11 @@ export const EntityCard: React.FC<EntityCardProps> = ({
              : org?.organization_type === 'company' ? 'Compañía'
              : org?.organization_type === 'festival' ? 'Festival'
              : 'Organización',
-          description: `Contacto: ${org?.contact_name || 'No especificado'}`,
+          description: org?.website
+            ? org.website
+            : org?.instagram
+              ? org.instagram
+              : 'Sin datos de contacto públicos.',
         };
       case 'provider':
         return {

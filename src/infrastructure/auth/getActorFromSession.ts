@@ -2,9 +2,12 @@ import 'server-only';
 import { cookies } from 'next/headers';
 import { domainError } from '../../domain/errors';
 import { getPublicConfig } from '../config/env';
+import { Logger } from '../observability/Logger';
 import { ActorContext, createTestActor } from './actorContext';
 import { createAuthBundle } from './factory';
 import { resolveActor } from './resolveActor';
+
+const log = new Logger('getActorFromSession');
 
 /**
  * Resolve the current actor from the session cookie.
@@ -31,7 +34,7 @@ export async function getActorFromSession(): Promise<ActorContext | null> {
     return resolveActor(auth.store, session.accountId);
   } catch (error) {
     if (error instanceof Error) {
-      console.error('[getActorFromSession] failed to resolve actor:', error.message);
+      log.error('resolve_actor_failed', { error: error.message });
     }
     return null;
   }

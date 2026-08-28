@@ -89,6 +89,8 @@ function mapRowToPopulatedRelationship(row: RelationshipRow): PopulatedRelations
 }
 
 export async function listRelationships(): Promise<PopulatedRelationship[]> {
+  await requireDashboardAdmin();
+
   if (!isPersistenceConfigured()) {
     return [];
   }

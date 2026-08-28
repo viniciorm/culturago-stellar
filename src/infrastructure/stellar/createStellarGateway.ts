@@ -1,17 +1,20 @@
 import 'server-only';
 import { OperationStore } from '../../ports/OperationStore';
 import { StellarGateway } from '../../ports/StellarGateway';
-import { createMockStellarGateway } from './MockStellarGateway';
 import { InMemoryOperationStore } from './InMemoryOperationStore';
+import { InMemoryChainTransport } from './InMemoryChainTransport';
 import { PostgreSQLOperationStore } from './PostgreSQLOperationStore';
 import { SdkSorobanTransport } from './SdkSorobanTransport';
 import { SorobanStellarGateway } from './SorobanStellarGateway';
 import { getStellarNetworkConfig } from './networkConfig';
-import { isPersistenceConfigured } from '../config/env';
+import { getPublicConfig, isPersistenceConfigured } from '../config/env';
+import { Logger } from '../observability/Logger';
+import { DEMO_CONFIG } from './MockStellarGateway';
 
-// Singleton para que prepare y submit compartan el estado en memoria
-// cuando no haya PostgreSQL configurado (local dev / fallback temporal).
+// Singletons para que prepare y submit compartan el estado en memoria
+// cuando no haya PostgreSQL configurado (local dev / demo fallback temporal).
 const inMemoryStore = new InMemoryOperationStore();
+const inMemoryTransport = new InMemoryChainTransport();
 
 /**
  * Factory for the concrete StellarGateway.
@@ -25,14 +28,18 @@ export interface StellarGatewayBundle {
 }
 
 export function createStellarGateway(): StellarGatewayBundle {
-  const env = process.env.NEXT_PUBLIC_CULTURAGO_ENV;
-  if (env === 'demo') {
-    return createMockStellarGateway({ signer: null });
+  const publicConfig = getPublicConfig();
+  if (publicConfig.environment === 'demo') {
+    const log = new Logger('createStellarGateway');
+    log.info('gateway_created', { persistenceConfigured: false, store: inMemoryStore.constructor.name });
+    const gateway = new SorobanStellarGateway(DEMO_CONFIG, inMemoryTransport, inMemoryStore, null);
+    return { gateway, store: inMemoryStore };
   }
   const config = getStellarNetworkConfig();
-  const transport = new SdkSorobanTransport(config);
+  const transport = isPersistenceConfigured() ? new SdkSorobanTransport(config) : inMemoryTransport;
   const store = isPersistenceConfigured() ? new PostgreSQLOperationStore() : inMemoryStore;
-  console.log('[createStellarGateway] persistence configured:', isPersistenceConfigured(), 'store:', store.constructor.name);
+  const log = new Logger('createStellarGateway');
+  log.info('gateway_created', { persistenceConfigured: isPersistenceConfigured(), store: store.constructor.name });
   const gateway = new SorobanStellarGateway(config, transport, store, null);
   return { gateway, store };
 }

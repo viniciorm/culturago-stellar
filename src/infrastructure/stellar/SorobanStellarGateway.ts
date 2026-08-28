@@ -21,6 +21,7 @@ import {
 import { StellarNetworkConfig } from './networkConfig';
 import { CanonicalHashPort, HashSchemaId } from '../../ports/CanonicalHashPort';
 import { CanonicalHashService } from '../hashing/CanonicalHashService';
+import { Logger } from '../observability/Logger';
 
 const bytes32 = (hex: string): ContractArgValue => ({ kind: 'bytes32', hex });
 const u32 = (value: number): ContractArgValue => ({ kind: 'u32', value });
@@ -85,14 +86,14 @@ export function credentialRecordMatches(
   if (kind === 'issue_credential') {
     if (revoked !== false) return false;
     const issuedLedger = toNumber(record.issued_ledger);
-    if (ledger !== null && issuedLedger !== null && issuedLedger !== ledger) return false;
+    if (ledger !== null && issuedLedger !== ledger) return false;
     return true;
   }
 
   if (kind === 'revoke_credential') {
     if (revoked !== true) return false;
     const revokedLedger = toNumber(record.revoked_ledger);
-    if (ledger !== null && revokedLedger !== null && revokedLedger !== ledger) return false;
+    if (ledger !== null && revokedLedger !== ledger) return false;
     if (expected.revokedReasonHash !== undefined && toHexString(record.revoked_reason_hash) !== expected.revokedReasonHash) return false;
     return true;
   }
@@ -109,6 +110,8 @@ type IntentKind = 'register_entity' | 'issue_credential' | 'revoke_credential';
  * operation confirmed; only ledger inclusion + contract readback does.
  */
 export class SorobanStellarGateway implements StellarGateway {
+  private readonly log = new Logger('SorobanStellarGateway');
+
   constructor(
     private readonly config: StellarNetworkConfig,
     private readonly transport: SorobanTransport,
@@ -148,7 +151,7 @@ export class SorobanStellarGateway implements StellarGateway {
 
   async getPreparedPayload(operationId: string) {
     const op = await this.requireOperation(operationId);
-    console.log('[SorobanStellarGateway.getPreparedPayload] opId:', operationId, 'phase:', op.state.phase, 'hasPrepared:', !!op.intent.prepared);
+    this.log.info('get_prepared_payload', { operationId, phase: op.state.phase, hasPrepared: !!op.intent.prepared });
     if (op.state.phase !== 'awaiting_signature' || !op.intent.prepared) {
       throw domainError('INVALID_STATE_TRANSITION', `operation ${operationId} is not awaiting signature`);
     }
@@ -175,7 +178,7 @@ export class SorobanStellarGateway implements StellarGateway {
       }
       try {
         const { txHash } = await this.transport.submit(op.intent.signed.signedXdr);
-        console.log('[submitSigned] recovery opId:', operationId, 'txHash:', txHash);
+        this.log.info('submit_signed_recovery', { operationId, txHash });
         op.state.txHash = txHash;
         op.state.phase = 'submitted';
         await this.store.save(op);
@@ -208,7 +211,8 @@ export class SorobanStellarGateway implements StellarGateway {
       );
 
       const enforced = await this.transport.enforcingSimulateAndAssemble(signedXdr);
-      console.log('[submitSigned] enforcing result:', {
+      this.log.info('submit_signed_enforcing', {
+        operationId,
         contractError: enforced.contractError,
         needsRestore: enforced.needsRestore,
         preparedXdrLength: enforced.preparedXdr.length,
@@ -257,7 +261,7 @@ export class SorobanStellarGateway implements StellarGateway {
       await this.store.save(op);
       throw domainError('INVALID_STATE_TRANSITION', 'transaction submission failed, queued for retry');
     }
-    console.log('[submitSigned] opId:', op.state.operationId, 'txHash:', txHash);
+    this.log.info('submit_signed', { operationId: op.state.operationId, txHash });
     op.state.txHash = txHash;
     op.state.phase = 'submitted';
     await this.store.save(op);
@@ -362,8 +366,7 @@ export class SorobanStellarGateway implements StellarGateway {
     const operationId = this.newId();
     const fingerprint = await this.fingerprintOfCommand(command, kind);
 
-    console.log('[SorobanStellarGateway.prepare] kind:', kind, 'opId:', operationId, 'needsRestore:', sim.needsRestore, 'contractError:', sim.contractError);
-    console.log('[SorobanStellarGateway.prepare] feePayerSecret present:', !!this.config.feePayerSecret);
+    this.log.info('prepare', { kind, operationId, needsRestore: sim.needsRestore, contractError: sim.contractError, feePayerSecretPresent: !!this.config.feePayerSecret });
 
     if (sim.contractError) {
       const state: OperationState = {
@@ -454,7 +457,7 @@ export class SorobanStellarGateway implements StellarGateway {
         expected: await this.expectedFor(command, kind),
       },
     });
-    console.log('[SorobanStellarGateway.prepare] created operation', operationId, 'phase:', phase, 'prepared null:', !prepared);
+    this.log.info('prepare_created', { operationId, phase, preparedNull: !prepared });
     return state;
   }
 
@@ -492,7 +495,7 @@ export class SorobanStellarGateway implements StellarGateway {
     await this.store.save(op);
 
     const result = await this.transport.pollTransaction(txHash);
-    console.log('[pollAndConfirm] opId:', op.state.operationId, 'txHash:', txHash, 'result:', result);
+    this.log.info('poll_and_confirm', { operationId: op.state.operationId, txHash, result });
     switch (result.status) {
       case 'PENDING':
       case 'NOT_FOUND':
@@ -503,16 +506,24 @@ export class SorobanStellarGateway implements StellarGateway {
         op.state.errorCode = result.contractError ?? 'CONTRACT_FAILED';
         op.nextRetryAt = null;
         if ('diagnosticEventsXdr' in result && result.diagnosticEventsXdr) {
-          console.log(
-            '[pollAndConfirm] diagnostics:',
-            result.diagnosticEventsXdr
-          );
+          this.log.error('poll_failed_diagnostics', {
+            operationId: op.state.operationId,
+            diagnosticEventsXdr: result.diagnosticEventsXdr,
+          });
         }
         if ('resultXdr' in result && result.resultXdr) {
-          console.log('[pollAndConfirm] resultXdr:', result.resultXdr);
+          this.log.error('poll_failed_result', { operationId: op.state.operationId, resultXdr: result.resultXdr });
         }
         break;
       case 'SUCCESS': {
+        // A SUCCESS without a ledger number is an invalid RPC response and
+        // must not be treated as a confirmed transaction.
+        if (result.ledger === null || result.ledger === undefined) {
+          this.markUnknown(op);
+          op.state.errorCode = 'MISSING_LEDGER';
+          break;
+        }
+
         // Ledger inclusion is not enough: readback before confirmed.
         // Assign ledger first so readback can validate issued/revoked ledger equality.
         op.state.ledger = result.ledger;

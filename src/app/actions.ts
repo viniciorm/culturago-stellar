@@ -39,7 +39,8 @@ function toWalletStatus(value: string | null): Entity['wallet_status'] {
 function deriveStellarStatus(phase: string | null): Entity['stellar_status'] {
   if (!phase) return 'not_registered';
   if (phase === 'confirmed') return 'registered';
-  if (phase === 'failed_retryable' || phase === 'failed_terminal' || phase === 'unknown') return 'failed';
+  if (phase === 'failed_retryable' || phase === 'failed_terminal') return 'failed';
+  if (phase === 'unknown') return 'pending';
   return 'pending';
 }
 
@@ -288,6 +289,9 @@ export async function getPublicCredentialByCode(code: string): Promise<Populated
       LIMIT 1
     ) so ON true
     WHERE c.credential_code = $1
+      AND c.status IN ('issued', 'revoked')
+      AND ie.active = true AND ie.is_public = true
+      AND se.active = true AND se.is_public = true
     LIMIT 1
   `, [code]);
 
@@ -471,7 +475,6 @@ function mapRowToPublicRelationship(row: PublicRelationshipRow): PopulatedRelati
     status: row.status as Relationship['status'],
     start_date: toDateString(row.start_date),
     end_date: toDateString(row.end_date),
-    notes: row.notes,
     created_at: createdAt,
     updated_at: updatedAt,
   };
@@ -505,6 +508,8 @@ export async function getPublicRelationships(): Promise<PopulatedRelationship[]>
     JOIN entities fe ON fe.id = r.from_entity_id
     JOIN entities te ON te.id = r.to_entity_id
     WHERE r.status = 'active'
+      AND fe.active = true AND fe.is_public = true
+      AND te.active = true AND te.is_public = true
     ORDER BY r.created_at DESC
   `);
 
@@ -529,10 +534,7 @@ function mapRowToPerson(row: RawPersonRow): Person & { entity: Entity } {
   const person: Person = {
     id: row.id,
     entity_id: row.id,
-    legal_name: row.legal_name,
     artistic_name: row.artistic_name,
-    email: row.email,
-    phone: row.phone,
     instagram: row.instagram,
     bio: row.bio,
     photo_url: row.photo_url,
@@ -642,9 +644,6 @@ function mapRowToOrganization(row: RawOrgRow): Organization & { entity: Entity }
     organization_type: row.organization_type,
     website: row.website,
     instagram: row.instagram,
-    contact_name: row.contact_name,
-    contact_email: row.contact_email,
-    contact_phone: row.contact_phone,
     created_at: createdAt,
     updated_at: updatedAt,
   };
@@ -747,9 +746,6 @@ function mapRowToProvider(row: RawProviderRow): Provider & { entity: Entity } {
     entity_id: row.id,
     name: row.display_name,
     provider_type: row.provider_type,
-    contact_name: row.contact_name,
-    email: row.email,
-    phone: row.phone,
     instagram: row.instagram,
     website: row.website,
     public_description: row.public_description,
@@ -1118,6 +1114,9 @@ export async function getPublicCredentialsBySubjectId(
       LIMIT 1
     ) so ON true
     WHERE c.subject_entity_id = $1
+      AND c.status = 'issued'
+      AND ie.active = true AND ie.is_public = true
+      AND se.active = true AND se.is_public = true
     ORDER BY c.issued_intent_at DESC
   `, [subjectEntityId]);
 

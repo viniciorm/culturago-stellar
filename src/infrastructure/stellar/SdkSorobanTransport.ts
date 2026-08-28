@@ -1,6 +1,7 @@
 import 'server-only';
 import {
   Account,
+  BASE_FEE,
   Contract,
   Operation,
   Transaction,
@@ -11,6 +12,7 @@ import {
   xdr,
 } from '@stellar/stellar-sdk';
 import { domainError } from '../../domain/errors';
+import { Logger } from '../observability/Logger';
 import {
   ContractArgValue,
   ContractCallSpec,
@@ -28,6 +30,7 @@ import { StellarNetworkConfig } from './networkConfig';
  */
 export class SdkSorobanTransport implements SorobanTransport {
   private readonly server: rpc.Server;
+  private readonly log = new Logger('SdkSorobanTransport');
 
   constructor(private readonly config: StellarNetworkConfig) {
     this.server = new rpc.Server(config.rpcUrl, { allowHttp: config.rpcUrl.startsWith('http://') });
@@ -70,6 +73,7 @@ export class SdkSorobanTransport implements SorobanTransport {
     }
 
     const prepared = await this.server.prepareTransaction(tx);
+    this.assertFeeWithinBudget(prepared, this.config.maxFeeStrokes);
     return {
       needsRestore: false,
       preparedXdr: prepared.toXDR(),
@@ -157,7 +161,7 @@ export class SdkSorobanTransport implements SorobanTransport {
     if (rpc.Api.isSimulationError(sim)) {
       // During debugging, keep the raw RPC error so we can see __check_auth
       // failures, resource limits and auth context mismatches.
-      console.error('[enforcingSimulateAndAssemble] simulation error:', sim.error);
+      this.log.error('enforcing_simulation_error', { simulationError: sim.error });
       return {
         needsRestore: false,
         preparedXdr: '',
@@ -183,9 +187,11 @@ export class SdkSorobanTransport implements SorobanTransport {
     }
 
     const assembled = rpc.assembleTransaction(tx, sim);
+    const assembledTx = assembled.build();
+    this.assertFeeWithinBudget(assembledTx, this.config.maxFeeStrokes);
     return {
       needsRestore: false,
-      preparedXdr: assembled.build().toXDR(),
+      preparedXdr: assembledTx.toXDR(),
       latestLedger,
       contractError: null,
     };
@@ -204,6 +210,19 @@ export class SdkSorobanTransport implements SorobanTransport {
     }
   }
 
+  private assertFeeWithinBudget(tx: Transaction, maxFeeStrokes: number): void {
+    const totalFee = Number(tx.fee);
+    if (Number.isNaN(totalFee) || totalFee < 0) {
+      throw domainError('INVALID_INPUT', 'transaction fee is not a valid number');
+    }
+    if (totalFee > maxFeeStrokes) {
+      throw domainError(
+        'INVALID_INPUT',
+        `simulated fee ${totalFee} exceeds configured max fee ${maxFeeStrokes}`
+      );
+    }
+  }
+
   // ---------- internals ----------
 
   private async buildRestoreXdr(
@@ -218,7 +237,10 @@ export class SdkSorobanTransport implements SorobanTransport {
       });
 
     const raw = new TransactionBuilder(account, {
-      fee: String(this.config.maxFeeStrokes),
+      // Same inclusion-fee discipline as buildTransaction: start at the network
+      // minimum and assert the total (inclusion + simulated resource fee) is
+      // within the configured cap after assembly.
+      fee: String(BASE_FEE),
       networkPassphrase: this.config.networkPassphrase,
     })
       .addOperation(Operation.restoreFootprint({}))
@@ -226,7 +248,9 @@ export class SdkSorobanTransport implements SorobanTransport {
       .build();
 
     const assembled = rpc.assembleTransaction(raw, sim);
-    return assembled.build().toXDR();
+    const restoredTx = assembled.build();
+    this.assertFeeWithinBudget(restoredTx, this.config.maxFeeStrokes);
+    return restoredTx.toXDR();
   }
 
   private async buildTransaction(spec: ContractCallSpec): Promise<Transaction> {
@@ -244,7 +268,10 @@ export class SdkSorobanTransport implements SorobanTransport {
     const operation = contract.call(spec.method, ...args);
 
     return new TransactionBuilder(account, {
-      fee: String(this.config.maxFeeStrokes),
+      // Start with the network minimum inclusion fee; the SDK will add the
+      // simulated resource fee during assembly, and we assert the total stays
+      // within maxFeeStrokes after prepare/assemble.
+      fee: String(BASE_FEE),
       networkPassphrase: this.config.networkPassphrase,
     })
       .addOperation(operation)

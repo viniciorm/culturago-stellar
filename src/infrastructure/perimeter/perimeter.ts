@@ -1,13 +1,12 @@
 import 'server-only';
 import { domainError } from '../../domain/errors';
-import { ActorContext } from '../auth/actorContext';
-import { requireActorFromSession } from '../auth/getActorFromSession';
+import { getPublicConfig } from '../config/env';
 import {
   IssueCredentialCommand,
   RegisterEntityCommand,
   RevokeCredentialCommand,
 } from '../../ports/StellarGateway';
-import { assertTestnetHarnessAllowed } from '../stellar/harnessGuard';
+import { getRateBudgetStore } from './createRateBudgetStore';
 
 export interface SubmitBody {
   operationId: string;
@@ -43,7 +42,7 @@ const STELLAR_ADDRESS_RE = /^[GC][A-Z2-7]{55}$/;
 const CONTRACT_ID_RE = /^C[A-Z2-7]{55}$/;
 const BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/;
 
-export const HARNESS_MAX_BODY_BYTES = 64 * 1024;
+export const MAX_BODY_BYTES = 64 * 1024;
 const DEFAULT_RATE_LIMIT = 120;
 const DEFAULT_RATE_WINDOW_MS = 60_000;
 const DEFAULT_RELAYER_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -52,7 +51,7 @@ function readPositiveInt(key: string, fallback: number): number {
   const raw = process.env[key]?.trim();
   if (!raw) return fallback;
   const value = Number(raw);
-  if (Number.isNaN(value) || value < 1) {
+  if (!Number.isInteger(value) || Number.isNaN(value) || value < 1) {
     throw domainError('INVALID_INPUT', `${key} must be a positive integer`);
   }
   return value;
@@ -63,81 +62,115 @@ function defaultRelayerBudget(): number {
 }
 
 function defaultRateLimit(): number {
-  return readPositiveInt('STELLAR_HARNESS_RATE_LIMIT', DEFAULT_RATE_LIMIT);
+  return readPositiveInt(
+    'STELLAR_RATE_LIMIT',
+    readPositiveInt('STELLAR_HARNESS_RATE_LIMIT', DEFAULT_RATE_LIMIT)
+  );
 }
 
-interface LimitEntry {
-  count: number;
-  resetAt: number;
-}
-
-const rateLimits = new Map<string, LimitEntry>();
-const relayerBudgets = new Map<string, LimitEntry>();
-
-function hitLimit(
-  store: Map<string, LimitEntry>,
-  key: string,
-  limit: number,
-  windowMs: number
-): void {
-  const now = Date.now();
-  const entry = store.get(key);
-  if (!entry || now >= entry.resetAt) {
-    store.set(key, { count: 1, resetAt: now + windowMs });
-    return;
-  }
-  if (entry.count >= limit) {
+function domainRateLimit(limit: number, result: { count: number }): void {
+  if (result.count > limit) {
     throw domainError('RATE_LIMITED', 'limit exceeded');
   }
-  entry.count += 1;
 }
 
-export function assertRateLimit(
+export async function assertRateLimit(
   key: string,
   options?: { limit?: number; windowMs?: number }
-): void {
-  hitLimit(
-    rateLimits,
+): Promise<void> {
+  const limit = options?.limit ?? defaultRateLimit();
+  const result = await getRateBudgetStore().hitLimit(
     key,
-    options?.limit ?? defaultRateLimit(),
+    'rate',
+    limit,
     options?.windowMs ?? DEFAULT_RATE_WINDOW_MS
   );
+  domainRateLimit(limit, result);
 }
 
-export function assertRelayerBudget(
+export async function assertRelayerBudget(
   key: string,
   options?: { limit?: number; windowMs?: number }
-): void {
-  hitLimit(
-    relayerBudgets,
+): Promise<void> {
+  const limit = options?.limit ?? defaultRelayerBudget();
+  const result = await getRateBudgetStore().hitLimit(
     key,
-    options?.limit ?? defaultRelayerBudget(),
+    'budget',
+    limit,
     options?.windowMs ?? DEFAULT_RELAYER_WINDOW_MS
   );
+  domainRateLimit(limit, result);
+}
+
+function normalizeOrigin(input: string): string {
+  try {
+    return new URL(input.trim()).origin.toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+function getTrustedOrigins(): string[] {
+  const raw = process.env.CULTURAGO_TRUSTED_ORIGINS?.trim() ?? '';
+  return raw
+    .split(',')
+    .map((s) => normalizeOrigin(s))
+    .filter((s) => s.length > 0);
 }
 
 /**
- * Validate the Origin or Referer header matches the request Host.
- * This is a server-side same-origin/CSRF check for harness mutations.
+ * Validate the Origin or Referer header against a trusted-origins allowlist.
+ *
+ * Parses the full origin (scheme + host + port) and compares it against the
+ * configured CULTURAGO_TRUSTED_ORIGINS list. If the allowlist is empty in a
+ * production build, the check fails closed instead of falling back to the Host
+ * header, which can be spoofed.
  */
 export function assertOriginAllowed(request: Request): void {
   const originHeader = request.headers.get('origin');
   const refererHeader = request.headers.get('referer');
-  const origin = originHeader ?? refererHeader;
 
-  if (!origin) {
+  let rawOrigin = originHeader ?? null;
+  let parsed: URL | null = null;
+
+  if (!rawOrigin && refererHeader) {
+    try {
+      parsed = new URL(refererHeader);
+      rawOrigin = parsed.origin;
+    } catch {
+      throw domainError('UNAUTHORIZED', 'invalid referer header');
+    }
+  }
+
+  if (!rawOrigin) {
     throw domainError('UNAUTHORIZED', 'origin or referer header required');
   }
 
-  let originHost: string;
   try {
-    originHost = new URL(origin).hostname;
+    if (!parsed) {
+      parsed = new URL(rawOrigin);
+    }
   } catch {
     throw domainError('UNAUTHORIZED', 'invalid origin header');
   }
 
-  const host = request.headers.get('host')?.split(':')[0];
-  if (!host || originHost !== host) {
+  const requestOrigin = parsed.origin.toLowerCase();
+  const allowed = getTrustedOrigins();
+
+  if (allowed.length > 0) {
+    if (!allowed.includes(requestOrigin)) {
+      throw domainError('UNAUTHORIZED', 'origin not in allowlist');
+    }
+    return;
+  }
+
+  if (process.env.NODE_ENV === 'production') {
+    throw domainError('UNAUTHORIZED', 'trusted origins not configured');
+  }
+
+  // Non-production fallback: same host only (not a production control).
+  const host = request.headers.get('host')?.split(':')[0].toLowerCase();
+  if (!host || parsed.hostname.toLowerCase() !== host) {
     throw domainError('UNAUTHORIZED', 'origin does not match request host');
   }
 }
@@ -147,7 +180,7 @@ export function assertOriginAllowed(request: Request): void {
  */
 export function assertBodySize(
   text: string,
-  maxBytes: number = HARNESS_MAX_BODY_BYTES
+  maxBytes: number = MAX_BODY_BYTES
 ): void {
   const bytes = new TextEncoder().encode(text).length;
   if (bytes > maxBytes) {
@@ -161,7 +194,7 @@ export function assertBodySize(
  */
 export async function parseStrictJson(
   request: Request,
-  maxBytes: number = HARNESS_MAX_BODY_BYTES
+  maxBytes: number = MAX_BODY_BYTES
 ): Promise<{ text: string; parsed: unknown }> {
   const text = await request.text();
   if (!text || text.trim().length === 0) {
@@ -210,6 +243,13 @@ function assertOptionalHex32(value: unknown, field: string): string | null {
     throw domainError('INVALID_INPUT', `${field} must be null or a 64-char lowercase hex digest`);
   }
   return value.toLowerCase();
+}
+
+function assertString(value: unknown, field: string): string {
+  if (typeof value !== 'string' || value.length === 0) {
+    throw domainError('INVALID_INPUT', `${field} must be a non-empty string`);
+  }
+  return value;
 }
 
 function assertStellarAddress(value: unknown, field: string): string {
@@ -284,7 +324,7 @@ export function validatePrepareCommand(
           'hashSchema',
         ])
       );
-      if (typeof obj.credentialType !== 'number' || obj.credentialType < 1 || obj.credentialType > 6) {
+      if (typeof obj.credentialType !== 'number' || !Number.isInteger(obj.credentialType) || obj.credentialType < 1 || obj.credentialType > 6) {
         throw domainError('INVALID_INPUT', 'credentialType must be an integer between 1 and 6');
       }
       if (typeof obj.hashSchema !== 'number' || obj.hashSchema !== 1) {
@@ -298,7 +338,7 @@ export function validatePrepareCommand(
         issuerId: assertUuid(obj.issuerId, 'issuerId'),
         subjectId: assertUuid(obj.subjectId, 'subjectId'),
         eventId: assertUuid(obj.eventId, 'eventId'),
-        credentialType: Math.floor(obj.credentialType),
+        credentialType: obj.credentialType,
         metadataHash: assertHex32(obj.metadataHash, 'metadataHash'),
         hashSchema: 1,
       };
@@ -328,10 +368,12 @@ export function validateSubmitBody(raw: unknown): SubmitBody {
   const obj = raw as Record<string, unknown>;
   assertNoExtraFields(obj, new Set(['operationId', 'signedXdr', 'signerAddress']));
 
+  const isDemo = getPublicConfig().environment === 'demo';
+
   return {
     operationId: assertUuid(obj.operationId, 'operationId'),
-    signedXdr: assertBase64(obj.signedXdr, 'signedXdr'),
-    signerAddress: assertStellarAddress(obj.signerAddress, 'signerAddress'),
+    signedXdr: isDemo ? assertString(obj.signedXdr, 'signedXdr') : assertBase64(obj.signedXdr, 'signedXdr'),
+    signerAddress: isDemo ? assertString(obj.signerAddress, 'signerAddress') : assertStellarAddress(obj.signerAddress, 'signerAddress'),
   };
 }
 
@@ -351,29 +393,3 @@ export function validateDeployBody(raw: unknown): DeployBody {
   };
 }
 
-/**
- * Full harness perimeter check. Requires:
- *  - Testnet environment, manifest match and kill switch.
- *  - Origin/Referer same-origin check.
- *  - Valid session with an on-chain wallet.
- *  - Optional: internal harness token if tokenEnvVar is configured.
- */
-export async function requireHarnessActor(
-  request: Request,
-  options: {
-    tokenEnvVar?: 'CULTURAGO_TESTNET_HARNESS_TOKEN' | 'CULTURAGO_TESTNET_ADMIN_TOKEN';
-    tokenHeader?: string;
-  } = {}
-): Promise<ActorContext> {
-  await assertTestnetHarnessAllowed(request, options);
-  assertOriginAllowed(request);
-  const actor = await requireActorFromSession();
-  if (!actor.walletAddress) {
-    throw domainError('UNAUTHORIZED', 'actor has no on-chain wallet configured');
-  }
-
-  const key = actor.accountId ?? actor.walletAddress;
-  assertRateLimit(key);
-
-  return actor;
-}

@@ -143,9 +143,11 @@ export class PostgreSQLOperationStore implements OperationStore {
     batchSize: number;
     workerId: string;
     ttlSeconds: number;
+    maxAttempts?: number;
   }): Promise<StoredOperation[]> {
     return withTransaction(async (client: PoolClient) => {
       const until = new Date(Date.now() + options.ttlSeconds * 1000);
+      const maxAttempts = options.maxAttempts ?? 10;
       const result = await client.query<StellarOperationsRow>(
         `UPDATE stellar_operations
          SET claimed_by = $1,
@@ -157,13 +159,13 @@ export class PostgreSQLOperationStore implements OperationStore {
            WHERE phase IN ('signed','submitted','confirming','failed_retryable','unknown','restoring')
              AND (next_retry_at IS NULL OR next_retry_at <= NOW())
              AND (claimed_until IS NULL OR claimed_until <= NOW())
-             AND attempt_count < max_attempts
+             AND attempt_count < LEAST($4, max_attempts)
            ORDER BY created_at
            FOR UPDATE SKIP LOCKED
            LIMIT $3
          )
          RETURNING *`,
-        [options.workerId, until, options.batchSize]
+        [options.workerId, until, options.batchSize, maxAttempts]
       );
       return result.rows.map(fromRow);
     }).catch((error) => {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Keypair, StrKey } from '@stellar/stellar-sdk';
 import {
   assertOriginAllowed,
@@ -7,7 +7,7 @@ import {
   validateDeployBody,
   validatePrepareCommand,
   validateSubmitBody,
-} from '@/infrastructure/harness/harnessHandler';
+} from '@/infrastructure/perimeter/perimeter';
 import { isDomainError } from '@/domain/errors';
 
 const makeAddress = () => Keypair.random().publicKey();
@@ -17,13 +17,21 @@ const hex = (byte: number) => byte.toString(16).padStart(2, '0').repeat(32);
 const uuid = '11111111-1111-1111-1111-111111111111';
 
 function requestWithHeaders(headers: Record<string, string>): Request {
-  return new Request('http://localhost:3000/api/sign/prepare', {
+  return new Request('http://localhost:3000/api/sign/submit', {
     method: 'POST',
     headers,
   });
 }
 
-describe('harnessHandler perimeter', () => {
+describe('perimeter', () => {
+  beforeAll(() => {
+    process.env.CULTURAGO_TRUSTED_ORIGINS = 'http://localhost:3000';
+  });
+
+  afterAll(() => {
+    delete process.env.CULTURAGO_TRUSTED_ORIGINS;
+  });
+
   it('accepts matching origin and host', () => {
     const request = requestWithHeaders({
       origin: 'http://localhost:3000',
@@ -50,7 +58,7 @@ describe('harnessHandler perimeter', () => {
       origin: 'http://evil.example',
       host: 'localhost:3000',
     });
-    expect(() => assertOriginAllowed(request)).toThrow(/origin does not match/);
+    expect(() => assertOriginAllowed(request)).toThrow(/origin not in allowlist/);
   });
 
   it('rejects malformed origin header', () => {
@@ -62,7 +70,7 @@ describe('harnessHandler perimeter', () => {
   });
 
   it('rejects oversized body', async () => {
-    const request = new Request('http://localhost:3000/api/sign/prepare', {
+    const request = new Request('http://localhost:3000/api/sign/submit', {
       method: 'POST',
       body: JSON.stringify({ x: 'x'.repeat(128 * 1024) }),
     });
@@ -72,7 +80,7 @@ describe('harnessHandler perimeter', () => {
   });
 
   it('rejects non-JSON body', async () => {
-    const request = new Request('http://localhost:3000/api/sign/prepare', {
+    const request = new Request('http://localhost:3000/api/sign/submit', {
       method: 'POST',
       body: 'not json',
     });
@@ -81,12 +89,12 @@ describe('harnessHandler perimeter', () => {
     );
   });
 
-  it('enforces rate limit per key', () => {
+  it('enforces rate limit per key', async () => {
     const key = 'actor-1';
     for (let i = 0; i < 5; i += 1) {
-      assertRateLimit(key, { limit: 5, windowMs: 60_000 });
+      await assertRateLimit(key, { limit: 5, windowMs: 60_000 });
     }
-    expect(() => assertRateLimit(key, { limit: 5, windowMs: 60_000 })).toThrow();
+    await expect(assertRateLimit(key, { limit: 5, windowMs: 60_000 })).rejects.toThrow();
   });
 });
 
@@ -197,6 +205,23 @@ describe('validatePrepareCommand', () => {
 });
 
 describe('validateSubmitBody', () => {
+  const originalEnv: Record<string, string | undefined> = {};
+
+  beforeAll(() => {
+    originalEnv.NEXT_PUBLIC_CULTURAGO_ENV = process.env.NEXT_PUBLIC_CULTURAGO_ENV;
+    originalEnv.NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE = process.env.NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE;
+    originalEnv.NEXT_PUBLIC_STELLAR_RPC_URL = process.env.NEXT_PUBLIC_STELLAR_RPC_URL;
+    process.env.NEXT_PUBLIC_CULTURAGO_ENV = 'testnet';
+    process.env.NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE = 'Test SDF Network ; September 2015';
+    process.env.NEXT_PUBLIC_STELLAR_RPC_URL = 'https://soroban-testnet.stellar.org';
+  });
+
+  afterAll(() => {
+    process.env.NEXT_PUBLIC_CULTURAGO_ENV = originalEnv.NEXT_PUBLIC_CULTURAGO_ENV;
+    process.env.NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE = originalEnv.NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE;
+    process.env.NEXT_PUBLIC_STELLAR_RPC_URL = originalEnv.NEXT_PUBLIC_STELLAR_RPC_URL;
+  });
+
   const valid = {
     operationId: uuid,
     signedXdr: Buffer.from('xdr-payload').toString('base64'),

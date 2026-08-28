@@ -18,6 +18,8 @@ export async function GET(
   }
 
   const config = getPublicConfig();
+  const digest = typeof event.data.metadata_hash === 'string' ? event.data.metadata_hash : '';
+  const hashSchema = typeof event.data.hash_schema === 'number' ? String(event.data.hash_schema) : '';
   const lines = [
     'CulturaGO — Credencial verificable',
     `Credencial: ${credentialId}`,
@@ -25,9 +27,8 @@ export async function GET(
     `Ledger: ${event.ledger}`,
     `Red: ${config.environment}`,
     `Contrato: ${config.credentialRegistryContractId ?? ''}`,
-    `Sujeto: ${event.subjectId ?? ''}`,
-    `Emisor: ${event.issuerId ?? ''}`,
-    `Evento: ${event.eventEntityId ?? ''}`,
+    `Hash canónico: ${digest}`,
+    `Esquema de hash: ${hashSchema}`,
   ];
 
   const pdf = buildSimplePdf(lines);

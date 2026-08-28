@@ -46,11 +46,15 @@ export class InMemoryOperationStore implements OperationStore {
     batchSize: number;
     workerId: string;
     ttlSeconds: number;
+    maxAttempts?: number;
   }): Promise<StoredOperation[]> {
     const now = Date.now();
+    const maxAttempts = options.maxAttempts ?? 10;
     const results: StoredOperation[] = [];
     for (const [, record] of this.byId) {
       if (!this.actionable.has(record.state.phase)) continue;
+      if ((record.attemptCount ?? 0) >= maxAttempts) continue;
+      if (record.nextRetryAt && record.nextRetryAt.getTime() > now) continue;
       const claim = this.claims.get(record.state.operationId);
       if (claim && claim.until > now) continue;
       this.claims.set(record.state.operationId, {

@@ -1,14 +1,31 @@
 import { NextResponse } from 'next/server';
 import { ClaimService } from '@/infrastructure/auth/ClaimService';
-import { PostgreSQLIdentityStore } from '@/infrastructure/auth/PostgreSQLIdentityStore';
+import { createAuthBundle } from '@/infrastructure/auth/factory';
 import { isDomainError } from '@/domain/errors';
+
+const SESSION_COOKIE_NAME = 'culturago_session';
+const SESSION_IDLE_SECONDS = 15 * 60;
 
 export async function POST(request: Request) {
   try {
     const { code } = await request.json();
-    const service = new ClaimService(new PostgreSQLIdentityStore());
+    const { store, sessions } = createAuthBundle();
+    const service = new ClaimService(store);
     const accountId = await service.claimAccount(code);
-    return NextResponse.json({ accountId });
+
+    // Convert the one-time claim into a short-lived session so the new account
+    // can register its first passkey without being able to add keys to other accounts.
+    const session = await sessions.create(accountId);
+
+    const res = NextResponse.json({ accountId });
+    res.cookies.set(SESSION_COOKIE_NAME, session.sessionToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: SESSION_IDLE_SECONDS,
+    });
+    return res;
   } catch (error) {
     const status = isDomainError(error) ? 400 : 500;
     return NextResponse.json(

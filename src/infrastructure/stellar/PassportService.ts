@@ -22,6 +22,32 @@ export interface PassportEntry {
   data: Record<string, unknown>;
 }
 
+export interface PublicCredentialView {
+  credentialId: string;
+  status: 'issued' | 'revoked';
+  ledger: number;
+  network: string;
+  contractId: string;
+  canonical: {
+    digest: string | null;
+    schema: number | null;
+  };
+}
+
+export function toPublicCredentialView(event: IndexedEvent): PublicCredentialView {
+  return {
+    credentialId: event.credentialId ?? '',
+    status: event.eventType === 'CredentialRevoked' ? 'revoked' : 'issued',
+    ledger: event.ledger,
+    network: event.network,
+    contractId: event.contractId,
+    canonical: {
+      digest: typeof event.data.metadata_hash === 'string' ? event.data.metadata_hash : null,
+      schema: typeof event.data.hash_schema === 'number' ? event.data.hash_schema : null,
+    },
+  };
+}
+
 /**
  * Passport timeline: reconstructs the subject/event credential history from
  * the immutable indexed event log. The projection is rebuilt, never mutated

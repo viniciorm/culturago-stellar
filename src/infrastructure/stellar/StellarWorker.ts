@@ -29,6 +29,8 @@ export class StellarWorker {
       /** Backoff between polls when no work available. */
       pollIntervalMs: number;
       maxAttempts: number;
+      /** Optional heartbeat callback invoked after each batch. */
+      onHeartbeat?: () => void;
     }
   ) {}
 
@@ -37,6 +39,7 @@ export class StellarWorker {
       batchSize: this.options.batchSize,
       workerId: this.options.workerId,
       ttlSeconds: this.options.claimTtlSeconds,
+      maxAttempts: this.options.maxAttempts,
     });
 
     for (const op of batch) {
@@ -54,9 +57,14 @@ export class StellarWorker {
         const terminal = record.state.phase === 'confirmed' || record.state.phase === 'failed_terminal';
         if (!terminal) {
           record.attemptCount = (record.attemptCount ?? 0) + 1;
-          record.nextRetryAt = new Date(Date.now() + this.backoffMs(record.attemptCount ?? 1));
-          record.state.errorCode = errorCode;
-          record.state.phase = 'failed_retryable';
+          if (record.attemptCount > this.options.maxAttempts) {
+            record.state.errorCode = 'MAX_ATTEMPTS_EXCEEDED';
+            record.state.phase = 'failed_terminal';
+          } else {
+            record.state.errorCode = errorCode;
+            record.state.phase = 'failed_retryable';
+            record.nextRetryAt = new Date(Date.now() + this.backoffMs(record.attemptCount ?? 1));
+          }
           await this.store.save(record).catch(() => undefined);
         }
       });
@@ -69,6 +77,7 @@ export class StellarWorker {
     this.running = true;
     while (!signal.aborted && this.running) {
       const processed = await this.runOneBatch();
+      this.options.onHeartbeat?.();
       if (processed === 0) {
         await this.sleep(this.options.pollIntervalMs, signal);
       }

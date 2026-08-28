@@ -155,7 +155,49 @@ describe('PasskeyService', () => {
     });
   });
 
-  it('rejects authentication when there are no active passkeys', async () => {
+  it('excludes existing passkeys when registering an additional one (step-up)', async () => {
+    const account = await store.createAccount({
+      id: 'acc-4',
+      status: 'active',
+      personEntityId: null,
+      walletContractAddress: null,
+    });
+
+    const firstChallenge = 'first-passkey-challenge';
+    vi.mocked(generateRegistrationOptions).mockResolvedValue({
+      challenge: firstChallenge,
+      user: { id: 'u4', name: account.id, displayName: 'First' },
+      excludeCredentials: [],
+    } as never);
+
+    vi.mocked(verifyRegistrationResponse).mockResolvedValue({
+      verified: true,
+      registrationInfo: {
+        credential: {
+          id: 'cred-first',
+          publicKey: new Uint8Array([4]),
+          counter: 0,
+          transports: ['hybrid'],
+        },
+      },
+    } as never);
+
+    await service.startRegistration(account.id, 'First');
+    await service.finishRegistration(account.id, makeRegistrationResponse('cred-first', firstChallenge));
+
+    const secondChallenge = 'second-passkey-challenge';
+    vi.mocked(generateRegistrationOptions).mockResolvedValue({
+      challenge: secondChallenge,
+      user: { id: 'u4', name: account.id, displayName: 'Second' },
+      excludeCredentials: [],
+    } as never);
+
+    await service.startRegistration(account.id, 'Second');
+    const lastCall = vi.mocked(generateRegistrationOptions).mock.calls.at(-1)?.[0];
+    expect(lastCall?.excludeCredentials).toEqual([{ id: 'cred-first', transports: ['hybrid'] }]);
+  });
+
+  it('rejects authentication when there are no active passkeys for account', async () => {
     const account = await store.createAccount({
       id: 'acc-3',
       status: 'active',

@@ -1,7 +1,8 @@
 import 'server-only';
 import { randomUUID } from 'crypto';
-import { assertTransition } from '../../domain/operations/operationState';
+import { assertTransition, isTerminal } from '../../domain/operations/operationState';
 import { domainError } from '../../domain/errors';
+import { Logger } from '../observability/Logger';
 import { CanonicalHashPort } from '../../ports/CanonicalHashPort';
 import { OperationStore, StoredOperation } from '../../ports/OperationStore';
 import {
@@ -67,6 +68,7 @@ function address(addr: string): ContractArgValue {
  */
 export class AdminStellarService {
   private readonly transport: SorobanTransport;
+  private readonly log = new Logger('AdminStellarService');
   private readonly allowedOps: ReadonlySet<AdminProvisionOperation> = new Set(
     ADMIN_PROVISION_OPERATIONS
   );
@@ -123,7 +125,10 @@ export class AdminStellarService {
       if (existing.intent.fingerprint !== fingerprint) {
         throw domainError('ALREADY_EXISTS', 'idempotency key reused with a different payload');
       }
-      return this.toResult(existing);
+      if (isTerminal(existing.state.phase)) {
+        return this.toResult(existing);
+      }
+      return this.recover(existing, operation, operatorAddress, issuerHash);
     }
 
     const operationId = this.newId();
@@ -150,7 +155,7 @@ export class AdminStellarService {
       await this.store.save(record);
 
       // Audit line: no signed XDR, no secret, no prepared XDR.
-      console.log('[ADMIN_PROVISION]', {
+      this.log.info('admin_provision', {
         actor: 'admin',
         adminAddress: this.signer.publicKey,
         operationId,
@@ -168,7 +173,7 @@ export class AdminStellarService {
       record.state.phase = 'failed_terminal';
       record.state.errorCode = error instanceof Error ? error.message : 'PROVISION_FAILED';
       await this.store.save(record);
-      console.log('[ADMIN_PROVISION] failed:', {
+      this.log.error('admin_provision_failed', {
         operationId,
         operation,
         operatorAddress,
@@ -177,6 +182,51 @@ export class AdminStellarService {
       });
       throw error;
     }
+  }
+
+  private async recover(
+    record: StoredOperation,
+    operation: AdminProvisionOperation,
+    operatorAddress: string,
+    issuerHash: string
+  ): Promise<AdminProvisionResult> {
+    const { spec, readbackSpec, expectedReadback } = this.buildSpecs(
+      operation,
+      operatorAddress,
+      issuerHash
+    );
+
+    // A failed_retryable record must move back to submitted before confirming.
+    if (record.state.phase === 'failed_retryable') {
+      assertTransition(record.state.phase, 'submitted');
+      record.state.phase = 'submitted';
+    }
+
+    assertTransition(record.state.phase, 'confirming');
+    record.state.phase = 'confirming';
+
+    // If the previous run crashed before persisting the tx hash, re-simulate,
+    // sign and submit. Once the hash is persisted we can safely re-poll.
+    if (!record.state.txHash) {
+      record.state.txHash = await this.submitWithRestore(spec);
+    }
+    await this.store.save(record);
+
+    const poll = await this.transport.pollTransaction(record.state.txHash);
+    await this.finalize(record, poll, readbackSpec, expectedReadback);
+    await this.store.save(record);
+
+    this.log.info('admin_provision_recovered', {
+      operationId: record.state.operationId,
+      operation,
+      operatorAddress,
+      issuerHash,
+      phase: record.state.phase,
+      errorCode: record.state.errorCode,
+      ledger: record.state.ledger,
+    });
+
+    return this.toResult(record);
   }
 
   private async submitWithRestore(spec: ContractCallSpec): Promise<string> {

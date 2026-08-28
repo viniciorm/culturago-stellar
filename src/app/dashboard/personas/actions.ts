@@ -61,7 +61,8 @@ interface RawPersonRow {
 function deriveStellarStatus(phase: string | null): StellarStatus {
   if (!phase) return 'not_registered';
   if (phase === 'confirmed') return 'registered';
-  if (phase === 'failed_retryable' || phase === 'failed_terminal' || phase === 'unknown') return 'failed';
+  if (phase === 'failed_retryable' || phase === 'failed_terminal') return 'failed';
+  if (phase === 'unknown') return 'pending';
   return 'pending';
 }
 
@@ -116,6 +117,8 @@ function mapRowToPerson(row: RawPersonRow): Person & { entity: Entity } {
  * configured; the demo mock is no longer used.
  */
 export async function listPeople(): Promise<(Person & { entity: Entity })[]> {
+  await requireDashboardAdmin();
+
   if (!isPersistenceConfigured()) {
     return [];
   }

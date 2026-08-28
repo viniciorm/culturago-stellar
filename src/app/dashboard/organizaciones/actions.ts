@@ -1,8 +1,10 @@
 'use server';
 
-import { isPersistenceConfigured } from '@/infrastructure/config/env';
+import { getPublicConfig, isPersistenceConfigured } from '@/infrastructure/config/env';
 import { query } from '@/infrastructure/database/pool';
 import { requireDashboardAdmin } from '@/infrastructure/auth/dashboardGuard';
+import { requireActorFromSession } from '@/infrastructure/auth/getActorFromSession';
+import { createStellarGateway } from '@/infrastructure/stellar/createStellarGateway';
 import { domainError } from '@/domain/errors';
 import {
   type Entity,
@@ -10,8 +12,11 @@ import {
   type StellarStatus,
   type WalletStatus,
 } from '@/domain/types/entities';
+import { computeEntityMetadataHash, type EntityMetadataPayload } from '@/lib/entityMetadata';
+import type { PreparedTransactionPayload } from '@/ports/SignerPort';
+import type { OperationState } from '@/ports/StellarGateway';
 
-interface OrgFormEntityData {
+export interface OrgFormEntityData {
   display_name: string;
   slug: string;
   country: string;
@@ -20,7 +25,7 @@ interface OrgFormEntityData {
   is_public: boolean;
 }
 
-interface OrgFormOrgData {
+export interface OrgFormOrgData {
   name: string;
   organization_type: Organization['organization_type'];
   website: string | null;
@@ -58,7 +63,8 @@ interface RawOrgRow {
 function deriveStellarStatus(phase: string | null): StellarStatus {
   if (!phase) return 'not_registered';
   if (phase === 'confirmed') return 'registered';
-  if (phase === 'failed_retryable' || phase === 'failed_terminal' || phase === 'unknown') return 'failed';
+  if (phase === 'failed_retryable' || phase === 'failed_terminal') return 'failed';
+  if (phase === 'unknown') return 'pending';
   return 'pending';
 }
 
@@ -112,6 +118,8 @@ function mapRowToOrg(row: RawOrgRow): Organization & { entity: Entity } {
  * configured; the demo mock is no longer used.
  */
 export async function listOrganizations(): Promise<(Organization & { entity: Entity })[]> {
+  await requireDashboardAdmin();
+
   if (!isPersistenceConfigured()) {
     return [];
   }
@@ -312,4 +320,89 @@ export async function deleteOrganization(entityId: string): Promise<void> {
     "UPDATE entities SET active = false, status = 'archived', updated_at = NOW() WHERE id = $1",
     [entityId]
   );
+}
+
+interface PrepareRegisterResult {
+  operation: OperationState;
+  prepared: PreparedTransactionPayload;
+  walletAddress: string;
+  environment: 'demo' | 'testnet' | 'mainnet';
+}
+
+export async function prepareEntityForStellar(
+  entityId: string
+): Promise<PrepareRegisterResult> {
+  if (!isPersistenceConfigured()) {
+    throw domainError('INTERNAL', 'Se requiere DATABASE_URL para registrar entidades en Stellar');
+  }
+
+  const actor = await requireActorFromSession();
+  await requireDashboardAdmin();
+
+  if (!actor.walletAddress) {
+    throw domainError('UNAUTHORIZED', 'El actor no tiene una wallet on-chain configurada');
+  }
+
+  const row = await query<{
+    display_name: string;
+    slug: string;
+    country: string;
+    city: string;
+    status: 'draft' | 'pending' | 'verified' | 'archived';
+    is_public: boolean;
+    organization_type: Organization['organization_type'];
+    website: string | null;
+    instagram: string | null;
+    contact_name: string | null;
+    contact_email: string | null;
+    contact_phone: string | null;
+  }>(
+    `SELECT
+       e.display_name, e.slug, e.country, e.city, e.status, e.is_public,
+       o.organization_type, o.website, o.instagram, o.contact_name, o.contact_email, o.contact_phone
+     FROM entities e
+     JOIN organizations o ON o.entity_id = e.id
+     WHERE e.id = $1 AND e.kind = 'organization' AND e.active = true`,
+    [entityId]
+  );
+
+  if (!row.rows[0]) {
+    throw domainError('NOT_FOUND', `organización ${entityId} no encontrada`);
+  }
+
+  const raw = row.rows[0];
+  const payload: EntityMetadataPayload = {
+    display_name: raw.display_name,
+    slug: raw.slug,
+    country: raw.country,
+    city: raw.city,
+    status: raw.status,
+    is_public: raw.is_public,
+    organization_type: raw.organization_type,
+    website: raw.website,
+    instagram: raw.instagram,
+    contact_name: raw.contact_name,
+    contact_email: raw.contact_email,
+    contact_phone: raw.contact_phone,
+  };
+
+  const metadataHash = await computeEntityMetadataHash(payload);
+
+  const { gateway } = createStellarGateway();
+  const operation = await gateway.prepareRegisterEntity({
+    idempotencyKey: `register:${entityId}`,
+    actorAddress: actor.walletAddress,
+    entityId,
+    metadataHash,
+    hashSchema: 1,
+  });
+
+  const prepared = await gateway.getPreparedPayload(operation.operationId);
+
+  return {
+    operation,
+    prepared,
+    walletAddress: actor.walletAddress,
+    environment: getPublicConfig().environment,
+  };
 }

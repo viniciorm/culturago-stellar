@@ -15,16 +15,15 @@ import {
 import { CanonicalHashService } from '../../../../infrastructure/hashing/CanonicalHashService';
 import { getStellarNetworkConfig } from '../../../../infrastructure/stellar/networkConfig';
 import { domainError, isDomainError } from '../../../../domain/errors';
-import {
-  assertOriginAllowed,
-  parseStrictJson,
-} from '../../../../infrastructure/harness/harnessHandler';
+import { assertOriginAllowed, parseStrictJson } from '@/infrastructure/perimeter/perimeter';
+import { Logger } from '@/infrastructure/observability/Logger';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const identityStore = new PostgreSQLIdentityStore();
 const databaseGateway = new PostgreSQLDatabaseGateway();
 const canonicalHash = new CanonicalHashService();
+const log = new Logger('admin/provision');
 
 function isProvisionOperation(value: unknown): value is AdminProvisionOperation {
   return typeof value === 'string' && (ADMIN_PROVISION_OPERATIONS as readonly string[]).includes(value);
@@ -49,10 +48,12 @@ export async function POST(request: Request) {
     if (!Array.isArray(operations) || operations.length === 0) {
       throw domainError('INVALID_INPUT', 'operations must be a non-empty array');
     }
+    const validatedOperations: AdminProvisionOperation[] = [];
     for (const op of operations) {
       if (!isProvisionOperation(op)) {
         throw domainError('INVALID_INPUT', `operation ${String(op)} is not in the admin allowlist`);
       }
+      validatedOperations.push(op);
     }
 
     const [account, issuer] = await Promise.all([
@@ -80,7 +81,7 @@ export async function POST(request: Request) {
     const results = await service.provision({
       operatorAddress: account.walletContractAddress,
       issuerEntityId,
-      operations: operations as AdminProvisionOperation[],
+      operations: validatedOperations,
     });
 
     // Keep the off-chain issuer_operators table in sync with on-chain links.
@@ -94,7 +95,7 @@ export async function POST(request: Request) {
       }
     }
 
-    console.log('[ADMIN_PROVISION_ENDPOINT]', {
+    log.info('admin_provision_endpoint', {
       actorId: actor.accountId,
       accountId,
       issuerEntityId,
@@ -109,7 +110,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, results });
   } catch (error) {
-    const code = isDomainError(error) ? (error as { code: string }).code : undefined;
+    const code = isDomainError(error) ? error.code : undefined;
     const status = code === 'UNAUTHORIZED' ? 401 : isDomainError(error) ? 400 : 500;
     const message = error instanceof Error ? error.message : 'unknown error';
     return NextResponse.json({ success: false, error: message }, { status });

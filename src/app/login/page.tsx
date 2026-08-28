@@ -4,7 +4,21 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
-import { startAuthentication, startRegistration } from '@simplewebauthn/browser';
+import {
+  startAuthentication,
+  startRegistration,
+  type PublicKeyCredentialRequestOptionsJSON,
+  type PublicKeyCredentialCreationOptionsJSON,
+} from '@simplewebauthn/browser';
+import { getPublicConfig } from '@/infrastructure/config/env';
+
+function hasError(value: unknown): value is { error: string } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { error?: unknown }).error === 'string'
+  );
+}
 
 /**
  * Login page.
@@ -15,15 +29,13 @@ import { startAuthentication, startRegistration } from '@simplewebauthn/browser'
  *   store; this UI only registers a passkey for that account.
  */
 export default function LoginPage() {
-  const env = (process.env.NEXT_PUBLIC_CULTURAGO_ENV ?? 'demo') as
-    | 'demo'
-    | 'testnet'
-    | 'mainnet';
+  const { environment: env } = getPublicConfig();
   const router = useRouter();
 
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [accountId, setAccountId] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [claimCode, setClaimCode] = useState('');
   const [status, setStatus] = useState('');
 
   if (env === 'demo') {
@@ -55,24 +67,22 @@ export default function LoginPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ accountId: accountId.trim() }),
       });
-      const options = (await optionsRes.json()) as {
-        error?: string;
-        challenge?: unknown;
-      };
-      if (!optionsRes.ok) {
-        throw new Error(options.error ?? 'No se pudieron obtener las opciones de login');
+      const rawOptions = await optionsRes.json();
+      if (!optionsRes.ok || hasError(rawOptions)) {
+        throw new Error(hasError(rawOptions) ? rawOptions.error : 'No se pudieron obtener las opciones de login');
       }
+      const options = rawOptions as unknown as PublicKeyCredentialRequestOptionsJSON;
 
-      const response = await startAuthentication({ optionsJSON: options as never });
+      const response = await startAuthentication({ optionsJSON: options });
 
       const verifyRes = await fetch('/api/auth/login/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ response }),
       });
-      const verify = (await verifyRes.json()) as { error?: string };
-      if (!verifyRes.ok) {
-        throw new Error(verify.error ?? 'Verificación de passkey fallida');
+      const verify = await verifyRes.json();
+      if (!verifyRes.ok || hasError(verify)) {
+        throw new Error(hasError(verify) ? verify.error : 'Verificación de passkey fallida');
       }
 
       router.push('/dashboard');
@@ -84,29 +94,48 @@ export default function LoginPage() {
   async function handleRegister() {
     setStatus('Registrando passkey...');
     try {
+      const code = claimCode.trim();
+      if (!code) {
+        throw new Error('Se requiere un código de invitación para registrar el primer passkey');
+      }
+
+      const claimRes = await fetch('/api/claim', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      });
+      const claim = await claimRes.json();
+      if (!claimRes.ok || hasError(claim)) {
+        throw new Error(hasError(claim) ? claim.error : 'Código de invitación inválido o expirado');
+      }
+
       const optionsRes = await fetch('/api/auth/register/options', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           accountId: accountId.trim(),
           displayName: displayName.trim() || accountId.trim(),
         }),
       });
-      const options = (await optionsRes.json()) as { error?: string };
-      if (!optionsRes.ok) {
-        throw new Error(options.error ?? 'No se pudieron obtener las opciones de registro');
+      const rawOptions = await optionsRes.json();
+      if (!optionsRes.ok || hasError(rawOptions)) {
+        throw new Error(hasError(rawOptions) ? rawOptions.error : 'No se pudieron obtener las opciones de registro');
       }
+      const options = rawOptions as unknown as PublicKeyCredentialCreationOptionsJSON;
 
-      const response = await startRegistration({ optionsJSON: options as never });
+      const response = await startRegistration({ optionsJSON: options });
 
       const verifyRes = await fetch('/api/auth/register/verify', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ accountId: accountId.trim(), response }),
       });
-      const verify = (await verifyRes.json()) as { error?: string };
-      if (!verifyRes.ok) {
-        throw new Error(verify.error ?? 'Verificación de registro fallida');
+      const verify = await verifyRes.json();
+      if (!verifyRes.ok || hasError(verify)) {
+        throw new Error(hasError(verify) ? verify.error : 'Verificación de registro fallida');
       }
 
       setStatus('Passkey registrado. Ahora podés iniciar sesión.');
@@ -164,16 +193,28 @@ export default function LoginPage() {
           </label>
 
           {mode === 'register' && (
-            <label className="block text-sm font-medium">
-              Nombre visible
-              <input
-                type="text"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                className="mt-1 w-full px-3 py-2 border rounded bg-white"
-                placeholder="Juan Pérez"
-              />
-            </label>
+            <>
+              <label className="block text-sm font-medium">
+                Nombre visible
+                <input
+                  type="text"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  className="mt-1 w-full px-3 py-2 border rounded bg-white"
+                  placeholder="Juan Pérez"
+                />
+              </label>
+              <label className="block text-sm font-medium">
+                Código de invitación
+                <input
+                  type="text"
+                  value={claimCode}
+                  onChange={(e) => setClaimCode(e.target.value)}
+                  className="mt-1 w-full px-3 py-2 border rounded bg-white"
+                  placeholder="Pegá el código que recibiste"
+                />
+              </label>
+            </>
           )}
 
           <button

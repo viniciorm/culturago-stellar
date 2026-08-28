@@ -49,6 +49,6 @@
   "notes": [
     "No secretos, seeds, claves privadas o passkeys en este manifiesto.",
     "contractId proviene del despliegue actual en testnet; ledger permanece null hasta que se confirme la secuencia de anclaje.",
-    "smartWallet.wasmHashAllowlist está vacío: solo se deben desplegar smart wallets cuyo WASM hash haya sido aprobado y agregado a esta lista."
+    "smartWallet.wasmHashAllowlist contiene el hash aprobado para passkey-kit v0.16.5; se deben agregar hashes adicionales por aprobación explícita antes de permitir otro implementación."
   ]
 }

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Truck, Award, MapPin, Globe, Mail, Phone, User } from 'lucide-react';
+import { ArrowLeft, Truck, Award, MapPin, Globe } from 'lucide-react';
 import { PublicLayout } from '../../../components/PublicLayout';
 import {
   getPublicProviderByEntitySlug,
@@ -158,33 +158,6 @@ export default function ProviderPublicPage() {
                 </div>
               )}
             </div>
-
-            {/* Public Contact Details (If they exist) */}
-            {(provider.contact_name || provider.email || provider.phone) && (
-              <div className="mt-6 pt-5 border-t border-stone-200/50 space-y-3">
-                <h4 className="text-xs font-bold text-stone-400 uppercase tracking-wider">Contacto Público Comercial</h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-stone-600">
-                  {provider.contact_name && (
-                    <div className="flex items-center gap-2">
-                      <User className="w-3.5 h-3.5 text-stone-400" />
-                      <span>{provider.contact_name}</span>
-                    </div>
-                  )}
-                  {provider.phone && (
-                    <div className="flex items-center gap-2">
-                      <Phone className="w-3.5 h-3.5 text-stone-400" />
-                      <span>{provider.phone}</span>
-                    </div>
-                  )}
-                  {provider.email && (
-                    <div className="flex items-center gap-2 col-span-2">
-                      <Mail className="w-3.5 h-3.5 text-stone-400" />
-                      <span>{provider.email}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
 
             <div className="mt-6 pt-3 border-t border-stone-100 flex items-center justify-between">
               <span className="text-[10px] text-stone-400 uppercase font-bold">Verificación Blockchain:</span>

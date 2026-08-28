@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { PassportService } from '@/infrastructure/stellar/PassportService';
+import { PassportService, toPublicCredentialView } from '@/infrastructure/stellar/PassportService';
 import { getPublicConfig } from '@/infrastructure/config/env';
 
 export async function GET(
@@ -14,21 +14,12 @@ export async function GET(
   }
 
   const config = getPublicConfig();
+  const view = toPublicCredentialView(event);
   const payload = {
     format: 'culturago.credential.v1',
-    credentialId,
-    status: event.eventType === 'CredentialRevoked' ? 'revoked' : 'issued',
-    ledger: event.ledger,
+    ...view,
     network: config.environment,
-    contractId: config.credentialRegistryContractId ?? '',
-    subjectId: event.subjectId,
-    issuerId: event.issuerId,
-    eventId: event.eventEntityId,
-    data: event.data,
-    canonical: {
-      digest: event.data.metadata_hash ?? null,
-      schema: event.data.hash_schema ?? null,
-    },
+    contractId: config.credentialRegistryContractId ?? event.contractId,
   };
   return new NextResponse(JSON.stringify(payload, null, 2), {
     headers: { 'Content-Type': 'application/json; charset=utf-8' },

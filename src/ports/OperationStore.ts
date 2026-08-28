@@ -64,5 +64,10 @@ export interface OperationStore {
    * Implementations must use a recoverable lock (e.g., PostgreSQL
    * `FOR UPDATE SKIP LOCKED`) and never hand the same row to two workers.
    */
-  claimBatch(options: { batchSize: number; workerId: string; ttlSeconds: number }): Promise<StoredOperation[]>;
+  claimBatch(options: {
+    batchSize: number;
+    workerId: string;
+    ttlSeconds: number;
+    maxAttempts?: number;
+  }): Promise<StoredOperation[]>;
 }

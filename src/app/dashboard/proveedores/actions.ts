@@ -60,7 +60,8 @@ interface RawProviderRow {
 function deriveStellarStatus(phase: string | null): StellarStatus {
   if (!phase) return 'not_registered';
   if (phase === 'confirmed') return 'registered';
-  if (phase === 'failed_retryable' || phase === 'failed_terminal' || phase === 'unknown') return 'failed';
+  if (phase === 'failed_retryable' || phase === 'failed_terminal') return 'failed';
+  if (phase === 'unknown') return 'pending';
   return 'pending';
 }
 
@@ -111,6 +112,8 @@ function mapRowToProvider(row: RawProviderRow): Provider & { entity: Entity } {
 }
 
 export async function listProviders(): Promise<(Provider & { entity: Entity })[]> {
+  await requireDashboardAdmin();
+
   if (!isPersistenceConfigured()) {
     return [];
   }

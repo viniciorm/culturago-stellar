@@ -3,6 +3,7 @@
 import { isPersistenceConfigured } from '@/infrastructure/config/env';
 import { query } from '@/infrastructure/database/pool';
 import { requireActorFromSession } from '@/infrastructure/auth/getActorFromSession';
+import { requireDashboardAdmin } from '@/infrastructure/auth/dashboardGuard';
 import { assertIssuerScope } from '@/infrastructure/auth/actorContext';
 import { domainError } from '@/domain/errors';
 import { createStellarGateway } from '@/infrastructure/stellar/createStellarGateway';
@@ -24,7 +25,8 @@ import {
 function deriveStellarStatus(phase: string | null): StellarStatus {
   if (!phase) return 'not_registered';
   if (phase === 'confirmed') return 'registered';
-  if (phase === 'failed_retryable' || phase === 'failed_terminal' || phase === 'unknown') return 'failed';
+  if (phase === 'failed_retryable' || phase === 'failed_terminal') return 'failed';
+  if (phase === 'unknown') return 'pending';
   return 'pending';
 }
 
@@ -148,6 +150,8 @@ function mapRowToCredential(row: RawCredentialRow): PopulatedCredential {
  * event display names. Falls back to the demo mock when no DB is configured.
  */
 export async function listCredentials(): Promise<PopulatedCredential[]> {
+  await requireDashboardAdmin();
+
   if (!isPersistenceConfigured()) {
     return [];
   }
@@ -224,8 +228,8 @@ export async function createCredential(input: CreateCredentialInput): Promise<vo
   }
 
   const credentialType = credentialTypeToNumber[input.credential_type];
-  if (!credentialType) {
-    throw new Error(`Unknown credential type: ${input.credential_type}`);
+  if (credentialType === undefined) {
+    throw domainError('INVALID_INPUT', `Unknown credential type: ${input.credential_type}`);
   }
 
   const metadataPayload = {
@@ -382,6 +386,8 @@ function mapRowToEntity(row: RawEntityRow): Entity {
  * configured.
  */
 export async function listEntities(): Promise<Entity[]> {
+  await requireDashboardAdmin();
+
   if (!isPersistenceConfigured()) {
     return [];
   }

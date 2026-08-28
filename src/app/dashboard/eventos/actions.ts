@@ -91,7 +91,8 @@ function toWalletStatus(value: string | null): Entity['wallet_status'] {
 function deriveStellarStatus(phase: string | null): Entity['stellar_status'] {
   if (!phase) return 'not_registered';
   if (phase === 'confirmed') return 'registered';
-  if (phase === 'failed_retryable' || phase === 'failed_terminal' || phase === 'unknown') return 'failed';
+  if (phase === 'failed_retryable' || phase === 'failed_terminal') return 'failed';
+  if (phase === 'unknown') return 'pending';
   return 'pending';
 }
 

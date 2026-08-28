@@ -144,7 +144,20 @@ export class PasskeyService {
   }
 
   private extractChallenge(clientDataJSON: string): string {
-    const data = JSON.parse(Buffer.from(clientDataJSON, 'base64url').toString('utf-8')) as { challenge: string };
-    return data.challenge;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(Buffer.from(clientDataJSON, 'base64url').toString('utf-8'));
+    } catch {
+      throw domainError('INVALID_INPUT', 'client data is not valid JSON');
+    }
+    if (
+      typeof parsed !== 'object' ||
+      parsed === null ||
+      !('challenge' in parsed) ||
+      typeof (parsed as { challenge?: unknown }).challenge !== 'string'
+    ) {
+      throw domainError('INVALID_INPUT', 'client data does not contain a valid challenge');
+    }
+    return (parsed as { challenge: string }).challenge;
   }
 }

@@ -1,5 +1,5 @@
 import 'server-only';
-import { Transaction, TransactionBuilder, xdr } from '@stellar/stellar-sdk';
+import { Transaction, TransactionBuilder, xdr, hash, StrKey } from '@stellar/stellar-sdk';
 import { domainError } from '../../domain/errors';
 
 interface TxEnvelopeValue {
@@ -105,6 +105,126 @@ export function extractCreateContractWasmHashes(
   } catch {
     return [];
   }
+}
+
+interface CreateContractArgsWithPreimage {
+  contractIdPreimage(): xdr.ContractIdPreimage;
+}
+
+function extractContractIdPreimage(func: xdr.HostFunction): xdr.ContractIdPreimage | null {
+  const hostFnType = func.switch().value;
+  // create contract v1/v2 host function types
+  if (hostFnType !== 1 && hostFnType !== 2 && hostFnType !== 3) return null;
+
+  try {
+    const createArgs = func.value() as unknown as CreateContractArgsWithPreimage;
+    if (!createArgs) return null;
+    return createArgs.contractIdPreimage();
+  } catch {
+    return null;
+  }
+}
+
+function deriveContractAddressFromPreimage(
+  preimage: xdr.ContractIdPreimage,
+  networkPassphrase: string
+): string | null {
+  if (preimage.switch().name.toLowerCase() !== 'contractidpreimagefromaddress') return null;
+
+  try {
+    const fromAddress = preimage.fromAddress();
+    const networkId = hash(Buffer.from(networkPassphrase));
+    const contractIdPreimage = xdr.ContractIdPreimage.contractIdPreimageFromAddress(
+      new xdr.ContractIdPreimageFromAddress({
+        address: fromAddress.address(),
+        salt: fromAddress.salt(),
+      })
+    );
+    const idPreimage = xdr.HashIdPreimage.envelopeTypeContractId(
+      new xdr.HashIdPreimageContractId({
+        networkId,
+        contractIdPreimage,
+      })
+    );
+    return StrKey.encodeContract(hash(idPreimage.toXDR()));
+  } catch {
+    return null;
+  }
+}
+
+function deriveContractAddressFromOperation(
+  op: xdr.Operation,
+  networkPassphrase: string
+): string | null {
+  const body = op.body();
+  if (!/invoke.?host.?function/i.test(body.switch().name)) return null;
+
+  try {
+    const hostFn = body.invokeHostFunctionOp() as unknown as InvokeHostFunctionOpWithHostFunction;
+    const func = hostFn.hostFunction();
+    const preimage = extractContractIdPreimage(func);
+    if (!preimage) return null;
+    return deriveContractAddressFromPreimage(preimage, networkPassphrase);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Derive the deterministic smart-wallet contract address from the signed deploy
+ * transaction's create-contract preimage. Returns null when the XDR cannot be
+ * parsed or does not contain a create-contract operation.
+ */
+export function deriveSmartWalletContractAddress(
+  signedTxXdr: string,
+  networkPassphrase: string
+): string | null {
+  try {
+    const parsed = TransactionBuilder.fromXDR(signedTxXdr, networkPassphrase) as
+      | Transaction
+      | { innerTransaction?: Transaction };
+    const tx = getInnerTransaction(parsed);
+    const envelope = tx.toEnvelope();
+    const envelopeType = envelope.switch().name;
+
+    if (
+      envelopeType !== 'envelopeTypeTx' &&
+      envelopeType !== 'envelopeTypeTxV0'
+    ) {
+      return null;
+    }
+
+    const value = envelope.value() as TxEnvelopeValue;
+    const txInner = value.tx();
+    const operations = txInner.operations();
+
+    for (const op of operations) {
+      const addr = deriveContractAddressFromOperation(op, networkPassphrase);
+      if (addr) return addr;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Verify that the client-provided contractId is the deterministic address
+ * derived from the signed deploy transaction.
+ */
+export function assertSmartWalletContractAddress(
+  signedTxXdr: string,
+  networkPassphrase: string,
+  expectedContractId: string
+): string {
+  const derived = deriveSmartWalletContractAddress(signedTxXdr, networkPassphrase);
+  if (!derived) {
+    throw domainError('INVALID_INPUT', 'could not derive contract address from deploy XDR');
+  }
+  if (derived !== expectedContractId) {
+    throw domainError('INVALID_INPUT', 'contractId does not match derived deploy address');
+  }
+  return derived;
 }
 
 /**

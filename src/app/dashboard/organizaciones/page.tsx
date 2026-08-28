@@ -2,13 +2,22 @@
 
 import React, { useEffect, useState } from 'react';
 import { Plus, Building2, Search, Trash2, Edit2, ExternalLink } from 'lucide-react';
-import type { Entity, Organization } from '@/domain/types/entities';
 import { Button } from '../../../components/ui/Button';
 import { Table } from '../../../components/ui/Table';
 import { StellarStatusBadge } from '../../../components/ui/Badge';
 import { Dialog } from '../../../components/ui/Dialog';
 import { OrganizationForm } from '../../../components/OrganizationForm';
-import { listOrganizations, createOrganization, updateOrganization, deleteOrganization } from './actions';
+import {
+  listOrganizations,
+  createOrganization,
+  updateOrganization,
+  deleteOrganization,
+  prepareEntityForStellar,
+  type OrgFormEntityData,
+  type OrgFormOrgData,
+} from './actions';
+import { signAndSubmitOperation } from '@/lib/smartWallet/signAndSubmitOperation';
+import type { Entity, Organization } from '@/domain/types/entities';
 
 export default function OrganizacionesCRUDPage() {
   const [orgs, setOrgs] = useState<(Organization & { entity: Entity })[]>([]);
@@ -19,6 +28,7 @@ export default function OrganizacionesCRUDPage() {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [selectedEntity, setSelectedEntity] = useState<Entity | null>(null);
   const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null);
+  const [status, setStatus] = useState('');
 
   const loadOrgs = async () => {
     setLoading(true);
@@ -26,7 +36,7 @@ export default function OrganizacionesCRUDPage() {
       const data = await listOrganizations();
       setOrgs(data);
     } catch (e) {
-      console.error(e);
+      setStatus(e instanceof Error ? e.message : 'Error cargando organizaciones');
     } finally {
       setLoading(false);
     }
@@ -36,18 +46,39 @@ export default function OrganizacionesCRUDPage() {
     loadOrgs();
   }, []);
 
-  const handleCreateSubmit = async (entityData: any, orgData: any) => {
-    await createOrganization(entityData, orgData);
+  const handleCreateSubmit = async (entityData: unknown, orgData: unknown) => {
+    await createOrganization(entityData as OrgFormEntityData, orgData as OrgFormOrgData);
     setIsAddOpen(false);
     loadOrgs();
   };
 
-  const handleEditSubmit = async (entityData: any, orgData: any) => {
+  const handleEditSubmit = async (entityData: unknown, orgData: unknown) => {
     if (selectedEntity) {
-      await updateOrganization(selectedEntity.id, entityData, orgData);
+      await updateOrganization(selectedEntity.id, entityData as Partial<OrgFormEntityData>, orgData as Partial<OrgFormOrgData>);
       setSelectedEntity(null);
       setSelectedOrg(null);
       loadOrgs();
+    }
+  };
+
+  const handleRegisterOnStellar = async (entityId: string) => {
+    setStatus('Preparando registro en Stellar...');
+    try {
+      const prepared = await prepareEntityForStellar(entityId);
+      const result = await signAndSubmitOperation(
+        prepared.environment,
+        prepared.walletAddress,
+        prepared.operation,
+        prepared.prepared
+      );
+      if (result.ok) {
+        setStatus('Registro confirmado en Stellar');
+      } else {
+        setStatus(`Error en Stellar: ${result.message}`);
+      }
+      loadOrgs();
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : 'Error registrando en Stellar');
     }
   };
 
@@ -104,6 +135,10 @@ export default function OrganizacionesCRUDPage() {
             className="w-full pl-9 pr-4 py-2 border border-stone-200 rounded-lg outline-none text-xs focus:border-[#5C061E]"
           />
         </div>
+
+        {status && (
+          <p className="text-xs text-stone-600 mt-2">{status}</p>
+        )}
       </div>
 
       {loading ? (
@@ -158,7 +193,16 @@ export default function OrganizacionesCRUDPage() {
                       <ExternalLink className="w-3.5 h-3.5" />
                     </Button>
                   </a>
-                  <Button variant="danger" size="sm" className="text-xs" onClick={() => handleDelete(row.entity_id)}>
+                  <Button
+            variant="secondary"
+            size="sm"
+            className="text-xs"
+            disabled={row.entity.stellar_status === 'pending' || row.entity.stellar_status === 'registered'}
+            onClick={() => handleRegisterOnStellar(row.entity_id)}
+          >
+            Stellar
+          </Button>
+          <Button variant="danger" size="sm" className="text-xs" onClick={() => handleDelete(row.entity_id)}>
                     <Trash2 className="w-3.5 h-3.5" />
                   </Button>
                 </div>

@@ -34,7 +34,7 @@ export interface SimulationOutcome {
 }
 
 export type TransactionStatusResult =
-  | { status: 'SUCCESS'; ledger: number }
+  | { status: 'SUCCESS'; ledger: number | null }
   | {
       status: 'FAILED';
       contractError: string | null;

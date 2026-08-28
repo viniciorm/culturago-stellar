@@ -34,12 +34,19 @@ describe('StellarWorkerManager', () => {
   it('starts and stops a worker in testnet when enabled', async () => {
     setTestnetEnv();
     stellarWorkerManager.start();
-    expect(stellarWorkerManager['started']).toBe(true);
+    expect(stellarWorkerManager.getHealth().started).toBe(true);
 
-    // Give the loop at least one chance to claim a batch.
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    // Give the loop at least one chance to claim a batch and heartbeat.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const health = stellarWorkerManager.getHealth();
+    expect(health.started).toBe(true);
+    expect(health.lastHeartbeat).not.toBeNull();
+    expect(typeof health.lastHeartbeat).toBe('number');
 
     stellarWorkerManager.stop();
-    expect(stellarWorkerManager['started']).toBe(false);
+    const stopped = stellarWorkerManager.getHealth();
+    expect(stopped.started).toBe(false);
+    expect(stopped.lastHeartbeat).toBeNull();
+    expect(stopped.startedAt).toBeNull();
   });
 });

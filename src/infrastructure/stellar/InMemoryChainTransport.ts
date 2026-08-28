@@ -68,6 +68,8 @@ export class InMemoryChainTransport implements SorobanTransport {
   private pending = new Map<string, { status: 'PENDING' | 'SUCCESS' | 'FAILED'; ledger: number }>();
   /** Test hook: make the next submission stay PENDING (timeout scenario). */
   public nextSubmissionStaysPending = false;
+  /** Test hook: make the next poll return SUCCESS with a null ledger. */
+  public nextPollReturnsNullLedger = false;
 
   async simulate(spec: ContractCallSpec): Promise<SimulationOutcome> {
     const error = this.validate(spec);
@@ -103,6 +105,10 @@ export class InMemoryChainTransport implements SorobanTransport {
     if (!entry) return { status: 'NOT_FOUND' };
     if (entry.status === 'PENDING') return { status: 'PENDING' };
     if (entry.status === 'FAILED') return { status: 'FAILED', contractError: 'CONTRACT_FAILED' };
+    if (this.nextPollReturnsNullLedger) {
+      this.nextPollReturnsNullLedger = false;
+      return { status: 'SUCCESS', ledger: null };
+    }
     return { status: 'SUCCESS', ledger: entry.ledger };
   }
 

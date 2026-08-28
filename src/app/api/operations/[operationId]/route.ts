@@ -25,10 +25,7 @@ export async function GET(
     }
 
     if (op.intent.actorAddress !== actor.walletAddress) {
-      return NextResponse.json(
-        { error: 'operation does not belong to the actor' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'operation not found' }, { status: 404 });
     }
 
     const state = await bundle.gateway.getOperation(operationId);

@@ -213,6 +213,25 @@ describe.each([['mock', () => createMockStellarGateway().gateway]] as const)(
       ).rejects.toSatisfy((e) => isDomainError(e, 'INVALID_STATE_TRANSITION'));
     });
 
+    it('rejects a SUCCESS poll result with a null ledger', async () => {
+      const bundle = createMockStellarGateway({ signer: null });
+      bundle.transport.nextPollReturnsNullLedger = true;
+      gateway = bundle.gateway;
+
+      const prepared = await gateway.prepareRegisterEntity(registerCommand('k-null-ledger'));
+      const payload = await gateway.getPreparedPayload(prepared.operationId);
+      const signed = await new MockSigner(ACTOR).sign(payload);
+      const state = await gateway.submitSigned(
+        prepared.operationId,
+        signed.signedXdr,
+        signed.signerAddress
+      );
+
+      expect(state.phase).toBe('unknown');
+      expect(state.ledger).toBeNull();
+      expect(state.errorCode).toBe('MISSING_LEDGER');
+    });
+
     it('getOperation returns the stored state', async () => {
       gateway = make();
       const state = await gateway.registerEntity(registerCommand('k14'));
@@ -476,6 +495,27 @@ describe('credentialRecordMatches readback validation', () => {
       ...baseExpected(),
       revoked: true,
       revokedReasonHash: hex(99),
+    };
+    expect(credentialRecordMatches(record, expected, 1002, 'revoke_credential')).toBe(false);
+  });
+
+  it('rejects an issue record with a null ledger when confirmation ledger is expected', () => {
+    const record = { ...baseRecord(), issued_ledger: null };
+    expect(credentialRecordMatches(record, baseExpected(), 1001, 'issue_credential')).toBe(false);
+  });
+
+  it('rejects a revoke record with a null revoked ledger when confirmation ledger is expected', () => {
+    const record = {
+      ...baseRecord(),
+      revoked: true,
+      issued_ledger: 1001,
+      revoked_ledger: null,
+      revoked_reason_hash: hex(11),
+    };
+    const expected = {
+      ...baseExpected(),
+      revoked: true,
+      revokedReasonHash: hex(11),
     };
     expect(credentialRecordMatches(record, expected, 1002, 'revoke_credential')).toBe(false);
   });

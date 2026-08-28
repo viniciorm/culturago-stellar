@@ -2,6 +2,8 @@ import { beforeAll, describe, expect, it, afterAll } from 'vitest';
 import { Account, Address, Keypair, Operation, TransactionBuilder } from '@stellar/stellar-sdk';
 import {
   assertSmartWalletWasmAllowlist,
+  assertSmartWalletContractAddress,
+  deriveSmartWalletContractAddress,
   extractCreateContractWasmHashes,
 } from '@/infrastructure/stellar/SmartWalletAllowlist';
 import { getStellarNetworkConfig } from '@/infrastructure/stellar/networkConfig';
@@ -70,6 +72,25 @@ describe('SmartWalletAllowlist', () => {
     expect(() =>
       assertSmartWalletWasmAllowlist('{"mode":"signed"}', TESTNET_PASSPHRASE, ['a'.repeat(64)])
     ).toThrow('signed transaction does not contain a create-contract WASM hash');
+  });
+
+  it('derives the deterministic contract address from a deploy XDR', () => {
+    const xdr = deployXdrForWasmHash('a'.repeat(64));
+    const derived = deriveSmartWalletContractAddress(xdr, TESTNET_PASSPHRASE);
+    expect(derived).toMatch(/^C[A-Z2-7]{55}$/);
+  });
+
+  it('assertSmartWalletContractAddress accepts the derived contract id', () => {
+    const xdr = deployXdrForWasmHash('a'.repeat(64));
+    const derived = deriveSmartWalletContractAddress(xdr, TESTNET_PASSPHRASE);
+    expect(assertSmartWalletContractAddress(xdr, TESTNET_PASSPHRASE, derived!)).toBe(derived);
+  });
+
+  it('rejects a client-provided contract id that does not match the derived address', () => {
+    const xdr = deployXdrForWasmHash('a'.repeat(64));
+    expect(() =>
+      assertSmartWalletContractAddress(xdr, TESTNET_PASSPHRASE, 'CINVALIDINVALIDINVALIDINVALIDINVALIDINVALIDINVALIDIN')
+    ).toThrow('contractId does not match derived deploy address');
   });
 });
 

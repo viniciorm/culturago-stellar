@@ -6,7 +6,7 @@ import { InMemoryOperationStore } from './InMemoryOperationStore';
 import { SorobanStellarGateway } from './SorobanStellarGateway';
 import { StellarNetworkConfig } from './networkConfig';
 
-const DEMO_CONFIG: StellarNetworkConfig = {
+export const DEMO_CONFIG: StellarNetworkConfig = {
   environment: 'demo',
   networkPassphrase: 'CulturaGO Demo ; 2026',
   rpcUrl: 'in-memory://demo',

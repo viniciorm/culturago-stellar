@@ -1,4 +1,5 @@
 import 'server-only';
+import { getPublicConfig } from '../config/env';
 import { Logger } from '../observability/Logger';
 import { StellarWorker } from './StellarWorker';
 import { createStellarGateway } from './createStellarGateway';
@@ -13,11 +14,19 @@ import { createStellarGateway } from './createStellarGateway';
  * is explicitly `true`, and can be disabled in any environment by setting it
  * to `false`.
  */
+export interface WorkerHealth {
+  started: boolean;
+  startedAt: number | null;
+  lastHeartbeat: number | null;
+}
+
 class StellarWorkerManager {
   private worker: StellarWorker | null = null;
   private controller: AbortController | null = null;
   private log = new Logger('StellarWorkerManager');
   private started = false;
+  private startedAt: number | null = null;
+  private lastHeartbeat: number | null = null;
 
   start(): void {
     if (this.started) {
@@ -25,7 +34,7 @@ class StellarWorkerManager {
       return;
     }
 
-    const env = process.env.NEXT_PUBLIC_CULTURAGO_ENV;
+    const { environment } = getPublicConfig();
     const enabled = process.env.STELLAR_WORKER_ENABLED;
 
     if (enabled === 'false') {
@@ -33,7 +42,7 @@ class StellarWorkerManager {
       return;
     }
 
-    if (env === 'demo' && enabled !== 'true') {
+    if (environment === 'demo' && enabled !== 'true') {
       this.log.info('worker_disabled_demo');
       return;
     }
@@ -58,13 +67,16 @@ class StellarWorkerManager {
         claimTtlSeconds,
         pollIntervalMs,
         maxAttempts,
+        onHeartbeat: () => this.onHeartbeat(),
       });
       this.controller = new AbortController();
       this.started = true;
+      this.startedAt = Date.now();
+      this.lastHeartbeat = this.startedAt;
 
       this.log.info('worker_starting', {
         workerId,
-        env,
+        environment,
         batchSize,
         pollIntervalMs,
         claimTtlSeconds,
@@ -84,6 +96,8 @@ class StellarWorkerManager {
         error: error instanceof Error ? error.message : String(error),
       });
       this.started = false;
+      this.startedAt = null;
+      this.lastHeartbeat = null;
       this.worker = null;
       this.controller = null;
     }
@@ -92,11 +106,25 @@ class StellarWorkerManager {
   stop(): void {
     if (!this.started) return;
     this.started = false;
+    this.startedAt = null;
+    this.lastHeartbeat = null;
     this.log.info('worker_stopping');
     this.worker?.stop();
     this.controller?.abort();
     this.worker = null;
     this.controller = null;
+  }
+
+  getHealth(): WorkerHealth {
+    return {
+      started: this.started,
+      startedAt: this.startedAt,
+      lastHeartbeat: this.lastHeartbeat,
+    };
+  }
+
+  private onHeartbeat(): void {
+    this.lastHeartbeat = Date.now();
   }
 
   private attachShutdownHandlers(): void {

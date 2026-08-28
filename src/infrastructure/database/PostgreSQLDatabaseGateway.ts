@@ -15,7 +15,8 @@ import {
   RelationshipType,
 } from '../../domain/participation/relationships';
 import { domainError } from '../../domain/errors';
-import { query, translatePgError } from './pool';
+import { PoolClient } from 'pg';
+import { query, translatePgError, withTransaction } from './pool';
 
 interface CredentialRow {
   id: string;
@@ -67,10 +68,11 @@ function toCredentialRecord(row: CredentialRow): CredentialRecord {
  * ActorContext; this adapter enforces integrity (constraints, transitions).
  */
 export class PostgreSQLDatabaseGateway implements DatabaseGateway {
-  async getEntityRecord(entityId: string): Promise<EntityRecord | null> {
+  async getEntityRecord(entityId: string, client?: PoolClient): Promise<EntityRecord | null> {
     const entityResult = await query<{ id: string; active: boolean; latest_version: number }>(
       'SELECT id, active, latest_version FROM entities WHERE id = $1',
-      [entityId]
+      [entityId],
+      client
     ).catch(translatePgError);
     const entity = entityResult.rows[0];
     if (!entity) return null;
@@ -85,7 +87,8 @@ export class PostgreSQLDatabaseGateway implements DatabaseGateway {
     }>(
       `SELECT version, metadata_hash, hash_schema, registrar_id, recorded_at, recorded_ledger
        FROM entity_versions WHERE entity_id = $1 ORDER BY version ASC`,
-      [entityId]
+      [entityId],
+      client
     ).catch(translatePgError);
 
     const history: EntityVersion[] = versionsResult.rows.map((v) => ({
@@ -106,58 +109,63 @@ export class PostgreSQLDatabaseGateway implements DatabaseGateway {
   }
 
   async saveEntityRecord(record: EntityRecord, details?: NewEntityDetails): Promise<void> {
-    const existing = await this.getEntityRecord(record.entityId);
+    await withTransaction(async (client) => {
+      const existing = await this.getEntityRecord(record.entityId, client);
 
-    if (existing) {
-      // Optimistic control: only advance from the expected latest version.
-      const updated = await query(
-        `UPDATE entities SET active = $2, latest_version = $3
-         WHERE id = $1 AND latest_version <= $3`,
-        [record.entityId, record.active, record.latestVersion]
-      ).catch(translatePgError);
-      if (updated.rowCount === 0) {
-        throw domainError('VERSION_CONFLICT', `Entity ${record.entityId} version conflict`);
+      if (existing) {
+        // Optimistic control: only advance from the expected latest version.
+        const updated = await query(
+          `UPDATE entities SET active = $2, latest_version = $3
+           WHERE id = $1 AND latest_version <= $3`,
+          [record.entityId, record.active, record.latestVersion],
+          client
+        ).catch(translatePgError);
+        if (updated.rowCount === 0) {
+          throw domainError('VERSION_CONFLICT', `Entity ${record.entityId} version conflict`);
+        }
+      } else {
+        if (!details) {
+          throw domainError(
+            'INVALID_INPUT',
+            `Entity ${record.entityId} does not exist and no creation details were provided`
+          );
+        }
+        await query(
+          `INSERT INTO entities (id, kind, display_name, slug, country, city, active, latest_version)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [
+            record.entityId,
+            details.kind,
+            details.displayName,
+            details.slug,
+            details.country,
+            details.city,
+            record.active,
+            record.latestVersion,
+          ],
+          client
+        ).catch(translatePgError);
       }
-    } else {
-      if (!details) {
-        throw domainError(
-          'INVALID_INPUT',
-          `Entity ${record.entityId} does not exist and no creation details were provided`
-        );
-      }
-      await query(
-        `INSERT INTO entities (id, kind, display_name, slug, country, city, active, latest_version)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [
-          record.entityId,
-          details.kind,
-          details.displayName,
-          details.slug,
-          details.country,
-          details.city,
-          record.active,
-          record.latestVersion,
-        ]
-      ).catch(translatePgError);
-    }
 
-    for (const version of record.versions) {
-      await query(
-        `INSERT INTO entity_versions
-           (entity_id, version, metadata_hash, hash_schema, registrar_id, recorded_at, recorded_ledger)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         ON CONFLICT (entity_id, version) DO NOTHING`,
-        [
-          record.entityId,
-          version.version,
-          version.metadataHash,
-          version.hashSchema,
-          version.registrarId,
-          version.recordedAt,
-          version.recordedLedger,
-        ]
-      ).catch(translatePgError);
-    }
+      for (const version of record.versions) {
+        await query(
+          `INSERT INTO entity_versions
+             (entity_id, version, metadata_hash, hash_schema, registrar_id, recorded_at, recorded_ledger)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           ON CONFLICT (entity_id, version) DO NOTHING`,
+          [
+            record.entityId,
+            version.version,
+            version.metadataHash,
+            version.hashSchema,
+            version.registrarId,
+            version.recordedAt,
+            version.recordedLedger,
+          ],
+          client
+        ).catch(translatePgError);
+      }
+    });
   }
 
   async getEntityKind(entityId: string): Promise<DomainEntityKind | null> {
@@ -168,10 +176,15 @@ export class PostgreSQLDatabaseGateway implements DatabaseGateway {
     return result.rows[0]?.kind ?? null;
   }
 
-  async getParticipation(subjectId: string, eventId: string): Promise<ParticipationRecord | null> {
+  async getParticipation(
+    subjectId: string,
+    eventId: string,
+    client?: PoolClient
+  ): Promise<ParticipationRecord | null> {
     const result = await query<{ id: string; state: ParticipationState }>(
       'SELECT id, state FROM participations WHERE subject_entity_id = $1 AND event_id = $2',
-      [subjectId, eventId]
+      [subjectId, eventId],
+      client
     ).catch(translatePgError);
     const participation = result.rows[0];
     if (!participation) return null;
@@ -184,7 +197,8 @@ export class PostgreSQLDatabaseGateway implements DatabaseGateway {
     }>(
       `SELECT from_state, to_state, actor_label, at
        FROM participation_transitions WHERE participation_id = $1 ORDER BY seq ASC`,
-      [participation.id]
+      [participation.id],
+      client
     ).catch(translatePgError);
 
     return {
@@ -202,39 +216,44 @@ export class PostgreSQLDatabaseGateway implements DatabaseGateway {
   }
 
   async saveParticipation(record: ParticipationRecord): Promise<void> {
-    const existing = await this.getParticipation(record.subjectId, record.eventId);
+    await withTransaction(async (client) => {
+      const existing = await this.getParticipation(record.subjectId, record.eventId, client);
 
-    if (existing) {
-      const knownTransitions = existing.history.length;
-      if (record.history.length < knownTransitions) {
-        throw domainError('INVALID_STATE_TRANSITION', 'Participation history cannot shrink');
-      }
-      const updated = await query(
-        'UPDATE participations SET state = $2 WHERE id = $1 AND state = $3',
-        [existing.participationId, record.state, existing.state]
-      ).catch(translatePgError);
-      if (updated.rowCount === 0) {
-        throw domainError('VERSION_CONFLICT', `Participation ${existing.participationId} state conflict`);
-      }
-
-      const newTransitions = record.history.slice(knownTransitions);
-      for (let i = 0; i < newTransitions.length; i++) {
-        const t = newTransitions[i];
-        await query(
-          `INSERT INTO participation_transitions
-             (participation_id, seq, from_state, to_state, actor_label, at)
-           VALUES ($1, $2, $3, $4, $5, $6)`,
-          [existing.participationId, knownTransitions + i + 1, t.from, t.to, t.actorId, t.at]
+      if (existing) {
+        const knownTransitions = existing.history.length;
+        if (record.history.length < knownTransitions) {
+          throw domainError('INVALID_STATE_TRANSITION', 'Participation history cannot shrink');
+        }
+        const updated = await query(
+          'UPDATE participations SET state = $2 WHERE id = $1 AND state = $3',
+          [existing.participationId, record.state, existing.state],
+          client
         ).catch(translatePgError);
-      }
-      return;
-    }
+        if (updated.rowCount === 0) {
+          throw domainError('VERSION_CONFLICT', `Participation ${existing.participationId} state conflict`);
+        }
 
-    await query(
-      `INSERT INTO participations (id, subject_entity_id, event_id, state)
-       VALUES ($1, $2, $3, $4)`,
-      [record.participationId, record.subjectId, record.eventId, record.state]
-    ).catch(translatePgError);
+        const newTransitions = record.history.slice(knownTransitions);
+        for (let i = 0; i < newTransitions.length; i++) {
+          const t = newTransitions[i];
+          await query(
+            `INSERT INTO participation_transitions
+               (participation_id, seq, from_state, to_state, actor_label, at)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [existing.participationId, knownTransitions + i + 1, t.from, t.to, t.actorId, t.at],
+            client
+          ).catch(translatePgError);
+        }
+        return;
+      }
+
+      await query(
+        `INSERT INTO participations (id, subject_entity_id, event_id, state)
+         VALUES ($1, $2, $3, $4)`,
+        [record.participationId, record.subjectId, record.eventId, record.state],
+        client
+      ).catch(translatePgError);
+    });
   }
 
   async getIssuerOperatorLink(

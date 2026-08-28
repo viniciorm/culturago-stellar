@@ -39,10 +39,16 @@ export function getStellarNetworkConfig(): StellarNetworkConfig {
     );
   }
 
+  const { environment, stellarNetworkPassphrase, stellarRpcUrl } = publicConfig;
+
+  if (!stellarNetworkPassphrase || !stellarRpcUrl) {
+    throw domainError('INVALID_INPUT', `${environment} requires Stellar network passphrase and RPC URL`);
+  }
+
   if (!publicConfig.entityRegistryContractId || !publicConfig.credentialRegistryContractId) {
     throw domainError(
       'INVALID_INPUT',
-      `${publicConfig.environment} requires both domain contract IDs`
+      `${environment} requires both domain contract IDs`
     );
   }
 
@@ -92,28 +98,22 @@ export function getStellarNetworkConfig(): StellarNetworkConfig {
     }
   }
 
-  const maxFeeStrokes = Math.max(
-    1,
-    Number(process.env.STELLAR_MAX_FEE_STROKES ?? 500_000)
-  );
-  if (Number.isNaN(maxFeeStrokes)) {
+  const maxFeeStrokes = Number(process.env.STELLAR_MAX_FEE_STROKES ?? 500_000);
+  if (!Number.isInteger(maxFeeStrokes) || maxFeeStrokes < 1) {
     throw domainError('INVALID_INPUT', 'STELLAR_MAX_FEE_STROKES must be a positive integer');
   }
 
-  const relayerDailyBudget = Math.max(
-    1,
-    Number(process.env.STELLAR_RELAYER_DAILY_BUDGET ?? 500)
-  );
-  if (Number.isNaN(relayerDailyBudget)) {
+  const relayerDailyBudget = Number(process.env.STELLAR_RELAYER_DAILY_BUDGET ?? 500);
+  if (!Number.isInteger(relayerDailyBudget) || relayerDailyBudget < 1) {
     throw domainError('INVALID_INPUT', 'STELLAR_RELAYER_DAILY_BUDGET must be a positive integer');
   }
 
-  console.log('[networkConfig] feePayer present:', !!feePayer, 'feePayerSecret present:', !!feePayerSecret);
+  // feePayer presence is intentionally not logged to avoid leaking configuration hints.
 
   return {
-    environment: publicConfig.environment,
-    networkPassphrase: publicConfig.stellarNetworkPassphrase!,
-    rpcUrl: publicConfig.stellarRpcUrl!,
+    environment,
+    networkPassphrase: stellarNetworkPassphrase,
+    rpcUrl: stellarRpcUrl,
     entityRegistryContractId: publicConfig.entityRegistryContractId,
     credentialRegistryContractId: publicConfig.credentialRegistryContractId,
     explorerBase: publicConfig.stellarExplorerBase,

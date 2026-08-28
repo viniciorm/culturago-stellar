@@ -29,8 +29,12 @@ export function getPool(): Pool {
 
 export async function query<T extends QueryResultRow = QueryResultRow>(
   text: string,
-  params: readonly unknown[] = []
+  params: readonly unknown[] = [],
+  client?: PoolClient
 ): Promise<QueryResult<T>> {
+  if (client) {
+    return client.query<T>(text, [...params]);
+  }
   return getPool().query<T>(text, [...params]);
 }
 
