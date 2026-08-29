@@ -4,6 +4,14 @@ import { Logger } from '../observability/Logger';
 import { StellarWorker } from './StellarWorker';
 import { createStellarGateway } from './createStellarGateway';
 
+function parsePositiveInt(raw: string | undefined, name: string, defaultValue: number): number {
+  const value = raw === undefined || raw === '' ? defaultValue : Number(raw);
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(`Invalid ${name}: "${raw}" must be a positive integer`);
+  }
+  return value;
+}
+
 /**
  * Singleton manager that owns the StellarWorker runtime process.
  *
@@ -47,19 +55,29 @@ class StellarWorkerManager {
       return;
     }
 
-    const batchSize = parseInt(process.env.STELLAR_WORKER_BATCH_SIZE ?? '5', 10);
-    const pollIntervalMs = parseInt(
-      process.env.STELLAR_WORKER_POLL_INTERVAL_MS ?? '5000',
-      10
-    );
-    const claimTtlSeconds = parseInt(
-      process.env.STELLAR_WORKER_CLAIM_TTL_SECONDS ?? '60',
-      10
-    );
-    const maxAttempts = parseInt(process.env.STELLAR_WORKER_MAX_ATTEMPTS ?? '10', 10);
-    const workerId = process.env.HOSTNAME || `worker-${Date.now()}`;
-
     try {
+      const batchSize = parsePositiveInt(
+        process.env.STELLAR_WORKER_BATCH_SIZE,
+        'STELLAR_WORKER_BATCH_SIZE',
+        5
+      );
+      const pollIntervalMs = parsePositiveInt(
+        process.env.STELLAR_WORKER_POLL_INTERVAL_MS,
+        'STELLAR_WORKER_POLL_INTERVAL_MS',
+        5000
+      );
+      const claimTtlSeconds = parsePositiveInt(
+        process.env.STELLAR_WORKER_CLAIM_TTL_SECONDS,
+        'STELLAR_WORKER_CLAIM_TTL_SECONDS',
+        60
+      );
+      const maxAttempts = parsePositiveInt(
+        process.env.STELLAR_WORKER_MAX_ATTEMPTS,
+        'STELLAR_WORKER_MAX_ATTEMPTS',
+        10
+      );
+      const workerId = process.env.HOSTNAME || `worker-${Date.now()}`;
+
       const { gateway, store } = createStellarGateway();
       this.worker = new StellarWorker(store, gateway, {
         batchSize,

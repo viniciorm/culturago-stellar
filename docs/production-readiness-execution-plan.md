@@ -41,7 +41,7 @@ Este estado fue contrastado nuevamente con código, commits y gates locales. La 
 | F4.1 — IDs/hash canónico | PARCIAL | `computeEntityMetadataHash` usa `CanonicalHashService` y `tests/infrastructure/canonical-hash-parity.test.ts` está implementado, pero queda `skipped` sin `DATABASE_URL`; falta ejecutarlo sobre migraciones aplicadas y aportar evidencia TS/Rust. |
 | F4.2 — Gateway en UI | PARCIAL | El dashboard de organizaciones (`src/app/dashboard/organizaciones/page.tsx`) ya puede registrar una entidad en Stellar mediante `prepareEntityForStellar` + `signAndSubmitOperation`. Faltan emitir/revocar credenciales desde el frontend, pruebas UI completas y E2E real. |
 | F5.1 — Estado/polling | PARCIAL | El endpoint `/api/operations/[operationId]` devuelve 404 uniforme, `useOperationPoller` usa backoff exponencial acotado con `AbortController`, y el gateway rechaza ledgers `null`. Existen tests del Route Handler y del hook. Faltan rate limit en la ruta, correlation ID accionable en la UI y UX completa por fase. |
-| F5.2 — Worker runtime | PARCIAL | Manager, worker, `/api/metrics` y heartbeats están implementados con tests de arranque/parada. Faltan métricas de lag/fases por fase, validación numérica estricta de opciones y evidencia runtime real con PostgreSQL. |
+| F5.2 — Worker runtime | PARCIAL | Manager, worker, `/api/metrics` y heartbeats están implementados con tests de arranque/parada. Se agregó `parsePositiveInt` para `STELLAR_WORKER_*` con tests de rechazo de valores no numéricos y no positivos. Faltan métricas de lag/fases por fase y evidencia runtime real con PostgreSQL. |
 | F5-f — Provisioning admin Testnet | PARCIAL | Funcionalidad, cleanup CLI y recovery de operaciones no terminales existen. Falta E2E on-chain y aprobación para ejecutar `admin_provision`. |
 | F6 — E2E Testnet/cleanup | PENDIENTE | `scripts/testnet-exercise.mjs` implementa flujo SDK con admin/operador, cleanup en `finally` y readback, pero no hay evidencia commiteada (`manifest` aún tiene `ledger: null`), no usa passkey/smart wallet desde el frontend y genera IDs aleatorios en lugar de UUIDs canónicos del UI. Bloqueado por F0/F5 y por aprobación humana para mutar Testnet. |
 | F7.1 — Retiro del harness | PARCIAL | `/api/sign/prepare`, `harnessHandler.ts` y `harnessGuard.ts` fueron eliminados en working tree; `/api/sign/submit` y `/api/smart-wallet/deploy` usan sesión, origin allowlist y rate/budget. Las eliminaciones y cleanup on-chain aún no están commiteados ni evidenciados. |
@@ -860,7 +860,7 @@ Revertir endpoint, cliente de polling y copy de estados. No revertir las reglas 
 
 ## Unidad 5.2 — Reconciliación runtime mínima para Testnet
 
-**Estado: PARCIAL.** El manager, worker, `instrumentation.ts`, `/api/metrics` y heartbeats existen y tienen tests de arranque/parada. Faltan métricas de lag/fases por fase, validación numérica estricta de `STELLAR_WORKER_*` y evidencia runtime real con PostgreSQL.
+**Estado: PARCIAL.** El manager, worker, `instrumentation.ts`, `/api/metrics` y heartbeats existen y tienen tests de arranque/parada. Se implementó `parsePositiveInt` en `StellarWorkerManager.ts` para validar `STELLAR_WORKER_BATCH_SIZE`, `STELLAR_WORKER_POLL_INTERVAL_MS`, `STELLAR_WORKER_CLAIM_TTL_SECONDS` y `STELLAR_WORKER_MAX_ATTEMPTS`, y `tests/infrastructure/stellar-worker-manager.test.ts` cubre los rechazos de valores no numéricos y no positivos. Faltan métricas de lag/fases por fase y evidencia runtime real con PostgreSQL.
 
 **Archivos probables:**
 
@@ -878,7 +878,8 @@ Revertir endpoint, cliente de polling y copy de estados. No revertir las reglas 
 - [x] Soportar shutdown mediante `AbortController`, `SIGTERM` y `SIGINT`.
 - [x] Usar PostgreSQL para operaciones durables cuando `DATABASE_URL` está configurada y no sobredeclarar el store en memoria.
 - [x] Recuperar fases `signed` y reconciliables con reintentos/backoff sin que el worker firme.
-- [ ] Validar numéricamente las opciones de entorno y demostrar el runtime con PostgreSQL en el deployment Testnet/producción.
+- [x] Validar numéricamente las opciones de entorno (`parsePositiveInt` para `STELLAR_WORKER_*` con tests).
+- [ ] Demostrar el runtime con PostgreSQL en el deployment Testnet/producción.
 - [ ] Separar/supervisar los procesos durables de reconciliación, indexación y TTL.
 
 ### Pruebas

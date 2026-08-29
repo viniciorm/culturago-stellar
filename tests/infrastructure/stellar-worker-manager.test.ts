@@ -10,6 +10,10 @@ function setTestnetEnv(): void {
   process.env.NEXT_PUBLIC_ENTITY_REGISTRY_CONTRACT_ID = 'CBUUMXY77DF4QG5KY5H37SEV63HOLPIVEUZGP2UEQ4PGBNWC2JYFJQGO';
   process.env.NEXT_PUBLIC_CREDENTIAL_REGISTRY_CONTRACT_ID = 'CBQPZU6O2HTURYQBMYYZ3DDZBTT67AYCXMT5YUYOSVQU5PUCBW642RJ6';
   process.env.STELLAR_WORKER_ENABLED = 'true';
+  process.env.STELLAR_WORKER_BATCH_SIZE = '5';
+  process.env.STELLAR_WORKER_POLL_INTERVAL_MS = '5000';
+  process.env.STELLAR_WORKER_CLAIM_TTL_SECONDS = '60';
+  process.env.STELLAR_WORKER_MAX_ATTEMPTS = '10';
 }
 
 describe('StellarWorkerManager', () => {
@@ -48,5 +52,21 @@ describe('StellarWorkerManager', () => {
     expect(stopped.started).toBe(false);
     expect(stopped.lastHeartbeat).toBeNull();
     expect(stopped.startedAt).toBeNull();
+  });
+
+  it('rejects non-numeric options and does not start', () => {
+    setTestnetEnv();
+    process.env.STELLAR_WORKER_BATCH_SIZE = 'foo';
+    expect(() => stellarWorkerManager.start()).not.toThrow();
+    expect(stellarWorkerManager.getHealth().started).toBe(false);
+    stellarWorkerManager.stop();
+  });
+
+  it('rejects non-positive options and does not start', () => {
+    setTestnetEnv();
+    process.env.STELLAR_WORKER_POLL_INTERVAL_MS = '-1';
+    expect(() => stellarWorkerManager.start()).not.toThrow();
+    expect(stellarWorkerManager.getHealth().started).toBe(false);
+    stellarWorkerManager.stop();
   });
 });

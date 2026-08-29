@@ -1,20 +1,30 @@
 # Audit Report: `docs/production-readiness-execution-plan.md`
 
 **Date:** 2026-08-28  
+**Remediado:** 2026-08-29  
 **Audited by:** Senior QA + Senior Developer  
 **Scope:** Contrast the production readiness plan against the actual working tree, commit history, local gates and implementation.  
 **Evidence rule:** No secrets, XDR signed payloads, seeds or PII are reproduced.
+
+## 0. Estado remediado
+
+- **F0 Baseline** es reproducible y verde.
+- **F8.1 Dependencias** se cerró: se eliminaron los overrides flotantes (`>=...`), se pinneó `postcss: 8.5.26` y se actualizó `next`/`eslint-config-next` a `16.3.3` para resolver `sharp <0.35.0`.
+- **F2.2 Claves/fees** se marcó `COMPLETO` y se corrigió la referencia a rate/budget en memoria.
+- **F5.2 Worker runtime** avanzó: se implementó `parsePositiveInt` para las opciones `STELLAR_WORKER_*` y se agregaron tests de rechazo de valores no numéricos y no positivos.
+- La inconsistencia del plan respecto al `working tree` fue resuelta con un commit.
+- `F6 E2E Testnet/cleanup` sigue bloqueado por aprobación humana explícita para mutar Testnet.
 
 ---
 
 ## 1. Executive Summary
 
-The codebase has advanced substantially since the plan was last updated, but **the plan itself is now inconsistent with the working tree and several gates are red**. The most critical issue is that `pnpm lint --max-warnings=0` is broken because of a dependency override that was *added* after the plan’s `F8.1` remediation, which makes the CI gate and the plan’s own "Baseline local reejecutado" table false. There are also stale status labels in the plan (`F2.2` is `BLOQUEADO` in detail but `PARCIAL` in the summary; `F6` is claimed to have executed in the latest commit but the plan still labels it `PARCIAL NO VERIFICADO`), and the working tree is dirty with uncommitted changes that include an entire new subsystem (`src/infrastructure/perimeter/`, `database/migrations/0011_rate_budget.sql`).
+The codebase has advanced substantially since the plan was last updated. The critical issues identified in the 2026-08-28 audit — broken `pnpm lint` from a floating `brace-expansion >=5.0.9` override, `sharp` vulnerability, dirty working tree, and stale plan status labels — have been remediated. The dependency overrides were removed, `postcss` was pinned to `8.5.26`, `next`/`eslint-config-next` were upgraded to `16.3.3`, and `F0 Baseline` is now reproducible and green. Plan statuses for `F2.1`, `F2.2`, `F5.2` numeric validation and `F8.1` have been reconciled and committed.
 
 | Overall verdict | Status |
 |---|---|
-| **Testnet integration (F1-F6)** | **PARCIAL / NO VERIFICADO** — code exists, but lint is broken and the E2E evidence is not reproducible from the repo. |
-| **Production readiness (F7-F10)** | **NO CUMPLIDO** — dirty tree, stale plan, missing Docker/CI/TLS/observability evidence. |
+| **Testnet integration (F1-F6)** | **PARCIAL** — F0-F5 baseline code and tests are green; F6 requires human approval to mutate Testnet and still lacks on-chain evidence. |
+| **Production readiness (F7-F10)** | **PARCIAL** — F7.2 and F8.1 are complete; F7.1, F8.2, F8.3, F9 and F10 remain partial and depend on external decisions (GitHub branch protection, Docker/TLS, docs/manifest, infrastructure). |
 
 ---
 
