@@ -72,6 +72,7 @@ import { PersonForm } from '../../../../components/PersonForm';
 import { OrganizationForm } from '../../../../components/OrganizationForm';
 import { ProviderForm } from '../../../../components/ProviderForm';
 import { CredentialForm } from '../../../../components/CredentialForm';
+import { CredentialRevokeDialog } from '../../../../components/CredentialRevokeDialog';
 import { StellarStatusBlock } from '../../../../components/StellarStatusBlock';
 
 export default function EventDashboardPage() {
@@ -100,6 +101,8 @@ export default function EventDashboardPage() {
   const [isAddOrgOpen, setIsAddOrgOpen] = useState(false);
   const [isAddProviderOpen, setIsAddProviderOpen] = useState(false);
   const [isIssueCredOpen, setIsIssueCredOpen] = useState(false);
+  const [isRevokeModalOpen, setIsRevokeModalOpen] = useState(false);
+  const [selectedRevokeCredential, setSelectedRevokeCredential] = useState<Credential | null>(null);
   const [selectedStellarEntity, setSelectedStellarEntity] = useState<Entity | null>(null);
   const [selectedStellarCredential, setSelectedStellarCredential] = useState<Credential | null>(null);
   const [isStellarModalOpen, setIsStellarModalOpen] = useState(false);
@@ -298,11 +301,9 @@ export default function EventDashboardPage() {
     }
   };
 
-  const handleRevokeCredential = async (id: string) => {
-    if (confirm('¿Estás seguro de que quieres revocar esta credencial? Esta acción se reflejará en la blockchain.')) {
-      await db.updateCredential(id, { status: 'revoked', revoked_at: new Date().toISOString() });
-      loadDatabase();
-    }
+  const handleRevokeCredential = (credential: PopulatedCredential) => {
+    setSelectedRevokeCredential(credential);
+    setIsRevokeModalOpen(true);
   };
 
   const handleOpenStellarEntity = (entity: Entity) => {
@@ -774,7 +775,7 @@ export default function EventDashboardPage() {
                     </Button>
                   </a>
                   {row.status === 'issued' && (
-                    <Button variant="danger" size="sm" className="text-xs" onClick={() => handleRevokeCredential(row.id)}>
+                    <Button variant="danger" size="sm" className="text-xs" onClick={() => handleRevokeCredential(row)}>
                       Revocar
                     </Button>
                   )}
@@ -909,6 +910,17 @@ export default function EventDashboardPage() {
           defaultIssuerId={event?.organizer_entity_id ?? undefined}
         />
       </Dialog>
+
+      {/* Revoke Credential Dialog */}
+      <CredentialRevokeDialog
+        isOpen={isRevokeModalOpen}
+        onClose={() => {
+          setIsRevokeModalOpen(false);
+          setSelectedRevokeCredential(null);
+        }}
+        credential={selectedRevokeCredential}
+        onUpdate={loadDatabase}
+      />
 
       {/* Stellar Status Technical Dialog */}
       <Dialog
