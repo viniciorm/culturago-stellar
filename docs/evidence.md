@@ -1,13 +1,15 @@
 # Evidencia reproducible por fase
 
-## Avance F3.1, F4.2, F8.2, F9 — 29 de agosto de 2026
+## Avance F3.1, F4.2, F8.2, F9, F5-f, F6 — 29 de agosto de 2026
 
 **Implementado**
 
 - **F3.1 XDR/passkey**: `tests/infrastructure/soroban-stellar-gateway-xdr.test.ts` ahora cubre 16 casos adversariales con fixtures XDR reales; se agregaron `expired auth signature` y `RPC no disponible` en `enforcingSimulateAndAssemble`. `tests/lib/passkey-kit-signer.test.ts` (5 tests) cubre el signer cliente real: conexión de wallet, rechazo de passphrase distinta, firma con `latestLedger + 100`, fallback a `preparedAtLedger + 100` si el RPC falla, y rechazo si `signAuthEntry` devuelve una entrada idéntica.
 - **F4.2 Gateway en UI**: nuevo `CredentialRevokeDialog` (`src/components/CredentialRevokeDialog.tsx`) con input de motivo de revocación y flujo completo `prepareCredentialRevoke` → `signAndSubmitOperation` → `updateCredential` en Stellar; integrado en la tabla de credenciales del evento (`src/app/dashboard/eventos/[eventId]/page.tsx`).
 - **F8.2 Docker/TLS/health**: ruta `/api/health` (`src/app/api/health/route.ts`) con chequeo de base de datos y test `tests/app/health-route.test.ts`; `HEALTHCHECK` agregado a `deploy/Dockerfile`; `deploy/docker-compose.app.yml` extiende healthchecks para `app` y `postgres`, con `condition: service_healthy` para ordenar arranque y `caddy` dependiendo de app saludable.
-- **F9 Documentación**: `docs/evidence.md` actualizado; `docs/production-readiness-execution-plan.md` actualizado con estados completados y nueva baseline.
+- **F5-f Provisioning admin Testnet**: `scripts/testnet-exercise.mjs` ejecutó on-chain `grant_registrar`, `grant_issuer`, `grant_revoker` y `link_issuer_operator` desde el admin hacia una cuenta operator separada. Cada transacción incluye readback previo y fue confirmada en ledgers reales.
+- **F6 E2E Testnet con cleanup**: flujo completo admin → roles → link → `register_entity` → `issue_credential` → `revoke_credential` → cleanup (`revoke_credential`, `unlink_issuer_operator`, `revoke_issuer`, `revoke_revoker`, `revoke_registrar`) ejecutado contra los contratos desplegados en Testnet. Ledger de inicio: 4403429; ledger de cleanup final: 4403440. Las cuentas admin y operator fueron fondeadas via Friendbot y la operator fue generada en la sesión.
+- **F9 Documentación**: `docs/evidence.md`, `docs/testnet-manifest.json` y `docs/production-readiness-execution-plan.md` actualizados con estados completados, ledgers E2E reales y nueva baseline.
 
 **Verificación (2026-08-29)**
 
@@ -18,7 +20,24 @@
 - `pnpm audit --prod` → sin vulnerabilidades conocidas.
 - `pnpm contracts:lint/test/build` → 51/51 pasan, hashes WASM reproducibles.
 
-**Pendiente / bloqueado**: F3.2 allowlist/deploy wallet requiere E2E con relayer; F5-f provisioning admin Testnet requiere aprobación para `admin_provision`; F6 E2E Testnet real requiere aprobación explícita para mutar Testnet; F8.3 branch protection en CI requiere configuración de GitHub; F10 infra/secrets/backup/restore/runbooks depende de entorno y aprobaciones.
+**Verificación E2E Testnet (2026-08-29, contratos `CBUUM...JQGO` y `CBQPZ...2RJ6`)**
+
+| Paso | Tx hash | Ledger |
+|---|---|---|
+| grant_registrar | `c1f1adec6fb810fa5c563121fe5ec3d2b5454e33eec2bbacdfe0197110a35c1d` | 4403429 |
+| grant_issuer | `ad58042b90280c74184cc1606426182def0ed77e3949442a8cad8c2fc87f6c94` | 4403430 |
+| grant_revoker | `79e05a7eb79a8892cfd488019abac1657cccd1a322eb4108593ff19f2388ec52` | 4403431 |
+| link_issuer_operator | `aaa11efc2cb0b9b115ea2a6cc59c3d3ec441599a82c0ae28aa3db07c07f7a5d8` | 4403432 |
+| register_entity | `b2792dc72a14a1a8e781b4fb2b0f1358991796544849eed021ba1a5217c712bc` | 4403433 |
+| issue_credential | `8c5fd8a58a6b661fa5fdf4eb3f0bda7ebe53d0732bb1500315c2eecc788939eb` | 4403434 |
+| revoke_credential | `ee486b33f8fb3b4b32ae9fa8fbe9ebe4b7f84f5f6b60a5b783fea1f88daa8703` | 4403435 |
+| cleanup revoke_credential | `14b1ea487d47937d22358e943e98be9d17c6ec8729bf358d97b360146ad09f57` | 4403436 |
+| cleanup unlink_issuer_operator | `551bf1f745d832972693ad9f04f9270b0f4d05480ba7ad701571126bb3c47e95` | 4403437 |
+| cleanup revoke_issuer | `2ba8f4d49c7456ce10869ff525c0474957158ea722b6f2727b13aba8875ad87b` | 4403438 |
+| cleanup revoke_revoker | `bc5ec0ca62fc7aecec077daaafcb8e765894e796ae1949610e48a699fd07e30b` | 4403439 |
+| cleanup revoke_registrar | `0f5e22ed8c3d9526f67c4925a20840e7bfd6b2458b0010d6485c23ee30f94db4` | 4403440 |
+
+**Pendiente / bloqueado**: F3.2 allowlist/deploy wallet requiere E2E con relayer; F8.3 branch protection en CI requiere configuración de GitHub; F10 infra/secrets/backup/restore/runbooks depende de entorno y aprobaciones.
 
 ---
 
