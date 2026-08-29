@@ -1,7 +1,7 @@
 import 'server-only';
 import { NextResponse } from 'next/server';
 import { PasskeyServer } from 'passkey-kit/server';
-import { PostgreSQLIdentityStore } from '@/infrastructure/auth/PostgreSQLIdentityStore';
+import { createAuthBundle } from '@/infrastructure/auth/factory';
 import { getPublicConfig, isPersistenceConfigured } from '@/infrastructure/config/env';
 import { domainError, isDomainError } from '@/domain/errors';
 import { requireActorFromSession } from '@/infrastructure/auth/getActorFromSession';
@@ -17,8 +17,6 @@ import {
   parseStrictJson,
   validateDeployBody,
 } from '@/infrastructure/perimeter/perimeter';
-
-const identityStore = new PostgreSQLIdentityStore();
 
 function assertTestnetMutationsAllowed(): void {
   const { environment } = getPublicConfig();
@@ -66,11 +64,37 @@ export async function POST(request: Request) {
       );
     }
 
-    if (isPersistenceConfigured()) {
-      await identityStore.updateAccountWalletContractAddress(actor.accountId, derivedContractId);
+    const { store } = createAuthBundle();
+    if (isPersistenceConfigured() || getPublicConfig().environment === 'demo') {
+      await store.updateAccountWalletContractAddress(actor.accountId, derivedContractId);
+      const account = await store.getAccount(actor.accountId);
+      if (account?.personEntityId) {
+        await store.upsertWallet({
+          entityId: account.personEntityId,
+          walletAddress: derivedContractId,
+          walletType: 'passkey',
+          walletStatus: 'claimed',
+          claimedAt: new Date(),
+        });
+        await store.saveSmartWalletClaim({
+          accountId: actor.accountId,
+          entityId: account.personEntityId,
+          contractId: derivedContractId,
+          keyId: body.keyId ?? null,
+          walletWasmHash: body.walletWasmHash ?? null,
+          network: getPublicConfig().environment,
+          deployTxHash: result.hash,
+          deployedAt: new Date(),
+        });
+      }
     }
 
-    return NextResponse.json({ success: true, txHash: result.hash, contractId: derivedContractId });
+    return NextResponse.json({
+      success: true,
+      txHash: result.hash,
+      contractId: derivedContractId,
+      walletStatus: 'claimed',
+    });
   } catch (error) {
     const code = isDomainError(error) ? (error as { code: string }).code : undefined;
     const status =
