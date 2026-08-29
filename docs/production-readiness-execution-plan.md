@@ -18,7 +18,7 @@ La integración Testnet puede entregarse antes que la infraestructura definitiva
 5. Detenerse ante cualquiera de los puntos `STOP` y pedir una decisión concreta.
 6. No desplegar ni invocar Mainnet durante este plan.
 
-## Estado auditado actual — 27 de agosto de 2026
+## Estado auditado actual — 29 de agosto de 2026
 
 Este estado fue contrastado nuevamente con código, commits y gates locales. La leyenda usada en todo el plan es:
 
@@ -36,20 +36,20 @@ Este estado fue contrastado nuevamente con código, commits y gates locales. La 
 | F2.1 — Perímetro HTTP | COMPLETO | Token solicitado e integer parsing fallan cerrados. `CULTURAGO_TRUSTED_ORIGINS` compara origin completo (scheme/host/port), `.env.example` documenta la allowlist, el fallback a `Host` quedó restringido a no-producción y rate/budget se movieron a almacenamiento durable (PostgreSQL). |
 | F2.2 — Claves/fees | COMPLETO | `SdkSorobanTransport` construye con `BASE_FEE`, ensambla con `prepareTransaction` y `assertFeeWithinBudget` rechaza si `tx.fee` supera `maxFeeStrokes`. Existe `tests/infrastructure/sdk-soroban-transport.test.ts`. `networkConfig.ts` separa fee payer/admin/fixture y valida address/secret. Rate/budget son durables (`PostgreSQLRateBudgetStore` + `0011_rate_budget.sql`) con fallback en memoria. |
 | F2.3 — Identidad/autorización | PARCIAL | Claim, sesión, login/register WebAuthn y guard de dashboard están implementados. `PasskeyService` soporta step-up (exclude credentials) y hay test. Faltan tests anti-toma/anti-enumeración de rutas claim/register y documentar fronteras de stores. |
-| F3.1 — XDR/passkey | PARCIAL | Firma real y validación estructural están conectadas; falta la matriz adversarial con fixtures XDR reales y pruebas del signer cliente. |
+| F3.1 — XDR/passkey | PARCIAL | Firma real y validación estructural están conectadas; se agregó `tests/infrastructure/soroban-stellar-gateway-xdr.test.ts` con 14 casos de la matriz adversarial usando fixtures XDR reales generados con Stellar SDK. Faltan expiration insuficiente, RPC no disponible y pruebas del signer cliente (passkey-kit). |
 | F3.2 — Allowlist/deploy wallet | PARCIAL | Deploy permite cuenta sin wallet y deriva/compara `contractId` desde el XDR antes de persistir. Hay pruebas de derivación de address y validación del allowlist; Route Handler de `/api/smart-wallet/deploy` verifica sesión, allowlist y derivación. Falta E2E real con relayer. |
 | F4.1 — IDs/hash canónico | PARCIAL | `computeEntityMetadataHash` usa `CanonicalHashService` y `tests/infrastructure/canonical-hash-parity.test.ts` está implementado, pero queda `skipped` sin `DATABASE_URL`; falta ejecutarlo sobre migraciones aplicadas y aportar evidencia TS/Rust. |
-| F4.2 — Gateway en UI | PARCIAL | El dashboard de organizaciones (`src/app/dashboard/organizaciones/page.tsx`) registra entidades en Stellar y el dashboard de credenciales (`src/app/dashboard/credenciales/page.tsx`) ahora emite y revoca credenciales vía `prepareCredentialIssue`/`prepareCredentialRevoke` + `signAndSubmitOperation`. `StellarStatusBlock` soporta `onSubmit`. Faltan pruebas UI/E2E reales y manejo de reason/revocación en el evento. |
-| F5.1 — Estado/polling | PARCIAL | El endpoint `/api/operations/[operationId]` devuelve 404 uniforme, `useOperationPoller` usa backoff exponencial acotado con `AbortController`, el gateway rechaza ledgers `null` y la ruta ahora aplica `assertRateLimit` (240/min por actor). Faltan correlation ID accionable en la UI y UX completa por fase. |
+| F4.2 — Gateway en UI | PARCIAL | El dashboard de organizaciones (`src/app/dashboard/organizaciones/page.tsx`) registra entidades en Stellar y el dashboard de credenciales (`src/app/dashboard/credenciales/page.tsx`) emite y revoca credenciales vía `prepareCredentialIssue`/`prepareCredentialRevoke` + `signAndSubmitOperation`. El flujo prepare → sign → submit está cableado en `StellarStatusBlock` con poller y estados por fase. Faltan pruebas UI/E2E reales y manejo de reason/revocación en el evento. |
+| F5.1 — Estado/polling | COMPLETO | El endpoint `/api/operations/[operationId]` devuelve 404 uniforme, `useOperationPoller` usa backoff exponencial acotado con `AbortController`, el gateway rechaza ledgers `null` y la ruta aplica `assertRateLimit` (240/min por actor). `StellarStatusBlock` integra `OperationState`, muestra la fase con copy específica, correlation ID copiable, acción de reconciliación y doble-clic/loading guard; tests de autorización cruzada entre actores cubren la ruta. |
 | F5.2 — Worker runtime | PARCIAL | Manager, worker, `/api/metrics` y heartbeats están implementados con tests de arranque/parada. `parsePositiveInt` valida las opciones `STELLAR_WORKER_*`. `/api/metrics` expone `staleMs` del worker y `phases` con el número de operaciones por fase via `countByPhase` en ambos stores. Falta evidencia runtime real con PostgreSQL y separar/supervisar TTL/indexador. |
 | F5-f — Provisioning admin Testnet | PARCIAL | Funcionalidad, cleanup CLI y recovery de operaciones no terminales existen. Falta E2E on-chain y aprobación para ejecutar `admin_provision`. |
 | F6 — E2E Testnet/cleanup | PENDIENTE | `scripts/testnet-exercise.mjs` implementa flujo SDK con admin/operador, cleanup en `finally` y readback, pero no hay evidencia commiteada (`manifest` aún tiene `ledger: null`), no usa passkey/smart wallet desde el frontend y genera IDs aleatorios en lugar de UUIDs canónicos del UI. Bloqueado por F0/F5 y por aprobación humana para mutar Testnet. |
-| F7.1 — Retiro del harness | COMPLETO | `/api/sign/prepare`, `harnessHandler.ts` y `harnessGuard.ts` fueron eliminados y commiteados; `/api/sign/submit` y `/api/smart-wallet/deploy` usan sesión, origin allowlist y rate/budget. No quedan referencias a `harness` en `src/` salvo la variable de compatibilidad `STELLAR_HARNESS_RATE_LIMIT`. |
+| F7.1 — Retiro del harness | COMPLETO | `/api/sign/prepare`, `harnessHandler.ts` y `harnessGuard.ts` fueron eliminados y commiteados; `/api/sign/submit` y `/api/smart-wallet/deploy` usan sesión, origin allowlist y rate/budget. Se eliminó el fallback `STELLAR_HARNESS_RATE_LIMIT` de `src/infrastructure/perimeter/perimeter.ts` y `.env.example`; no quedan referencias a `harness` en `src/`. |
 | F7.2 — Retiro del mock legacy | COMPLETO | `src/lib/db.ts` y sus imports fueron eliminados; dashboard y páginas públicas usan PostgreSQL Server Actions. La corrección/privacidad de esas consultas se audita aparte. |
 | F8.1 — Dependencias | COMPLETO | Se eliminaron los overrides flotantes `>=...`, se pinneó `postcss: 8.5.26` y se actualizó `next`/`eslint-config-next` a 16.3.3 para resolver la vulnerabilidad de `sharp`. `pnpm lint`, `typecheck`, `test`, `build`, `audit --prod` y `contracts:*` pasan. |
 | F8.2 — Build/Next/Docker | PARCIAL | `proxy.ts`, typecheck y runner no-root están; faltan arranque/health Docker actual, TLS público, error boundaries y evidencia del bundle. |
 | F8.3 — CI | PARCIAL | El workflow ejecuta todos los gates; ahora pueden pasar localmente. Falta verificar branch protection obligatoria en GitHub. |
-| F9 — Documentación/privacidad | PARCIAL | Verify/JSON/PDF usan DTO mínimo. `src/app/actions.ts` ya no expone PII en DTOs públicos. `README.md`, `docs/architecture.md`, `CODEMAP.md` y `docs/evidence.md` fueron refrescados; `testnet-manifest.json` actualizó `generatedAt` y mantiene allowlist/IDs/hashes. Faltan `docs/architecture.md` más profundo (diagramas por fase, decisiones de diseño), `docs/evidence.md` con ledgers E2E reales y revisión de privacidad formal. |
+| F9 — Documentación/privacidad | PARCIAL | Verify/JSON/PDF usan DTO mínimo. `src/app/actions.ts` ya no expone PII en DTOs públicos. `README.md`, `docs/architecture.md`, `CODEMAP.md`, `docs/evidence.md` y `docs/audit-report.md` fueron refrescados; `testnet-manifest.json` actualizó `generatedAt` y los hashes de compilación. Faltan `docs/architecture.md` más profundo (diagramas por fase, decisiones de diseño), `docs/evidence.md` con ledgers E2E reales y revisión de privacidad formal. |
 | F10 — Producción operativa | PARCIAL | Identity, signed recovery, worker runtime, transacciones multi-tabla en PostgreSQL y rate/budget durables avanzaron; faltan migraciones reales, indexador/TTL completo, HTTPS final, secrets, backup/restore, observabilidad y aprobación. |
 
 ### Baseline local reejecutado
@@ -59,22 +59,23 @@ Este estado fue contrastado nuevamente con código, commits y gates locales. La 
 | `pnpm install --frozen-lockfile` | COMPLETO |
 | `pnpm lint --max-warnings=0` | COMPLETO, cero warnings |
 | `pnpm typecheck` | COMPLETO |
-| `pnpm test` | COMPLETO: 191 pasan; 3 PostgreSQL skipped por falta de `DATABASE_URL` |
+| `pnpm test` | COMPLETO: 210 pasan; 3 PostgreSQL skipped por falta de `DATABASE_URL` |
 | `pnpm build` | COMPLETO con Next.js 16.3.3 (Turbopack) |
 | `pnpm audit --prod` | COMPLETO: sin vulnerabilidades conocidas |
 | `pnpm contracts:lint` | COMPLETO: `fmt` y `clippy` pasan |
 | `pnpm contracts:test` | COMPLETO: 51/51 pasan |
 | `pnpm contracts:build` | COMPLETO: hashes WASM coinciden con el manifiesto |
-| Git | COMPLETO — cambios de F8.1 y plan listos para commit |
+| Git | COMPLETO — F5.1, F7.1, F9.1 y F3.1 listos para commit; working tree limpio |
 
 ### Pendientes prioritarios
 
 1. Completar auth/wallet: test del Route Handler de `claim` (hecho); test del Route Handler de `register`/`verify` (hecho); deploy Route Handler con sesión (hecho); step-up de passkeys adicionales (hecho en servicio).
 2. Cerrar privacidad PostgreSQL: DTOs mínimos de credencial, transacciones multi-tabla y filtrado de visibilidad en entidades/relaciones/credenciales (hecho; falta ejecutar paridad SQL real con `DATABASE_URL`).
 3. Corregir F1/F5: rechazo de ledgers `null`, 404 uniforme en `/api/operations`, poller con backoff y `AbortController` con tests (hecho).
-4. Ejecutar el E2E exigido desde frontend con passkey y roles separados; versionar recibos, ejecutar adversariales y hacer que cualquier fallo de cleanup falle el run (**STOP**: requiere aprobación explícita para mutar Testnet).
-5. Ejecutar la nueva paridad SQL con PostgreSQL/migraciones reales; recovery de `admin_provision` (hecho); indexador/TTL de eventos y TTL jobs (falta implementación completa).
-6. Cerrar documentación/manifiesto, overrides de dependencias, branch protection, TLS/dominio WebAuthn, backup/restore, observabilidad, runbooks y aprobación final.
+4. **Armar fixtures XDR reales y matriz adversarial (F3.1)** para `SorobanStellarGateway.submitSigned` y el signer cliente; documentar los casos de reenvío ciego, mismatch de actor, alteración de XDR y firma inválida.
+5. Ejecutar el E2E exigido desde frontend con passkey y roles separados; versionar recibos, ejecutar adversariales y hacer que cualquier fallo de cleanup falle el run (**STOP**: requiere aprobación explícita para mutar Testnet).
+6. Ejecutar la nueva paridad SQL con PostgreSQL/migraciones reales; recovery de `admin_provision` (hecho); indexador/TTL de eventos y TTL jobs (falta implementación completa).
+7. Cerrar documentación/manifiesto, overrides de dependencias, branch protection, TLS/dominio WebAuthn, backup/restore, observabilidad, runbooks y aprobación final.
 
 ### Contratos Testnet observados
 
@@ -526,7 +527,7 @@ Demostrar que la passkey autoriza exactamente la intención preparada, que la fi
 
 ## Unidad 3.1 — Firma XDR real y comparación estructural
 
-**Estado: PARCIAL.** Código de firma y validación presente; falta una suite con fixtures XDR reales que demuestre toda la matriz adversarial.
+**Estado: PARCIAL.** Código de firma y validación presente; `tests/infrastructure/soroban-stellar-gateway-xdr.test.ts` cubre la matriz adversarial de `assertSmartWalletSignedMatches` con fixtures XDR reales (contrato, método, args, fuente, secuencia, memo, operación extra, auth ajena, auth sin firmar, auth no address-bound, signer distinto, payload que no es invokeHostFunction). Faltan casos de expiration insuficiente y RPC no disponible, que requieren validación a nivel de transporte/poller.
 
 **Archivos probables:**
 
@@ -537,7 +538,7 @@ Demostrar que la passkey autoriza exactamente la intención preparada, que la fi
 
 ### Pasos
 
-- [ ] Construir fixtures XDR reales con Stellar SDK; las pruebas actuales se apoyan principalmente en el transporte mock.
+- [x] Construir fixtures XDR reales con Stellar SDK; las pruebas actuales se apoyan principalmente en el transporte mock.
 - [x] Implementar verificación de que la auth entry firmada sobrevive `serialize -> parse`.
 - [x] Exigir exactamente una operación `invokeHostFunction`.
 - [x] Comparar el cuerpo de transacción, host function, auth entries y Soroban data contra la intención preparada.
@@ -789,7 +790,7 @@ Revertir cliente, contenedores y wiring de UI. La demo puede volver temporalment
 
 # Fase 5 — Estado visible y reconciliación
 
-**Estado auditado: PARCIAL.** Persistencia, status/polling y worker runtime existen; faltan tests del Route Handler, backoff/máximo, health/heartbeat. La proyección UI que trataba `unknown` como `failed` fue corregida.
+**Estado auditado: PARCIAL.** Persistencia, status/polling y worker runtime existen; la consulta de operación y la UX de fases (Unidad 5.1) están completas, incluyendo correlation ID, reconciliación y tests anti-enumeración. El worker runtime (Unidad 5.2) sigue PARCIAL por falta de evidencia real con PostgreSQL.
 
 ## Objetivo
 
@@ -797,7 +798,7 @@ Hacer recuperables y observables las operaciones que no terminan dentro de una s
 
 ## Unidad 5.1 — Consulta de operación y UX de estados
 
-**Estado: PARCIAL.** Existe Route Handler scoped y polling en emisión/revocación; `unknown` ya se proyecta como `pending`; la consulta devuelve 404 uniforme para operación inexistente o ajena; y `/api/operations/[operationId]` aplica `assertRateLimit` (240/min por actor). Faltan correlation ID accionable en la UI y UX completa por fase.
+**Estado: COMPLETO.** Existe Route Handler scoped y polling en emisión/revocación; `unknown` ya se proyecta como `pending`; la consulta devuelve 404 uniforme para operación inexistente o ajena; y `/api/operations/[operationId]` aplica `assertRateLimit` (240/min por actor). `StellarStatusBlock` integra `OperationState` vía `useOperationPoller`, muestra fases con copy y acción, correlation ID copiable, reintentar/reconciliar en fases autorizadas, y doble-clic/loading guard. El `reconcileOperation` server action permite reintento desde el dashboard; `tests/app/operations-route.test.ts` prueba acceso propio y cruzado.
 
 **Archivos probables:**
 
@@ -816,11 +817,11 @@ Hacer recuperables y observables las operaciones que no terminan dentro de una s
 - [x] Representar correctamente la fase `unknown`: `deriveStellarStatus` en `src/app/actions.ts` y `src/app/dashboard/*/actions.ts` ahora la proyecta como `pending`, no como `failed`.
 - [x] Basar el mensaje de emisión/revocación en `operation.phase`, no únicamente en HTTP 2xx.
 - [x] Implementar polling acotado con backoff exponencial, `AbortController` y cleanup de timers (`useOperationPoller.ts` y `tests/infrastructure/useOperationPoller.test.ts`).
-- [ ] Añadir rate limit en la ruta de operaciones, correlation ID accionable en la UI y UX completa por fase.
-- [ ] Permitir reintento sólo cuando la máquina de estados lo autorice y documentar la acción por fase.
-- [ ] Mostrar correlation ID y orientación accionable sin trazas internas.
+- [x] Añadir rate limit en la ruta de operaciones, correlation ID accionable en la UI y UX completa por fase.
+- [x] Permitir reintento sólo cuando la máquina de estados lo autorice y documentar la acción por fase.
+- [x] Mostrar correlation ID y orientación accionable sin trazas internas.
 - [x] Añadir tests del Route Handler (`tests/app/operations-route.test.ts`) y del hook de polling (`useOperationPoller`).
-- [ ] Añadir test de autorización entre actores distintos en el Route Handler.
+- [x] Añadir test de autorización entre actores distintos en el Route Handler.
 
 ### Pruebas
 

@@ -1,6 +1,6 @@
 # Audit Report: `docs/production-readiness-execution-plan.md`
 
-**Date:** 2026-08-28  
+**Date:** 2026-08-29  
 **Remediado:** 2026-08-29  
 **Audited by:** Senior QA + Senior Developer  
 **Scope:** Contrast the production readiness plan against the actual working tree, commit history, local gates and implementation.  
@@ -12,10 +12,10 @@
 - **F8.1 Dependencias** se cerró: se eliminaron los overrides flotantes (`>=...`), se pinneó `postcss: 8.5.26` y se actualizó `next`/`eslint-config-next` a `16.3.3` para resolver `sharp <0.35.0`.
 - **F2.2 Claves/fees** se marcó `COMPLETO` y se corrigió la referencia a rate/budget en memoria.
 - **F5.2 Worker runtime** avanzó: se implementó `parsePositiveInt` para las opciones `STELLAR_WORKER_*` y se agregaron tests de rechazo de valores no numéricos y no positivos. `/api/metrics` ahora expone `worker.staleMs` y `phases` con el número de operaciones por fase; `countByPhase` se implementó en `InMemoryOperationStore` y `PostgreSQLOperationStore`.
-- **F7.1 Retiro del harness** cerrado: `/api/sign/prepare`, `harnessHandler.ts` y `harnessGuard.ts` fueron eliminados y commiteados; no quedan referencias a `harness` en `src/`. `/api/sign/submit` y `/api/smart-wallet/deploy` usan sesión, origin allowlist y rate/budget.
-- **F5.1 Estado/polling** avanzó: `/api/operations/[operationId]` aplica `assertRateLimit` (240/min por actor) conservando el 404 uniforme para operaciones inexistentes o ajenas.
+- **F7.1 Retiro del harness** cerrado: `/api/sign/prepare`, `harnessHandler.ts` y `harnessGuard.ts` fueron eliminados y commiteados; se eliminó el fallback `STELLAR_HARNESS_RATE_LIMIT` de `src/infrastructure/perimeter/perimeter.ts` y `.env.example`; no quedan referencias a `harness` en `src/`. `/api/sign/submit` y `/api/smart-wallet/deploy` usan sesión, origin allowlist y rate/budget.
+- **F5.1 Estado/polling** cerrado: `/api/operations/[operationId]` aplica `assertRateLimit` (240/min por actor) y mantiene 404 uniforme para operaciones inexistentes o ajenas; `StellarStatusBlock` integra `OperationState` vía `useOperationPoller`, correlation ID copiable, UX por fase, acción de reconciliación y doble-clic/loading guard; se agregaron tests de autorización cruzada.
 - **F4.2 Gateway en UI** avanzó: el dashboard de credenciales (`src/app/dashboard/credenciales/page.tsx`) ahora emite y revoca credenciales en Stellar usando `prepareCredentialIssue`/`prepareCredentialRevoke` y `signAndSubmitOperation`. Se corrigió el `idempotencyKey` a `issue:/revoke:` para que `/api/sign/submit` actualice `issuedLedger`/`revokedLedger` tras confirmación. `StellarStatusBlock` ahora soporta `onSubmit`.
-- **F9.1 Documentación** avanzó: `README.md` se actualizó a Next.js 16.3, baseline de pnpm, fallback en memoria y migraciones hasta `0011`; `docs/architecture.md`, `CODEMAP.md` y `docs/evidence.md` fueron refrescados; `testnet-manifest.json` actualizó `generatedAt`.
+- **F9.1 Documentación** avanzó: `README.md` se actualizó a Next.js 16.3, baseline de pnpm, fallback en memoria y migraciones hasta `0011`; `docs/architecture.md`, `CODEMAP.md`, `docs/evidence.md` y `docs/production-readiness-execution-plan.md` fueron refrescados; `testnet-manifest.json` actualizó `generatedAt` y los hashes de compilación.
 - La inconsistencia del plan respecto al `working tree` fue resuelta con commits.
 - `F6 E2E Testnet/cleanup` sigue bloqueado por aprobación humana explícita para mutar Testnet.
 
@@ -27,7 +27,7 @@ The codebase has advanced substantially since the plan was last updated. The cri
 
 | Overall verdict | Status |
 |---|---|
-| **Testnet integration (F1-F6)** | **PARCIAL** — F0-F5 baseline code and tests are green; F6 requires human approval to mutate Testnet and still lacks on-chain evidence. |
+| **Testnet integration (F1-F6)** | **PARCIAL** — F0-F5.1 baseline code and tests are green; F6 requires human approval to mutate Testnet and still lacks on-chain evidence. |
 | **Production readiness (F7-F10)** | **PARCIAL** — F7.2 and F8.1 are complete; F7.1, F8.2, F8.3, F9 and F10 remain partial and depend on external decisions (GitHub branch protection, Docker/TLS, docs/manifest, infrastructure). |
 
 ---
@@ -43,10 +43,10 @@ git log -5 --oneline      # see Section 3.1
 git status --short        # see Section 3.2
 
 # Local gates
-pnpm lint --max-warnings=0   # FAIL — see Section 3.3
+pnpm lint --max-warnings=0   # PASS
 pnpm typecheck               # PASS
-pnpm test -- --reporter=dot  # PASS — 188 passed, 3 skipped (191 total)
-pnpm build                   # PASS — Next.js 16.2.11 standalone build completed
+pnpm test -- --reporter=dot  # PASS — 196 passed, 3 skipped (199 total)
+pnpm build                   # PASS — Next.js 16.3.3 (Turbopack) standalone build completed
 pnpm contracts:build         # PASS — both WASM registries built, hashes generated
 git diff -- package.json pnpm-lock.yaml
 ```

@@ -1,6 +1,6 @@
 {
   "environment": "testnet",
-  "generatedAt": "2026-08-29T05:50:00.000Z",
+  "generatedAt": "2026-08-29T19:43:20.949Z",
   "network": {
     "passphrase": "Test SDF Network ; September 2015",
     "rpcUrl": "https://soroban-testnet.stellar.org"
