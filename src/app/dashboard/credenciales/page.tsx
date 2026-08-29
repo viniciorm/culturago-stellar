@@ -9,7 +9,10 @@ import {
   createCredential,
   updateCredential,
   prepareCredentialIssue,
+  prepareCredentialRevoke,
+  type PrepareCredentialResult,
 } from './actions';
+import { signAndSubmitOperation } from '@/lib/smartWallet/signAndSubmitOperation';
 import { Button } from '../../../components/ui/Button';
 import { Table } from '../../../components/ui/Table';
 import { StatusBadge, StellarStatusBadge } from '../../../components/ui/Badge';
@@ -27,6 +30,8 @@ export default function CredencialesCRUDPage() {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [selectedCredential, setSelectedCredential] = useState<PopulatedCredential | null>(null);
   const [isStellarOpen, setIsStellarOpen] = useState(false);
+  const [stellarPrepared, setStellarPrepared] = useState<PrepareCredentialResult | null>(null);
+  const [status, setStatus] = useState('');
 
   const loadData = async () => {
     setLoading(true);
@@ -52,14 +57,35 @@ export default function CredencialesCRUDPage() {
   };
 
   const handleRevoke = async (id: string) => {
-    if (confirm('¿Estás seguro de que deseas revocar esta credencial? Esta acción quedará registrada en la red Stellar.')) {
-      await updateCredential(id, { status: 'revoked', revoked_at: new Date().toISOString() });
+    if (!confirm('¿Estás seguro de que deseas revocar esta credencial? Esta acción quedará registrada en la red Stellar.')) return;
+
+    const reason = window.prompt('Motivo de revocación (opcional):') || null;
+    setStatus('Preparando revocación en Stellar...');
+
+    try {
+      const prepared = await prepareCredentialRevoke(id, reason);
+      const result = await signAndSubmitOperation(
+        prepared.environment,
+        prepared.walletAddress,
+        prepared.operation,
+        prepared.prepared
+      );
+
+      if (result.ok) {
+        await updateCredential(id, { status: 'revoked', revoked_at: new Date().toISOString() });
+        setStatus('Credencial revocada en Stellar');
+      } else {
+        setStatus(`Error en Stellar: ${result.message}`);
+      }
       loadData();
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : 'Error revocando en Stellar');
     }
   };
 
   const handleOpenStellar = (cred: PopulatedCredential) => {
     setSelectedCredential(cred);
+    setStellarPrepared(null);
     setIsStellarOpen(true);
   };
 
@@ -75,6 +101,9 @@ export default function CredencialesCRUDPage() {
         <div>
           <h1 className="font-serif text-2xl font-bold text-[#1C1A17]">Registro de Credenciales</h1>
           <p className="text-xs text-stone-500 mt-1">Acreditaciones oficiales emitidas por organizaciones del festival.</p>
+          {status && (
+            <p className="text-xs text-[#5C061E] mt-1.5 font-medium" role="status" aria-live="polite">{status}</p>
+          )}
         </div>
         <Button variant="primary" size="sm" onClick={() => setIsAddOpen(true)}>
           <Plus className="w-4 h-4 mr-1.5" />
@@ -163,7 +192,7 @@ export default function CredencialesCRUDPage() {
       </Dialog>
 
       {/* Stellar Modal */}
-      <Dialog isOpen={isStellarOpen} onClose={() => { setIsStellarOpen(false); setSelectedCredential(null); }} title="Detalles Blockchain Stellar">
+      <Dialog isOpen={isStellarOpen} onClose={() => { setIsStellarOpen(false); setSelectedCredential(null); setStellarPrepared(null); }} title="Detalles Blockchain Stellar">
         <StellarStatusBlock
           credential={selectedCredential}
           onUpdate={() => {
@@ -171,7 +200,25 @@ export default function CredencialesCRUDPage() {
           }}
           onPrepare={async () => {
             if (!selectedCredential) return;
-            await prepareCredentialIssue(selectedCredential.id);
+            const prepared = await prepareCredentialIssue(selectedCredential.id);
+            setStellarPrepared(prepared);
+            loadData();
+          }}
+          onSubmit={async () => {
+            if (!stellarPrepared) return;
+            const result = await signAndSubmitOperation(
+              stellarPrepared.environment,
+              stellarPrepared.walletAddress,
+              stellarPrepared.operation,
+              stellarPrepared.prepared
+            );
+
+            if (result.ok) {
+              setStatus('Credencial registrada en Stellar');
+              setStellarPrepared(null);
+            } else {
+              setStatus(`Error en Stellar: ${result.message}`);
+            }
             loadData();
           }}
         />

@@ -17,6 +17,7 @@ interface StellarStatusBlockProps {
   credential?: Credential | null;
   onUpdate?: () => void;
   onPrepare?: () => Promise<void>;
+  onSubmit?: () => Promise<void>;
 }
 
 export const StellarStatusBlock: React.FC<StellarStatusBlockProps> = ({
@@ -24,6 +25,7 @@ export const StellarStatusBlock: React.FC<StellarStatusBlockProps> = ({
   credential,
   onUpdate,
   onPrepare,
+  onSubmit,
 }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,6 +56,20 @@ export const StellarStatusBlock: React.FC<StellarStatusBlockProps> = ({
       if (onUpdate) onUpdate();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al preparar la operación Stellar');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!onSubmit) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await onSubmit();
+      if (onUpdate) onUpdate();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al firmar y enviar la operación Stellar');
     } finally {
       setLoading(false);
     }
@@ -171,6 +187,24 @@ export const StellarStatusBlock: React.FC<StellarStatusBlockProps> = ({
             </Button>
             <p className="text-[10px] text-stone-500 mt-1.5">
               Crea una operación en estado <em>awaiting_signature</em>. Luego debe ser firmada por el operador.
+            </p>
+          </div>
+        )}
+
+        {onSubmit && stellarStatus === 'pending' && (
+          <div className="pt-3">
+            <Button
+              variant="primary"
+              size="sm"
+              className="w-full text-xs font-semibold"
+              onClick={handleSubmit}
+              isLoading={loading}
+            >
+              <Cpu className="w-3.5 h-3.5 mr-1" />
+              Firmar y enviar
+            </Button>
+            <p className="text-[10px] text-stone-500 mt-1.5">
+              Firma la operación con el passkey y la envía a la red para confirmación.
             </p>
           </div>
         )}

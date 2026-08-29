@@ -8,6 +8,9 @@ import { assertIssuerScope } from '@/infrastructure/auth/actorContext';
 import { domainError } from '@/domain/errors';
 import { createStellarGateway } from '@/infrastructure/stellar/createStellarGateway';
 import { PostgreSQLDatabaseGateway } from '@/infrastructure/database/PostgreSQLDatabaseGateway';
+import { getPublicConfig } from '@/infrastructure/config/env';
+import type { OperationState } from '@/ports/StellarGateway';
+import type { PreparedTransactionPayload } from '@/ports/SignerPort';
 import {
   computeMetadataHash,
   credentialTypeToNumber,
@@ -450,7 +453,14 @@ export async function listEntities(): Promise<Entity[]> {
   return result.rows.map(mapRowToEntity);
 }
 
-export async function prepareCredentialIssue(credentialId: string): Promise<string> {
+export interface PrepareCredentialResult {
+  operation: OperationState;
+  prepared: PreparedTransactionPayload;
+  walletAddress: string;
+  environment: 'demo' | 'testnet' | 'mainnet';
+}
+
+export async function prepareCredentialIssue(credentialId: string): Promise<PrepareCredentialResult> {
   if (!isPersistenceConfigured()) {
     throw domainError('INTERNAL', 'Se requiere DATABASE_URL para preparar operaciones Stellar');
   }
@@ -480,7 +490,7 @@ export async function prepareCredentialIssue(credentialId: string): Promise<stri
 
   const { gateway } = createStellarGateway();
   const state = await gateway.prepareIssueCredential({
-    idempotencyKey: record.credentialId,
+    idempotencyKey: `issue:${record.credentialId}`,
     actorAddress,
     credentialId: record.credentialId,
     issuerId: record.issuerId,
@@ -491,5 +501,63 @@ export async function prepareCredentialIssue(credentialId: string): Promise<stri
     hashSchema: record.hashSchema,
   });
 
-  return state.operationId;
+  const prepared = await gateway.getPreparedPayload(state.operationId);
+
+  return {
+    operation: state,
+    prepared,
+    walletAddress: actorAddress,
+    environment: getPublicConfig().environment,
+  };
+}
+
+export async function prepareCredentialRevoke(
+  credentialId: string,
+  reason?: string | null
+): Promise<PrepareCredentialResult> {
+  if (!isPersistenceConfigured()) {
+    throw domainError('INTERNAL', 'Se requiere DATABASE_URL para preparar operaciones Stellar');
+  }
+
+  const actor = await requireActorFromSession();
+  const dbGateway = new PostgreSQLDatabaseGateway();
+
+  const record = await dbGateway.getCredentialById(credentialId);
+  if (!record) {
+    throw domainError('NOT_FOUND', `Credencial ${credentialId} no encontrada`);
+  }
+
+  if (record.status !== 'issued') {
+    throw domainError('INVALID_STATE_TRANSITION', 'Solo credenciales emitidas vigentes pueden revocarse en Stellar');
+  }
+
+  assertIssuerScope(actor, record.issuerId);
+
+  const accountResult = await query<{ wallet_contract_address: string | null }>(
+    'SELECT wallet_contract_address FROM accounts WHERE id = $1',
+    [actor.accountId]
+  );
+  const actorAddress = accountResult.rows[0]?.wallet_contract_address;
+  if (!actorAddress) {
+    throw domainError('NOT_FOUND', 'La cuenta del operador no tiene smart wallet desplegada');
+  }
+
+  const reasonHash = reason && reason.trim().length > 0 ? await computeMetadataHash({ reason: reason.trim() }) : null;
+
+  const { gateway } = createStellarGateway();
+  const state = await gateway.prepareRevokeCredential({
+    idempotencyKey: `revoke:${record.credentialId}:${reasonHash ?? ''}`,
+    actorAddress,
+    credentialId: record.credentialId,
+    reasonHash,
+  });
+
+  const prepared = await gateway.getPreparedPayload(state.operationId);
+
+  return {
+    operation: state,
+    prepared,
+    walletAddress: actorAddress,
+    environment: getPublicConfig().environment,
+  };
 }
