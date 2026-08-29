@@ -12,7 +12,9 @@
 - **F8.1 Dependencias** se cerró: se eliminaron los overrides flotantes (`>=...`), se pinneó `postcss: 8.5.26` y se actualizó `next`/`eslint-config-next` a `16.3.3` para resolver `sharp <0.35.0`.
 - **F2.2 Claves/fees** se marcó `COMPLETO` y se corrigió la referencia a rate/budget en memoria.
 - **F5.2 Worker runtime** avanzó: se implementó `parsePositiveInt` para las opciones `STELLAR_WORKER_*` y se agregaron tests de rechazo de valores no numéricos y no positivos. `/api/metrics` ahora expone `worker.staleMs` y `phases` con el número de operaciones por fase; `countByPhase` se implementó en `InMemoryOperationStore` y `PostgreSQLOperationStore`.
-- La inconsistencia del plan respecto al `working tree` fue resuelta con un commit.
+- **F4.2 Gateway en UI** avanzó: el dashboard de credenciales (`src/app/dashboard/credenciales/page.tsx`) ahora emite y revoca credenciales en Stellar usando `prepareCredentialIssue`/`prepareCredentialRevoke` y `signAndSubmitOperation`. Se corrigió el `idempotencyKey` a `issue:/revoke:` para que `/api/sign/submit` actualice `issuedLedger`/`revokedLedger`. `StellarStatusBlock` ahora soporta `onSubmit`.
+- **F9.1 Documentación** avanzó: `README.md` se actualizó a Next.js 16.3, baseline de pnpm, fallback en memoria y migraciones hasta `0011`; `testnet-manifest.json` actualizó `generatedAt`.
+- La inconsistencia del plan respecto al `working tree` fue resuelta con commits.
 - `F6 E2E Testnet/cleanup` sigue bloqueado por aprobación humana explícita para mutar Testnet.
 
 ---
