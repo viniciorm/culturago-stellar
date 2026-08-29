@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'crypto';
 import { domainError } from '../../domain/errors';
-import { Account, AuthChallenge, IdentityStore, PasskeyCredential, Session } from '../../ports/IdentityStore';
+import { Account, AuthChallenge, IdentityStore, PasskeyCredential, Session, SmartWalletClaim, WalletRecord } from '../../ports/IdentityStore';
 
 const sha256 = (value: string): string => createHash('sha256').update(value).digest('hex');
 
@@ -12,6 +12,8 @@ export class InMemoryIdentityStore implements IdentityStore {
   private challenges = new Map<string, AuthChallenge>();
   private passkeys = new Map<string, PasskeyCredential>();
   private sessions = new Map<string, Session>();
+  private smartWalletClaims = new Map<string, SmartWalletClaim>();
+  private wallets = new Map<string, WalletRecord>();
 
   async getAccount(accountId: string): Promise<Account | null> {
     return this.accounts.get(accountId) ?? null;
@@ -114,7 +116,6 @@ export class InMemoryIdentityStore implements IdentityStore {
     const passkey = this.passkeys.get(credentialId);
     if (!passkey) throw domainError('NOT_FOUND', `passkey ${credentialId} not found`);
     passkey.revokedAt = new Date();
-    // Store revoked reason in the record for audit (not in public type yet).
     (passkey as unknown as Record<string, string>).revokedReason = reason;
   }
 
@@ -133,7 +134,6 @@ export class InMemoryIdentityStore implements IdentityStore {
   }
 
   async rotateSession(oldSessionId: string, newSession: Omit<Session, 'id'>): Promise<void> {
-    // oldSessionId is already the digest of the previous token.
     const old = this.sessions.get(oldSessionId);
     if (old) {
       old.revokedAt = new Date();
@@ -152,5 +152,70 @@ export class InMemoryIdentityStore implements IdentityStore {
     for (const session of this.sessions.values()) {
       if (session.accountId === accountId) session.revokedAt = new Date();
     }
+  }
+
+  async saveSmartWalletClaim(claim: {
+    accountId: string;
+    entityId: string;
+    contractId: string;
+    keyId?: string | null;
+    walletWasmHash?: string | null;
+    network?: string;
+    deployTxHash?: string | null;
+    deployedAt?: Date | null;
+  }): Promise<SmartWalletClaim> {
+    const record: SmartWalletClaim = {
+      id: randomUUID(),
+      accountId: claim.accountId,
+      entityId: claim.entityId,
+      contractId: claim.contractId,
+      keyId: claim.keyId ?? null,
+      walletWasmHash: claim.walletWasmHash ?? null,
+      network: claim.network ?? 'testnet',
+      deployTxHash: claim.deployTxHash ?? null,
+      deployedAt: claim.deployedAt ?? new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.smartWalletClaims.set(claim.contractId, record);
+    return record;
+  }
+
+  async getSmartWalletClaimByAccount(accountId: string): Promise<SmartWalletClaim | null> {
+    return [...this.smartWalletClaims.values()].find((c) => c.accountId === accountId) ?? null;
+  }
+
+  async upsertWallet(wallet: {
+    entityId: string;
+    walletAddress: string;
+    walletType: WalletRecord['walletType'];
+    walletStatus: WalletRecord['walletStatus'];
+    claimedAt?: Date | null;
+  }): Promise<WalletRecord> {
+    const existing = this.wallets.get(wallet.entityId);
+    if (existing) {
+      existing.walletAddress = wallet.walletAddress;
+      existing.walletType = wallet.walletType;
+      existing.walletStatus = wallet.walletStatus;
+      existing.claimedAt = wallet.claimedAt ?? new Date();
+      existing.updatedAt = new Date();
+      return existing;
+    }
+    const created: WalletRecord = {
+      id: randomUUID(),
+      entityId: wallet.entityId,
+      walletAddress: wallet.walletAddress,
+      walletType: wallet.walletType,
+      walletStatus: wallet.walletStatus,
+      claimedAt: wallet.claimedAt ?? new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.wallets.set(wallet.entityId, created);
+    return created;
+  }
+
+  async getWalletByEntity(entityId: string): Promise<WalletRecord | null> {
+    return this.wallets.get(entityId) ?? null;
   }
 }

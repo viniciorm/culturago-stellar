@@ -102,7 +102,12 @@ export class PasskeyKitSigner implements SignerPort {
     const deployRes = await fetch('/api/smart-wallet/deploy', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ signedTx, contractId }),
+      body: JSON.stringify({
+        signedTx,
+        contractId,
+        keyId: keyIdBase64,
+        walletWasmHash: this.walletWasmHash,
+      }),
     });
     const deployResult = (await deployRes.json()) as { success: boolean; txHash?: string; error?: string };
     if (!deployRes.ok || !deployResult.success) {

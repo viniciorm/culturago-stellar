@@ -1,6 +1,6 @@
 import 'server-only';
 import { createHash } from 'crypto';
-import { Account, AuthChallenge, IdentityStore, PasskeyCredential, Session } from '../../ports/IdentityStore';
+import { Account, AuthChallenge, IdentityStore, PasskeyCredential, Session, SmartWalletClaim, WalletRecord } from '../../ports/IdentityStore';
 import { query, translatePgError, withTransaction } from '../database/pool';
 
 const sha256 = (value: string): Buffer => createHash('sha256').update(value).digest();
@@ -33,6 +33,31 @@ interface SessionRow {
   absolute_expires_at: string;
   rotated_from: string | null;
   revoked_at: string | null;
+}
+
+interface SmartWalletClaimRow {
+  id: string;
+  account_id: string;
+  entity_id: string;
+  contract_id: string;
+  key_id: string | null;
+  wallet_wasm_hash: string | null;
+  network: string;
+  deploy_tx_hash: string | null;
+  deployed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface WalletRow {
+  id: string;
+  entity_id: string;
+  wallet_address: string | null;
+  wallet_type: string;
+  wallet_status: string;
+  claimed_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export class PostgreSQLIdentityStore implements IdentityStore {
@@ -263,6 +288,102 @@ export class PostgreSQLIdentityStore implements IdentityStore {
     ).catch(translatePgError);
   }
 
+  async saveSmartWalletClaim(claim: {
+    accountId: string;
+    entityId: string;
+    contractId: string;
+    keyId?: string | null;
+    walletWasmHash?: string | null;
+    network?: string;
+    deployTxHash?: string | null;
+    deployedAt?: Date | null;
+  }): Promise<SmartWalletClaim> {
+    const result = await query<SmartWalletClaimRow>(
+      `INSERT INTO smart_wallet_claims (
+        account_id, entity_id, contract_id, key_id, wallet_wasm_hash, network, deploy_tx_hash, deployed_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      ON CONFLICT (contract_id) DO UPDATE SET
+        key_id = EXCLUDED.key_id,
+        wallet_wasm_hash = EXCLUDED.wallet_wasm_hash,
+        network = EXCLUDED.network,
+        deploy_tx_hash = EXCLUDED.deploy_tx_hash,
+        deployed_at = EXCLUDED.deployed_at,
+        updated_at = NOW()
+      RETURNING *`,
+      [
+        claim.accountId,
+        claim.entityId,
+        claim.contractId,
+        claim.keyId ?? null,
+        claim.walletWasmHash ?? null,
+        claim.network ?? 'testnet',
+        claim.deployTxHash ?? null,
+        claim.deployedAt ?? new Date(),
+      ]
+    ).catch(translatePgError);
+    return this.toSmartWalletClaim(result.rows[0]);
+  }
+
+  async getSmartWalletClaimByAccount(accountId: string): Promise<SmartWalletClaim | null> {
+    const result = await query<SmartWalletClaimRow>(
+      'SELECT * FROM smart_wallet_claims WHERE account_id = $1 ORDER BY created_at DESC LIMIT 1',
+      [accountId]
+    ).catch(translatePgError);
+    return result.rows[0] ? this.toSmartWalletClaim(result.rows[0]) : null;
+  }
+
+  async upsertWallet(wallet: {
+    entityId: string;
+    walletAddress: string;
+    walletType: WalletRecord['walletType'];
+    walletStatus: WalletRecord['walletStatus'];
+    claimedAt?: Date | null;
+  }): Promise<WalletRecord> {
+    const existing = await query<WalletRow>(
+      'SELECT * FROM wallets WHERE entity_id = $1 ORDER BY created_at DESC LIMIT 1',
+      [wallet.entityId]
+    ).catch(translatePgError);
+
+    if (existing.rows[0]) {
+      const updated = await query<WalletRow>(
+        `UPDATE wallets
+         SET wallet_address = $2, wallet_type = $3, wallet_status = $4, claimed_at = $5, updated_at = NOW()
+         WHERE id = $1
+         RETURNING *`,
+        [
+          existing.rows[0].id,
+          wallet.walletAddress,
+          wallet.walletType,
+          wallet.walletStatus,
+          wallet.claimedAt ?? new Date(),
+        ]
+      ).catch(translatePgError);
+      return this.toWalletRecord(updated.rows[0]);
+    } else {
+      const inserted = await query<WalletRow>(
+        `INSERT INTO wallets (entity_id, wallet_address, wallet_type, wallet_status, claimed_at)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING *`,
+        [
+          wallet.entityId,
+          wallet.walletAddress,
+          wallet.walletType,
+          wallet.walletStatus,
+          wallet.claimedAt ?? new Date(),
+        ]
+      ).catch(translatePgError);
+      return this.toWalletRecord(inserted.rows[0]);
+    }
+  }
+
+  async getWalletByEntity(entityId: string): Promise<WalletRecord | null> {
+    const result = await query<WalletRow>(
+      'SELECT * FROM wallets WHERE entity_id = $1 ORDER BY created_at DESC LIMIT 1',
+      [entityId]
+    ).catch(translatePgError);
+    return result.rows[0] ? this.toWalletRecord(result.rows[0]) : null;
+  }
+
   private toAccount(row: AccountRow): Account {
     return {
       id: row.id,
@@ -297,6 +418,35 @@ export class PostgreSQLIdentityStore implements IdentityStore {
       absoluteExpiresAt: new Date(row.absolute_expires_at),
       rotatedFrom: row.rotated_from,
       revokedAt: row.revoked_at ? new Date(row.revoked_at) : null,
+    };
+  }
+
+  private toSmartWalletClaim(row: SmartWalletClaimRow): SmartWalletClaim {
+    return {
+      id: row.id,
+      accountId: row.account_id,
+      entityId: row.entity_id,
+      contractId: row.contract_id,
+      keyId: row.key_id,
+      walletWasmHash: row.wallet_wasm_hash,
+      network: row.network,
+      deployTxHash: row.deploy_tx_hash,
+      deployedAt: row.deployed_at ? new Date(row.deployed_at) : null,
+      createdAt: new Date(row.created_at),
+      updatedAt: new Date(row.updated_at),
+    };
+  }
+
+  private toWalletRecord(row: WalletRow): WalletRecord {
+    return {
+      id: row.id,
+      entityId: row.entity_id,
+      walletAddress: row.wallet_address,
+      walletType: row.wallet_type as WalletRecord['walletType'],
+      walletStatus: row.wallet_status as WalletRecord['walletStatus'],
+      claimedAt: row.claimed_at ? new Date(row.claimed_at) : null,
+      createdAt: new Date(row.created_at),
+      updatedAt: new Date(row.updated_at),
     };
   }
 }
