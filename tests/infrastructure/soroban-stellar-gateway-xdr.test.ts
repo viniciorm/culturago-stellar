@@ -527,4 +527,58 @@ describe('SorobanStellarGateway smart wallet XDR structural validation', () => {
 
     expect(transport.enforcingSimulateAndAssemble).not.toHaveBeenCalled();
   });
+
+  it('rejects when enforcing simulation reports an expired auth signature', async () => {
+    const feePayer = Keypair.random();
+    const store = new InMemoryOperationStore();
+    const transport = mockTransport();
+    const gateway = new SorobanStellarGateway(buildConfig(feePayer), transport, store, null);
+    const actor = randomContractId();
+    const rootInvocation = authorizedInvocation(ACTOR_CONTRACT, 'register_entity');
+    const unsignedXdr = buildUnsignedXdr(actor, {
+      auth: [unsignedAuthEntry(actor, rootInvocation)],
+    });
+    const signedXdr = buildSignedXdr(actor, {
+      auth: [signedAuthEntry(actor, rootInvocation, 0)],
+    });
+
+    (transport as any).enforcingSimulateAndAssemble = vi.fn().mockResolvedValue({
+      preparedXdr: '',
+      needsRestore: false,
+      latestLedger: 100,
+      contractError: 'expired auth',
+    });
+
+    const op = await createOperation(store, actor, unsignedXdr);
+
+    await expect(gateway.submitSigned(op.state.operationId, signedXdr, actor)).rejects.toSatisfy(
+      (error: unknown) =>
+        isDomainError(error, 'UNAUTHORIZED') && (error as Error).message.includes('expired auth')
+    );
+
+    expect(transport.enforcingSimulateAndAssemble).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects when enforcing simulation RPC is unavailable', async () => {
+    const feePayer = Keypair.random();
+    const store = new InMemoryOperationStore();
+    const transport = mockTransport();
+    const gateway = new SorobanStellarGateway(buildConfig(feePayer), transport, store, null);
+    const actor = randomContractId();
+    const unsignedXdr = buildUnsignedXdr(actor);
+    const signedXdr = buildSignedXdr(actor);
+
+    (transport as any).enforcingSimulateAndAssemble = vi.fn().mockRejectedValue(
+      domainError('INVALID_INPUT', 'enforcing simulation request failed: RPC unavailable')
+    );
+
+    const op = await createOperation(store, actor, unsignedXdr);
+
+    await expect(gateway.submitSigned(op.state.operationId, signedXdr, actor)).rejects.toSatisfy(
+      (error: unknown) =>
+        isDomainError(error, 'INVALID_INPUT') && (error as Error).message.includes('enforcing simulation request failed')
+    );
+
+    expect(transport.enforcingSimulateAndAssemble).toHaveBeenCalledTimes(1);
+  });
 });
