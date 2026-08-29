@@ -1,5 +1,27 @@
 # Evidencia reproducible por fase
 
+## Avance F3.1, F4.2, F8.2, F9 — 29 de agosto de 2026
+
+**Implementado**
+
+- **F3.1 XDR/passkey**: `tests/infrastructure/soroban-stellar-gateway-xdr.test.ts` ahora cubre 16 casos adversariales con fixtures XDR reales; se agregaron `expired auth signature` y `RPC no disponible` en `enforcingSimulateAndAssemble`. `tests/lib/passkey-kit-signer.test.ts` (5 tests) cubre el signer cliente real: conexión de wallet, rechazo de passphrase distinta, firma con `latestLedger + 100`, fallback a `preparedAtLedger + 100` si el RPC falla, y rechazo si `signAuthEntry` devuelve una entrada idéntica.
+- **F4.2 Gateway en UI**: nuevo `CredentialRevokeDialog` (`src/components/CredentialRevokeDialog.tsx`) con input de motivo de revocación y flujo completo `prepareCredentialRevoke` → `signAndSubmitOperation` → `updateCredential` en Stellar; integrado en la tabla de credenciales del evento (`src/app/dashboard/eventos/[eventId]/page.tsx`).
+- **F8.2 Docker/TLS/health**: ruta `/api/health` (`src/app/api/health/route.ts`) con chequeo de base de datos y test `tests/app/health-route.test.ts`; `HEALTHCHECK` agregado a `deploy/Dockerfile`; `deploy/docker-compose.app.yml` extiende healthchecks para `app` y `postgres`, con `condition: service_healthy` para ordenar arranque y `caddy` dependiendo de app saludable.
+- **F9 Documentación**: `docs/evidence.md` actualizado; `docs/production-readiness-execution-plan.md` actualizado con estados completados y nueva baseline.
+
+**Verificación (2026-08-29)**
+
+- `pnpm lint --max-warnings=0` → cero warnings.
+- `pnpm typecheck` → limpio.
+- `pnpm test` → **220/223 pasan**, 3 skipped por `DATABASE_URL`.
+- `pnpm build` → exitoso con Next.js 16.3.3 (Turbopack).
+- `pnpm audit --prod` → sin vulnerabilidades conocidas.
+- `pnpm contracts:lint/test/build` → 51/51 pasan, hashes WASM reproducibles.
+
+**Pendiente / bloqueado**: F3.2 allowlist/deploy wallet requiere E2E con relayer; F5-f provisioning admin Testnet requiere aprobación para `admin_provision`; F6 E2E Testnet real requiere aprobación explícita para mutar Testnet; F8.3 branch protection en CI requiere configuración de GitHub; F10 infra/secrets/backup/restore/runbooks depende de entorno y aprobaciones.
+
+---
+
 ## Producción y calidad — Fases 0, 4.2, 5.1, 7.1, 8.1, 9.1 (2026-08-29)
 
 **Implementado**
