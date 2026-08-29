@@ -56,4 +56,7 @@ USER nextjs
 
 EXPOSE 3080
 
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD node -e "fetch('http://localhost:3080/api/health').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1));"
+
 CMD ["node", "server.js"]
