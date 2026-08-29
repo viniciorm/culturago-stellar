@@ -59,6 +59,40 @@ describe('InMemoryIdentityStore', () => {
     expect(await store.getRoles(account.id)).toEqual(['organizer']);
     expect(await store.getIssuerScopes(account.id)).toEqual(['issuer-a', 'issuer-b']);
   });
+
+  it('saves and retrieves smart wallet claims and upserts wallets', async () => {
+    const store = new InMemoryIdentityStore();
+    const accountId = randomUUID();
+    const entityId = randomUUID();
+    const contractId = 'CBQPZU6O2HTURYQBMYYZ3DDZBTT67AYCXMT5YUYOSVQU5PUCBW642RJ6';
+
+    const wallet = await store.upsertWallet({
+      entityId,
+      walletAddress: contractId,
+      walletType: 'passkey',
+      walletStatus: 'claimed',
+    });
+    expect(wallet.walletStatus).toBe('claimed');
+    expect(wallet.walletAddress).toBe(contractId);
+
+    const claim = await store.saveSmartWalletClaim({
+      accountId,
+      entityId,
+      contractId,
+      keyId: 'key-123',
+      walletWasmHash: 'wasm-hash',
+      network: 'testnet',
+      deployTxHash: 'tx-hash',
+    });
+    expect(claim.contractId).toBe(contractId);
+    expect(claim.keyId).toBe('key-123');
+
+    const fetchedClaim = await store.getSmartWalletClaimByAccount(accountId);
+    expect(fetchedClaim?.contractId).toBe(contractId);
+
+    const fetchedWallet = await store.getWalletByEntity(entityId);
+    expect(fetchedWallet?.walletStatus).toBe('claimed');
+  });
 });
 
 describe('SessionService', () => {

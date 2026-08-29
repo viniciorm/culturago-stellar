@@ -260,7 +260,20 @@ describe('validateDeployBody', () => {
   };
 
   it('accepts a valid deploy body', () => {
-    expect(validateDeployBody(valid)).toEqual(valid);
+    expect(validateDeployBody(valid)).toEqual({
+      ...valid,
+      keyId: null,
+      walletWasmHash: null,
+    });
+  });
+
+  it('accepts optional keyId and walletWasmHash', () => {
+    const withOptional = {
+      ...valid,
+      keyId: 'test-key-id',
+      walletWasmHash: 'fdefad64b96837147e1c333e51f537b696eab925e9f147e63d597c04e3c903f0',
+    };
+    expect(validateDeployBody(withOptional)).toEqual(withOptional);
   });
 
   it('rejects extra fields', () => {

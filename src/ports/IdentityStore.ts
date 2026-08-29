@@ -41,6 +41,31 @@ export interface Account {
   createdAt: Date;
 }
 
+export interface SmartWalletClaim {
+  id: string;
+  accountId: string;
+  entityId: string;
+  contractId: string;
+  keyId: string | null;
+  walletWasmHash: string | null;
+  network: string;
+  deployTxHash: string | null;
+  deployedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface WalletRecord {
+  id: string;
+  entityId: string;
+  walletAddress: string | null;
+  walletType: 'none' | 'stellar_classic' | 'smart_wallet' | 'passkey';
+  walletStatus: 'none' | 'reserved' | 'claimed' | 'disabled';
+  claimedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 /**
  * Identity persistence port. Implementations must store only public WebAuthn
  * material, digests (never raw challenge/session tokens), and allow atomic
@@ -75,4 +100,25 @@ export interface IdentityStore {
   rotateSession(oldSessionId: string, newSession: Omit<Session, 'id'>): Promise<void>;
   revokeSession(sessionTokenDigest: string): Promise<void>;
   revokeAllSessions(accountId: string): Promise<void>;
+
+  // Smart Wallet Claims & Wallets
+  saveSmartWalletClaim(claim: {
+    accountId: string;
+    entityId: string;
+    contractId: string;
+    keyId?: string | null;
+    walletWasmHash?: string | null;
+    network?: string;
+    deployTxHash?: string | null;
+    deployedAt?: Date | null;
+  }): Promise<SmartWalletClaim>;
+  getSmartWalletClaimByAccount(accountId: string): Promise<SmartWalletClaim | null>;
+  upsertWallet(wallet: {
+    entityId: string;
+    walletAddress: string;
+    walletType: WalletRecord['walletType'];
+    walletStatus: WalletRecord['walletStatus'];
+    claimedAt?: Date | null;
+  }): Promise<WalletRecord>;
+  getWalletByEntity(entityId: string): Promise<WalletRecord | null>;
 }

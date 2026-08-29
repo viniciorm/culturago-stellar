@@ -17,6 +17,8 @@ export interface SubmitBody {
 export interface DeployBody {
   signedTx: string;
   contractId: string;
+  keyId?: string | null;
+  walletWasmHash?: string | null;
 }
 
 interface PreparedRegisterEntity extends RegisterEntityCommand {
@@ -382,11 +384,13 @@ export function validateDeployBody(raw: unknown): DeployBody {
     throw domainError('INVALID_INPUT', 'body must be a JSON object');
   }
   const obj = raw as Record<string, unknown>;
-  assertNoExtraFields(obj, new Set(['signedTx', 'contractId']));
+  assertNoExtraFields(obj, new Set(['signedTx', 'contractId', 'keyId', 'walletWasmHash']));
 
   return {
     signedTx: assertBase64(obj.signedTx, 'signedTx'),
     contractId: assertContractId(obj.contractId, 'contractId'),
+    keyId: obj.keyId ? assertString(obj.keyId, 'keyId') : null,
+    walletWasmHash: obj.walletWasmHash ? assertString(obj.walletWasmHash, 'walletWasmHash') : null,
   };
 }
 
