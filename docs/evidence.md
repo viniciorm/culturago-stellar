@@ -1,5 +1,20 @@
 # Evidencia reproducible por fase
 
+## Producción y calidad — Fases 0, 4.2, 5.1, 7.1, 8.1, 9.1 (2026-08-29)
+
+**Implementado**
+
+- **F0 baseline**: `pnpm lint --max-warnings=0`, `pnpm typecheck`, `pnpm test` (191/194, 3 skipped por `DATABASE_URL`), `pnpm build`, `pnpm audit --prod` (clean), `pnpm contracts:lint/test/build` (51/51 tests Rust, WASM reproducibles) — todos verdes.
+- **F4.2 Gateway en UI**: el dashboard de credenciales (`src/app/dashboard/credenciales/page.tsx`) emite y revoca credenciales en Stellar con `prepareCredentialIssue`/`prepareCredentialRevoke` y `signAndSubmitOperation`; `StellarStatusBlock` soporta `onSubmit`. Las `idempotencyKey` usan prefijos `issue:` y `revoke:` para que `/api/sign/submit` actualice `issuedLedger` y `revokedLedger`.
+- **F5.1 Estado/polling**: `/api/operations/[operationId]` mantiene 404 uniforme y aplica `assertRateLimit` de 240/min por actor.
+- **F7.1 Retiro del harness**: `src/app/api/sign/prepare/route.ts`, `src/infrastructure/harness/harnessHandler.ts` y `src/infrastructure/stellar/harnessGuard.ts` eliminados y commiteados. No quedan referencias a `harness` en `src/`.
+- **F5.2 Worker runtime**: `parsePositiveInt` valida `STELLAR_WORKER_*`; `/api/metrics` expone `worker.staleMs` y `phases` (`countByPhase` en PostgreSQL e in-memory).
+- **F9.1 Documentación**: `README.md` actualizado a Next.js 16.3, baseline pnpm, fallback en memoria y migraciones hasta `0011`; `docs/architecture.md` y `CODEMAP.md` refrescados; `testnet-manifest.json` actualizó `generatedAt`.
+
+**Pendiente / bloqueado**: F6 E2E Testnet real requiere aprobación humana explícita para mutar Testnet; F8.2 Docker/TLS, F8.3 branch protection y F10 producción operativa dependen de decisiones externas.
+
+---
+
 ## Fase 6 y 7 — Despliegue Testnet en VPS y gate final (2026-08-20)
 
 **Implementado**

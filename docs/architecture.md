@@ -14,7 +14,7 @@ graph TD
     end
 
     subgraph Servidor / VPS
-        NextApp[Next.js 16.2 Standalone / Node 22 + pnpm 10]
+        NextApp[Next.js 16.3 Standalone / Node 22 + pnpm 10]
         PostgreSQL[(PostgreSQL 17)]
         StellarModule[Stellar / Soroban Gateway]
     end
@@ -30,13 +30,13 @@ graph TD
 ## 2. Componentes Técnicos
 
 ### 2.1 Core Web Engine
-* **Framework**: Next.js 16.2.11 (App Router) con React 19.
-* **Empaquetado**: Modo `output: "standalone"` en Docker (Node 22), optimizando memoria RAM.
+* **Framework**: Next.js 16.3.3 (App Router) con React 19.
+* **Empaquetado**: Modo `output: "standalone"` en Docker (Node 22), no-root `nextjs`.
 * **Gestor de Paquetes**: `pnpm 10` vía Corepack.
 
 ### 2.2 Base de Datos y Persistencia
-* **Producción**: PostgreSQL 17 conectado directamente vía `pg` y migraciones en `database/migrations/`.
-* **Desarrollo / Offline**: `src/lib/db.ts` es un mock en memoria respaldado en `localStorage` que se debe retirar antes de producción.
+* **Producción**: PostgreSQL 17 conectado directamente vía `pg` y migraciones en `database/migrations/` (hasta `0011_rate_budget.sql`).
+* **Desarrollo / Offline**: `InMemoryOperationStore`, `InMemoryIdentityStore` e `InMemoryRateBudgetStore` ofrecen fallback sin credenciales demo hardcodeadas.
 
 ### 2.3 Esquema Relacional de Base de Datos
 * `entities`: entidades polimórficas base (person, organization, provider, event).
@@ -49,9 +49,10 @@ graph TD
 * `accounts`, `sessions`, `passkeys`: identidad y autenticación (Fase 8 / F1).
 
 ### 2.4 Capa Blockchain Stellar/Soroban
-* `CanonicalHashService`: canonicalización JCS + SHA-256 con separación de dominio (`CULTURAGO\0<schema>\0<canonical-json>`).
-* `SorobanStellarGateway`: máquina de estados para `prepare` → `awaiting_signature` → `signed` → `submitted` → `confirming` → `confirmed`.
-* `StellarWorker`: consume `OperationStore.claimBatch` y maneja firma/reconciliación.
+* **CanonicalHashService**: canonicalización JCS + SHA-256 con separación de dominio (`CULTURAGO\0<schema>\0<canonical-json>`).
+* **SorobanStellarGateway**: máquina de estados para `prepare` → `awaiting_signature` → `signed` → `submitted` → `confirming` → `confirmed`, con readback ANTES de marcar confirmado.
+* **StellarWorker**: consume `OperationStore.claimBatch` y maneja firma, reconciliación, TTL y observabilidad.
+* **Perímetro (`src/infrastructure/perimeter/perimeter.ts`)**: rate/budget durables, origin allowlist, validación de cuerpo JSON.
 
 ---
 

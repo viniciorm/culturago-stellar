@@ -1,6 +1,6 @@
 # Code Map - CulturaGO Stellar MVP
 
-Este documento mapea la arquitectura, rutas, componentes, modelos de datos y utilidades de **CulturaGO** para navegación y edición rápida.
+Este documento mapea la arquitectura, rutas, componentes, modelos de datos y utilidades de **CulturaGO** para navegación rápida.
 
 ---
 
@@ -21,7 +21,7 @@ Este documento mapea la arquitectura, rutas, componentes, modelos de datos y uti
 | `/dashboard/organizaciones` | [src/app/dashboard/organizaciones/page.tsx](file:///c:/Users/marco/.gemini/antigravity/scratch/culturago-stellar/src/app/dashboard/organizaciones/page.tsx) | **CRUD de Organizaciones**: Alta y edición de escuelas y academias. |
 | `/dashboard/personas` | [src/app/dashboard/personas/page.tsx](file:///c:/Users/marco/.gemini/antigravity/scratch/culturago-stellar/src/app/dashboard/personas/page.tsx) | **CRUD de Personas**: Alta y edición de bailarinas, profesoras y directores. |
 | `/dashboard/proveedores` | [src/app/dashboard/proveedores/page.tsx](file:///c:/Users/marco/.gemini/antigravity/scratch/culturago-stellar/src/app/dashboard/proveedores/page.tsx) | **CRUD de Proveedores**: Alta y edición de proveedores técnicos. |
-| `/dashboard/configuracion` | [src/app/dashboard/configuracion/page.tsx](file:///c:/Users/marco/.gemini/antigravity/scratch/culturago-stellar/src/app/dashboard/configuracion/page.tsx) | **Configuración**: Inspector del modo de base de datos (Supabase vs Mock). |
+| `/dashboard/configuracion` | `src/app/dashboard/configuracion/page.tsx` | **Configuración**: Estado de la base de datos y métricas. |
 
 ---
 
@@ -56,14 +56,13 @@ Este documento mapea la arquitectura, rutas, componentes, modelos de datos y uti
 
 ## ⚙️ Núcleo de Lógica y Datos (`src/lib/`)
 
-*   [db.ts](file:///c:/Users/marco/.gemini/antigravity/scratch/culturago-stellar/src/lib/db.ts): **Motor Dual DB**. Exporta la API unificada `db` y los tipos TypeScript (`Entity`, `Person`, `Organization`, `Provider`, `Event`, `Credential`, `Relationship`, `Wallet`).
-*   [stellar.ts](file:///c:/Users/marco/.gemini/antigravity/scratch/culturago-stellar/src/lib/stellar.ts): Módulo mock para Soroban/Stellar (registro, emisión, wallets de Passkeys).
-*   [hashes.ts](file:///c:/Users/marco/.gemini/antigravity/scratch/culturago-stellar/src/lib/hashes.ts): Generador de hashes determinísticos SHA-256 (`generateMetadataHash`).
+*   `src/lib/credentialMetadata.ts`: metadatos canónicos de credenciales.
+*   `src/lib/hooks/useOperationPoller.ts`: polling de operaciones Stellar con backoff exponencial acotado.
 
 ---
 
 ## 🚀 Infraestructura de Despliegue (`deploy/`)
 
-*   [Dockerfile](file:///c:/Users/marco/.gemini/antigravity/scratch/culturago-stellar/deploy/Dockerfile): Imagen Docker basada en Node 22 + `pnpm@9`.
-*   [docker-compose.app.yml](file:///c:/Users/marco/.gemini/antigravity/scratch/culturago-stellar/deploy/docker-compose.app.yml): Servicio de producción en puerto `80`.
-*   [setup-vps.sh](file:///c:/Users/marco/.gemini/antigravity/scratch/culturago-stellar/deploy/setup-vps.sh): Script de despliegue automático en Ubuntu para instalación `root`.
+*   `deploy/Dockerfile`: Imagen Docker basada en Node 22 + `pnpm@10`.
+*   `deploy/docker-compose.app.yml`: Servicio de producción con app, Caddy y PostgreSQL privada.
+*   `deploy/Caddyfile`: HTTPS con `tls internal` (Testnet) — requiere reemplazo por certificado público en producción.
