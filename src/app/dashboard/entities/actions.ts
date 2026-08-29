@@ -3,6 +3,7 @@
 import { isPersistenceConfigured, getPublicConfig } from '@/infrastructure/config/env';
 import { query } from '@/infrastructure/database/pool';
 import { requireDashboardAdmin } from '@/infrastructure/auth/dashboardGuard';
+import { requireActorFromSession } from '@/infrastructure/auth/getActorFromSession';
 import { createStellarGateway } from '@/infrastructure/stellar/createStellarGateway';
 import { computeEntityMetadataHash } from '@/lib/entityMetadata';
 import { domainError } from '@/domain/errors';
@@ -208,4 +209,33 @@ export async function prepareEntityForStellar(entityId: string): Promise<Prepare
     walletAddress: actor.walletAddress,
     environment: getPublicConfig().environment,
   };
+}
+
+/**
+ * Reconcilia una operación Stellar en estado fallido/desconocido. Solo el
+ * actor original de la operación puede solicitarlo.
+ */
+export async function reconcileOperation(operationId: string): Promise<OperationState> {
+  if (!isPersistenceConfigured()) {
+    throw domainError('INTERNAL', 'Se requiere DATABASE_URL para reconciliar operaciones Stellar');
+  }
+
+  const actor = await requireActorFromSession();
+  if (!actor.walletAddress) {
+    throw domainError('UNAUTHORIZED', 'El actor no tiene una wallet on-chain configurada');
+  }
+
+  const bundle = createStellarGateway();
+  const stored = await bundle.store.get(operationId);
+
+  if (!stored) {
+    throw domainError('NOT_FOUND', 'Operación no encontrada');
+  }
+
+  if (stored.intent.actorAddress !== actor.walletAddress) {
+    throw domainError('NOT_FOUND', 'Operación no encontrada');
+  }
+
+  const state = await bundle.gateway.reconcile(operationId);
+  return state;
 }

@@ -62,10 +62,7 @@ function defaultRelayerBudget(): number {
 }
 
 function defaultRateLimit(): number {
-  return readPositiveInt(
-    'STELLAR_RATE_LIMIT',
-    readPositiveInt('STELLAR_HARNESS_RATE_LIMIT', DEFAULT_RATE_LIMIT)
-  );
+  return readPositiveInt('STELLAR_RATE_LIMIT', DEFAULT_RATE_LIMIT);
 }
 
 function domainRateLimit(limit: number, result: { count: number }): void {

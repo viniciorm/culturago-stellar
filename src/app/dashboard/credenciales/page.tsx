@@ -19,6 +19,7 @@ import { StatusBadge, StellarStatusBadge } from '../../../components/ui/Badge';
 import { Dialog } from '../../../components/ui/Dialog';
 import { CredentialForm } from '../../../components/CredentialForm';
 import { StellarStatusBlock } from '../../../components/StellarStatusBlock';
+import { reconcileOperation } from '../entities/actions';
 
 export default function CredencialesCRUDPage() {
   const [credentials, setCredentials] = useState<PopulatedCredential[]>([]);
@@ -195,6 +196,7 @@ export default function CredencialesCRUDPage() {
       <Dialog isOpen={isStellarOpen} onClose={() => { setIsStellarOpen(false); setSelectedCredential(null); setStellarPrepared(null); }} title="Detalles Blockchain Stellar">
         <StellarStatusBlock
           credential={selectedCredential}
+          operation={stellarPrepared?.operation ?? null}
           onUpdate={() => {
             loadData();
           }}
@@ -219,6 +221,12 @@ export default function CredencialesCRUDPage() {
             } else {
               setStatus(`Error en Stellar: ${result.message}`);
             }
+            loadData();
+          }}
+          onReconcile={async () => {
+            if (!stellarPrepared) return;
+            const state = await reconcileOperation(stellarPrepared.operation.operationId);
+            setStellarPrepared({ ...stellarPrepared, operation: state });
             loadData();
           }}
         />

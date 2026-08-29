@@ -30,7 +30,7 @@ import {
   createRelationship,
   updateCredential,
 } from '../actions';
-import { prepareEntityForStellar, type PrepareEntityResult } from '../../entities/actions';
+import { prepareEntityForStellar, reconcileOperation, type PrepareEntityResult } from '../../entities/actions';
 import { prepareCredentialIssue, type PrepareCredentialResult } from '../../credenciales/actions';
 import { signAndSubmitOperation } from '@/lib/smartWallet/signAndSubmitOperation';
 
@@ -920,6 +920,7 @@ export default function EventDashboardPage() {
         <StellarStatusBlock
           entity={selectedStellarEntity}
           credential={selectedStellarCredential}
+          operation={stellarEntityPrepared?.operation ?? stellarCredentialPrepared?.operation ?? null}
           onUpdate={() => {
             loadDatabase();
           }}
@@ -953,6 +954,15 @@ export default function EventDashboardPage() {
               if (result.ok) {
                 setStellarCredentialPrepared(null);
               }
+            }
+          }}
+          onReconcile={async () => {
+            if (stellarEntityPrepared) {
+              const state = await reconcileOperation(stellarEntityPrepared.operation.operationId);
+              setStellarEntityPrepared({ ...stellarEntityPrepared, operation: state });
+            } else if (stellarCredentialPrepared) {
+              const state = await reconcileOperation(stellarCredentialPrepared.operation.operationId);
+              setStellarCredentialPrepared({ ...stellarCredentialPrepared, operation: state });
             }
           }}
         />
