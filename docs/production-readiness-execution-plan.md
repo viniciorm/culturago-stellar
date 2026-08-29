@@ -44,7 +44,7 @@ Este estado fue contrastado nuevamente con código, commits y gates locales. La 
 | F5.2 — Worker runtime | PARCIAL | Manager, worker, `/api/metrics` y heartbeats están implementados con tests de arranque/parada. `parsePositiveInt` valida las opciones `STELLAR_WORKER_*`. `/api/metrics` expone `staleMs` del worker y `phases` con el número de operaciones por fase via `countByPhase` en ambos stores. Falta evidencia runtime real con PostgreSQL y separar/supervisar TTL/indexador. |
 | F5-f — Provisioning admin Testnet | PARCIAL | Funcionalidad, cleanup CLI y recovery de operaciones no terminales existen. Falta E2E on-chain y aprobación para ejecutar `admin_provision`. |
 | F6 — E2E Testnet/cleanup | PENDIENTE | `scripts/testnet-exercise.mjs` implementa flujo SDK con admin/operador, cleanup en `finally` y readback, pero no hay evidencia commiteada (`manifest` aún tiene `ledger: null`), no usa passkey/smart wallet desde el frontend y genera IDs aleatorios en lugar de UUIDs canónicos del UI. Bloqueado por F0/F5 y por aprobación humana para mutar Testnet. |
-| F7.1 — Retiro del harness | PARCIAL | `/api/sign/prepare`, `harnessHandler.ts` y `harnessGuard.ts` fueron eliminados en working tree; `/api/sign/submit` y `/api/smart-wallet/deploy` usan sesión, origin allowlist y rate/budget. Las eliminaciones y cleanup on-chain aún no están commiteados ni evidenciados. |
+| F7.1 — Retiro del harness | COMPLETO | `/api/sign/prepare`, `harnessHandler.ts` y `harnessGuard.ts` fueron eliminados y commiteados; `/api/sign/submit` y `/api/smart-wallet/deploy` usan sesión, origin allowlist y rate/budget. No quedan referencias a `harness` en `src/` salvo la variable de compatibilidad `STELLAR_HARNESS_RATE_LIMIT`. |
 | F7.2 — Retiro del mock legacy | COMPLETO | `src/lib/db.ts` y sus imports fueron eliminados; dashboard y páginas públicas usan PostgreSQL Server Actions. La corrección/privacidad de esas consultas se audita aparte. |
 | F8.1 — Dependencias | COMPLETO | Se eliminaron los overrides flotantes `>=...`, se pinneó `postcss: 8.5.26` y se actualizó `next`/`eslint-config-next` a 16.3.3 para resolver la vulnerabilidad de `sharp`. `pnpm lint`, `typecheck`, `test`, `build`, `audit --prod` y `contracts:*` pasan. |
 | F8.2 — Build/Next/Docker | PARCIAL | `proxy.ts`, typecheck y runner no-root están; faltan arranque/health Docker actual, TLS público, error boundaries y evidencia del bundle. |
@@ -1058,7 +1058,7 @@ Retirar superficies temporales y conservar solo componentes reutilizables del pr
 
 ## Unidad 7.1 — Retiro del harness
 
-**Estado: PARCIAL.** La página `/smart-wallet` y `grant-roles` fueron retirados; `/api/sign/prepare`, `harnessHandler.ts` y `harnessGuard.ts` eliminados en working tree; `/api/sign/submit` y `/api/smart-wallet/deploy` usan sesión y rate/budget. Faltan commitear las eliminaciones y evidencia reproducible del cleanup.
+**Estado: COMPLETO.** La página `/smart-wallet` y `grant-roles` fueron retirados; `/api/sign/prepare`, `harnessHandler.ts` y `harnessGuard.ts` eliminados y commiteados. `/api/sign/submit` y `/api/smart-wallet/deploy` usan sesión, origin allowlist y rate/budget. No quedan referencias a `harness` en `src/` salvo la variable de compatibilidad `STELLAR_HARNESS_RATE_LIMIT`.
 
 **Archivos probables:**
 
