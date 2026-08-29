@@ -315,3 +315,32 @@ describe('InMemoryTtlQueue', () => {
     expect(atRisk.find((e) => e.entryKey === 'instance')?.status).toBe('extended');
   });
 });
+
+describe('countByPhase', () => {
+  it('returns operation counts grouped by phase', async () => {
+    const bundle = createMockStellarGateway({ signer: null });
+    const { store } = bundle;
+
+    await pendingOperation(
+      store,
+      'register_entity',
+      hex(1),
+      validRegisterSpec(hex(1), hex(9), 1),
+      { metadataHash: hex(9), hashSchema: 1 }
+    );
+    await signedOperation(store, hex(2), 'signed-xdr');
+    await pendingReconcile(store, 'tx-hash', hex(3));
+
+    const counts = await store.countByPhase();
+
+    expect(counts.awaiting_signature).toBe(1);
+    expect(counts.signed).toBe(1);
+    expect(counts.unknown).toBe(1);
+    expect(counts.confirmed).toBe(0);
+    expect(counts.submitted).toBe(0);
+    expect(counts.confirming).toBe(0);
+    expect(counts.failed_retryable).toBe(0);
+    expect(counts.failed_terminal).toBe(0);
+    expect(counts.restoring).toBe(0);
+  });
+});

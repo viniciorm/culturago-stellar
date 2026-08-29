@@ -1,7 +1,20 @@
 import 'server-only';
 import { PoolClient } from 'pg';
+import { OperationPhase } from '../../ports/StellarGateway';
 import { OperationStore, StoredOperation } from '../../ports/OperationStore';
 import { query, translatePgError, withTransaction } from '../database/pool';
+
+const ALL_OPERATION_PHASES: OperationPhase[] = [
+  'awaiting_signature',
+  'signed',
+  'submitted',
+  'confirming',
+  'confirmed',
+  'failed_retryable',
+  'failed_terminal',
+  'unknown',
+  'restoring',
+];
 
 interface StellarOperationsRow {
   id: string;
@@ -172,5 +185,20 @@ export class PostgreSQLOperationStore implements OperationStore {
       translatePgError(error);
       throw error;
     });
+  }
+
+  async countByPhase(): Promise<Record<OperationPhase, number>> {
+    const counts = Object.fromEntries(
+      ALL_OPERATION_PHASES.map((phase) => [phase, 0])
+    ) as Record<OperationPhase, number>;
+    const result = await query<{ phase: string; count: string }>(
+      'SELECT phase, COUNT(*)::text as count FROM stellar_operations GROUP BY phase'
+    ).catch(translatePgError);
+    for (const row of result.rows) {
+      if (row.phase in counts) {
+        counts[row.phase as OperationPhase] = Number(row.count);
+      }
+    }
+    return counts;
   }
 }

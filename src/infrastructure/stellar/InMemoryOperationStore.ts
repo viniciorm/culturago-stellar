@@ -1,5 +1,18 @@
 import { domainError } from '../../domain/errors';
+import { OperationPhase } from '../../ports/StellarGateway';
 import { OperationStore, StoredOperation } from '../../ports/OperationStore';
+
+const ALL_OPERATION_PHASES: OperationPhase[] = [
+  'awaiting_signature',
+  'signed',
+  'submitted',
+  'confirming',
+  'confirmed',
+  'failed_retryable',
+  'failed_terminal',
+  'unknown',
+  'restoring',
+];
 
 /** In-memory store for demo/tests. Not for production reconciliation. */
 export class InMemoryOperationStore implements OperationStore {
@@ -65,5 +78,15 @@ export class InMemoryOperationStore implements OperationStore {
       if (results.length >= options.batchSize) break;
     }
     return results;
+  }
+
+  async countByPhase(): Promise<Record<OperationPhase, number>> {
+    const counts = Object.fromEntries(
+      ALL_OPERATION_PHASES.map((phase) => [phase, 0])
+    ) as Record<OperationPhase, number>;
+    for (const record of this.byId.values()) {
+      counts[record.state.phase] = (counts[record.state.phase] ?? 0) + 1;
+    }
+    return counts;
   }
 }

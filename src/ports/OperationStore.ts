@@ -1,4 +1,4 @@
-import { OperationState } from './StellarGateway';
+import { OperationPhase, OperationState } from './StellarGateway';
 import { PreparedTransactionPayload, SignedTransactionPayload } from './SignerPort';
 
 /**
@@ -70,4 +70,10 @@ export interface OperationStore {
     ttlSeconds: number;
     maxAttempts?: number;
   }): Promise<StoredOperation[]>;
+
+  /**
+   * Returns the total number of operations grouped by phase.
+   * Missing phases must be reported as 0.
+   */
+  countByPhase(): Promise<Record<OperationPhase, number>>;
 }
