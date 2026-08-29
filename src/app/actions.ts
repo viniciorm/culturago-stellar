@@ -1,7 +1,8 @@
 'use server';
 
-import { isPersistenceConfigured } from '@/infrastructure/config/env';
+import { isPersistenceConfigured, getPublicConfig } from '@/infrastructure/config/env';
 import { query } from '@/infrastructure/database/pool';
+import { createStellarGateway } from '@/infrastructure/stellar/createStellarGateway';
 import { numberToCredentialType } from '@/lib/credentialMetadata';
 import type { Entity, Credential, PopulatedCredential, Event, Relationship, PopulatedRelationship, Person, Organization, Provider } from '@/domain/types/entities';
 
@@ -1062,6 +1063,106 @@ export async function getPublicProviderByEntitySlug(
   }
 
   return mapRowToProvider(result.rows[0]);
+}
+
+export interface CredentialVerificationResult {
+  credentialId: string;
+  exists: boolean;
+  matches: boolean;
+  revoked: boolean;
+  ledger: number | null;
+  status: 'issued' | 'revoked' | 'not_found';
+  network: string;
+  contractId: string | null;
+}
+
+function toVerificationStatus(
+  dbStatus: 'draft' | 'issued' | 'revoked' | null,
+  chain: { exists: boolean; revoked: boolean }
+): 'issued' | 'revoked' | 'not_found' {
+  if (!chain.exists && !dbStatus) return 'not_found';
+  if (chain.revoked) return 'revoked';
+  if (dbStatus === 'revoked') return 'revoked';
+  if (dbStatus === 'issued') return 'issued';
+  return 'not_found';
+}
+
+async function verifyCredentialById(credentialId: string): Promise<CredentialVerificationResult> {
+  if (!isPersistenceConfigured()) {
+    throw new Error('Persistence not configured');
+  }
+
+  const result = await query<{
+    id: string;
+    status: 'draft' | 'issued' | 'revoked';
+    metadata_hash: string;
+    hash_schema: number;
+  }>(
+    'SELECT id, status, metadata_hash, hash_schema FROM credentials WHERE id = $1 LIMIT 1',
+    [credentialId]
+  );
+
+  if (!result.rows[0]) {
+    return {
+      credentialId,
+      exists: false,
+      matches: false,
+      revoked: false,
+      ledger: null,
+      status: 'not_found',
+      network: getPublicConfig().environment,
+      contractId: getPublicConfig().credentialRegistryContractId,
+    };
+  }
+
+  const row = result.rows[0];
+  const { gateway } = createStellarGateway();
+  const chain = await gateway.verifyCredential({
+    credentialId: row.id,
+    metadataHash: row.metadata_hash,
+    hashSchema: row.hash_schema,
+  });
+
+  return {
+    credentialId: row.id,
+    exists: chain.exists,
+    matches: chain.matches,
+    revoked: chain.revoked,
+    ledger: chain.ledger,
+    status: toVerificationStatus(row.status, chain),
+    network: getPublicConfig().environment,
+    contractId: getPublicConfig().credentialRegistryContractId,
+  };
+}
+
+export async function verifyCredentialOnChain(credentialId: string): Promise<CredentialVerificationResult> {
+  return verifyCredentialById(credentialId);
+}
+
+export async function verifyCredentialOnChainByCode(code: string): Promise<CredentialVerificationResult> {
+  if (!isPersistenceConfigured()) {
+    throw new Error('Persistence not configured');
+  }
+
+  const result = await query<{ id: string }>(
+    'SELECT id FROM credentials WHERE credential_code = $1 LIMIT 1',
+    [code]
+  );
+
+  if (!result.rows[0]) {
+    return {
+      credentialId: '',
+      exists: false,
+      matches: false,
+      revoked: false,
+      ledger: null,
+      status: 'not_found',
+      network: getPublicConfig().environment,
+      contractId: getPublicConfig().credentialRegistryContractId,
+    };
+  }
+
+  return verifyCredentialById(result.rows[0].id);
 }
 
 export async function getPublicCredentialsBySubjectId(

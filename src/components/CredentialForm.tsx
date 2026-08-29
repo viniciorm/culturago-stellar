@@ -10,15 +10,23 @@ interface CredentialFormProps {
   entities: Entity[];
   onSubmit: (credentialData: any) => Promise<void>;
   onCancel: () => void;
+  eventId?: string;
+  defaultIssuerId?: string;
 }
 
 export const CredentialForm: React.FC<CredentialFormProps> = ({
   entities,
   onSubmit,
   onCancel,
+  eventId,
+  defaultIssuerId,
 }) => {
+  const issuers = entities
+    .filter(e => e.type === 'organization')
+    .map(e => ({ value: e.id, label: e.display_name }));
+
   const [credentialCode, setCredentialCode] = useState('');
-  const [issuerId, setIssuerId] = useState('11111111-1111-1111-1111-111111111111'); // Default FDVC Org
+  const [issuerId, setIssuerId] = useState(defaultIssuerId ?? issuers[0]?.value ?? '');
   const [subjectId, setSubjectId] = useState('');
   const [credentialType, setCredentialType] = useState('dancer_participant');
   const [title, setTitle] = useState('Bailarina Participante FDVC 2026');
@@ -76,6 +84,13 @@ export const CredentialForm: React.FC<CredentialFormProps> = ({
     }
   }, [entities, issuerId, subjectId]);
 
+  // Update issuer if defaultIssuerId changes
+  useEffect(() => {
+    if (defaultIssuerId && issuers.some(i => i.value === defaultIssuerId)) {
+      setIssuerId(defaultIssuerId);
+    }
+  }, [defaultIssuerId, issuers]);
+
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!subjectId) {
@@ -90,7 +105,7 @@ export const CredentialForm: React.FC<CredentialFormProps> = ({
       credential_code: credentialCode,
       issuer_entity_id: issuerId,
       subject_entity_id: subjectId,
-      event_id: '22222222-2222-2222-2222-333333333333', // FDVC 2026 Event
+      event_id: eventId ?? '22222222-2222-2222-2222-333333333333', // FDVC 2026 Event
       credential_type: credentialType,
       title,
       description: description || null,
@@ -116,9 +131,6 @@ export const CredentialForm: React.FC<CredentialFormProps> = ({
     { value: 'venue_sponsor', label: 'Auspiciador / Aliado Cultural' },
   ];
 
-  const issuers = entities
-    .filter(e => e.type === 'organization')
-    .map(e => ({ value: e.id, label: e.display_name }));
 
   const subjects = entities
     .filter(e => e.id !== issuerId) // Don't issue to self

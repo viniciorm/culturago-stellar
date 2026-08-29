@@ -377,7 +377,7 @@ export async function createProvider(
   return { entity_id: entityId };
 }
 
-export async function createCredential(credentialData: unknown): Promise<void> {
+export async function createCredential(credentialData: unknown): Promise<string> {
   return createCredentialAction(credentialData as Parameters<typeof createCredentialAction>[0]);
 }
 

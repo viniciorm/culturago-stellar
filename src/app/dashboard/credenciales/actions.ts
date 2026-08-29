@@ -225,7 +225,7 @@ interface CreateCredentialInput {
  * dashboard admin UI.
  * @param input
  */
-export async function createCredential(input: CreateCredentialInput): Promise<void> {
+export async function createCredential(input: CreateCredentialInput): Promise<string> {
   if (!isPersistenceConfigured()) {
     throw domainError('INTERNAL', 'Se requiere DATABASE_URL para crear credenciales');
   }
@@ -285,6 +285,8 @@ export async function createCredential(input: CreateCredentialInput): Promise<vo
       now,
     ]
   );
+
+  return id;
 }
 
 interface UpdateCredentialInput {

@@ -30,6 +30,9 @@ import {
   createRelationship,
   updateCredential,
 } from '../actions';
+import { prepareEntityForStellar, type PrepareEntityResult } from '../../entities/actions';
+import { prepareCredentialIssue, type PrepareCredentialResult } from '../../credenciales/actions';
+import { signAndSubmitOperation } from '@/lib/smartWallet/signAndSubmitOperation';
 
 const db = {
   getEventBySlug,
@@ -100,6 +103,8 @@ export default function EventDashboardPage() {
   const [selectedStellarEntity, setSelectedStellarEntity] = useState<Entity | null>(null);
   const [selectedStellarCredential, setSelectedStellarCredential] = useState<Credential | null>(null);
   const [isStellarModalOpen, setIsStellarModalOpen] = useState(false);
+  const [stellarEntityPrepared, setStellarEntityPrepared] = useState<PrepareEntityResult | null>(null);
+  const [stellarCredentialPrepared, setStellarCredentialPrepared] = useState<PrepareCredentialResult | null>(null);
 
   // Sync DB loader
   const loadDatabase = useCallback(async () => {
@@ -267,9 +272,30 @@ export default function EventDashboardPage() {
   };
 
   const handleIssueCredentialSubmit = async (credentialData: any) => {
-    await db.createCredential(credentialData);
+    credentialData.event_id = event!.id;
+    if (event?.organizer_entity_id) {
+      credentialData.issuer_entity_id = event.organizer_entity_id;
+    }
+
+    const credentialId = await db.createCredential(credentialData);
     setIsIssueCredOpen(false);
-    loadDatabase();
+
+    try {
+      const prepared = await prepareCredentialIssue(credentialId);
+      const result = await signAndSubmitOperation(
+        prepared.environment,
+        prepared.walletAddress,
+        prepared.operation,
+        prepared.prepared
+      );
+      if (!result.ok) {
+        console.error('Error registrando credencial en Stellar:', result.message);
+      }
+    } catch (e) {
+      console.error('Error al preparar/firmar credencial:', e);
+    } finally {
+      loadDatabase();
+    }
   };
 
   const handleRevokeCredential = async (id: string) => {
@@ -282,12 +308,16 @@ export default function EventDashboardPage() {
   const handleOpenStellarEntity = (entity: Entity) => {
     setSelectedStellarEntity(entity);
     setSelectedStellarCredential(null);
+    setStellarEntityPrepared(null);
+    setStellarCredentialPrepared(null);
     setIsStellarModalOpen(true);
   };
 
   const handleOpenStellarCredential = (cred: Credential) => {
     setSelectedStellarCredential(cred);
     setSelectedStellarEntity(null);
+    setStellarEntityPrepared(null);
+    setStellarCredentialPrepared(null);
     setIsStellarModalOpen(true);
   };
 
@@ -875,6 +905,8 @@ export default function EventDashboardPage() {
           entities={entities}
           onSubmit={handleIssueCredentialSubmit}
           onCancel={() => setIsIssueCredOpen(false)}
+          eventId={event!.id}
+          defaultIssuerId={event?.organizer_entity_id ?? undefined}
         />
       </Dialog>
 
@@ -890,6 +922,38 @@ export default function EventDashboardPage() {
           credential={selectedStellarCredential}
           onUpdate={() => {
             loadDatabase();
+          }}
+          onPrepare={async () => {
+            if (selectedStellarEntity) {
+              const prepared = await prepareEntityForStellar(selectedStellarEntity.id);
+              setStellarEntityPrepared(prepared);
+            } else if (selectedStellarCredential) {
+              const prepared = await prepareCredentialIssue(selectedStellarCredential.id);
+              setStellarCredentialPrepared(prepared);
+            }
+          }}
+          onSubmit={async () => {
+            if (stellarEntityPrepared && selectedStellarEntity) {
+              const result = await signAndSubmitOperation(
+                stellarEntityPrepared.environment,
+                stellarEntityPrepared.walletAddress,
+                stellarEntityPrepared.operation,
+                stellarEntityPrepared.prepared
+              );
+              if (result.ok) {
+                setStellarEntityPrepared(null);
+              }
+            } else if (stellarCredentialPrepared && selectedStellarCredential) {
+              const result = await signAndSubmitOperation(
+                stellarCredentialPrepared.environment,
+                stellarCredentialPrepared.walletAddress,
+                stellarCredentialPrepared.operation,
+                stellarCredentialPrepared.prepared
+              );
+              if (result.ok) {
+                setStellarCredentialPrepared(null);
+              }
+            }
           }}
         />
       </Dialog>

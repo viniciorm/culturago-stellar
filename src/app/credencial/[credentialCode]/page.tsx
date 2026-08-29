@@ -5,8 +5,9 @@ import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, CheckCircle2, XCircle, Clock, Database } from 'lucide-react';
 import { PublicLayout } from '../../../components/PublicLayout';
 import { StellarVerificationLinks } from '../../../components/StellarVerificationLinks';
-import { getPublicCredentialByCode } from '../../actions';
+import { getPublicCredentialByCode, verifyCredentialOnChainByCode } from '../../actions';
 import type { PopulatedCredential } from '@/domain/types/entities';
+import type { CredentialVerificationResult } from '../../actions';
 import { QRCodeBlock } from '../../../components/ui/QRCodeBlock';
 import { CredentialCard } from '../../../components/CredentialCard';
 import { Button } from '../../../components/ui/Button';
@@ -17,6 +18,7 @@ export default function CredentialValidationPage() {
   const credentialCode = params.credentialCode as string;
 
   const [credential, setCredential] = useState<PopulatedCredential | null>(null);
+  const [verification, setVerification] = useState<CredentialVerificationResult | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -24,6 +26,10 @@ export default function CredentialValidationPage() {
       try {
         const data = await getPublicCredentialByCode(credentialCode);
         setCredential(data);
+        if (data) {
+          const chain = await verifyCredentialOnChainByCode(credentialCode);
+          setVerification(chain);
+        }
       } catch (e) {
         console.error('Error loading public credential data:', e);
       } finally {
@@ -171,9 +177,28 @@ export default function CredentialValidationPage() {
                 </div>
                 <div>
                   <span className="font-semibold block">Red de Verificación:</span>
-                  <span className="font-bold text-stone-700">Stellar Testnet / Soroban</span>
+                  <span className="font-bold text-stone-700">{verification?.network ?? 'Stellar'}</span>
                 </div>
               </div>
+
+              {verification ? (
+                <div className="border-t border-stone-200/50 pt-3">
+                  <span className="font-semibold text-stone-500 block mb-1">Verificación en contrato:</span>
+                  <div className="flex flex-wrap gap-2 text-[10px]">
+                    <span className={`px-2 py-1 rounded border ${verification.exists && verification.matches ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
+                      {verification.exists && verification.matches ? 'Hash verificado' : 'No verificado'}
+                    </span>
+                    <span className={`px-2 py-1 rounded border ${verification.revoked ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
+                      {verification.revoked ? 'Revocada on-chain' : 'Vigente on-chain'}
+                    </span>
+                    {verification.ledger ? (
+                      <span className="px-2 py-1 rounded border bg-stone-50 text-stone-600 border-stone-200">
+                        Ledger {verification.ledger}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>

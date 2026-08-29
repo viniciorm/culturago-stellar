@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Plus, User, Search, Trash2, Edit2, ExternalLink } from 'lucide-react';
+import { Plus, User, Search, Trash2, Edit2, ExternalLink, Cpu } from 'lucide-react';
 import type { Entity, Person } from '@/domain/types/entities';
 import { Button } from '../../../components/ui/Button';
 import { Table } from '../../../components/ui/Table';
@@ -9,6 +9,8 @@ import { StellarStatusBadge } from '../../../components/ui/Badge';
 import { Dialog } from '../../../components/ui/Dialog';
 import { PersonForm } from '../../../components/PersonForm';
 import { listPeople, createPerson, updatePerson, deletePerson } from './actions';
+import { prepareEntityForStellar } from '../entities/actions';
+import { signAndSubmitOperation } from '@/lib/smartWallet/signAndSubmitOperation';
 
 export default function PersonasCRUDPage() {
   const [people, setPeople] = useState<(Person & { entity: Entity })[]>([]);
@@ -19,6 +21,7 @@ export default function PersonasCRUDPage() {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [selectedEntity, setSelectedEntity] = useState<Entity | null>(null);
   const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
+  const [status, setStatus] = useState('');
 
   const loadPeople = async () => {
     setLoading(true);
@@ -48,6 +51,27 @@ export default function PersonasCRUDPage() {
       setSelectedEntity(null);
       setSelectedPerson(null);
       loadPeople();
+    }
+  };
+
+  const handleRegisterOnStellar = async (entityId: string) => {
+    setStatus('Preparando registro en Stellar...');
+    try {
+      const prepared = await prepareEntityForStellar(entityId);
+      const result = await signAndSubmitOperation(
+        prepared.environment,
+        prepared.walletAddress,
+        prepared.operation,
+        prepared.prepared
+      );
+      if (result.ok) {
+        setStatus('Registro confirmado en Stellar');
+      } else {
+        setStatus(`Error en Stellar: ${result.message}`);
+      }
+      loadPeople();
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : 'Error registrando en Stellar');
     }
   };
 
@@ -105,6 +129,10 @@ export default function PersonasCRUDPage() {
         </div>
       </div>
 
+      {status && (
+        <p className="text-xs text-stone-600">{status}</p>
+      )}
+
       {loading ? (
         <div className="text-stone-400 py-12 text-center">Cargando registros...</div>
       ) : (
@@ -152,6 +180,15 @@ export default function PersonasCRUDPage() {
                       <ExternalLink className="w-3.5 h-3.5" />
                     </Button>
                   </a>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="text-xs"
+                    disabled={row.entity.stellar_status === 'pending' || row.entity.stellar_status === 'registered'}
+                    onClick={() => handleRegisterOnStellar(row.entity_id)}
+                  >
+                    <Cpu className="w-3.5 h-3.5" />
+                  </Button>
                   <Button variant="danger" size="sm" className="text-xs" onClick={() => handleDelete(row.entity_id)}>
                     <Trash2 className="w-3.5 h-3.5" />
                   </Button>
