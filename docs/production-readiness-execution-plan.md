@@ -49,7 +49,7 @@ Este estado fue contrastado nuevamente con código, commits y gates locales. La 
 | F8.1 — Dependencias | COMPLETO | Se eliminaron los overrides flotantes `>=...`, se pinneó `postcss: 8.5.26` y se actualizó `next`/`eslint-config-next` a 16.3.3 para resolver la vulnerabilidad de `sharp`. `pnpm lint`, `typecheck`, `test`, `build`, `audit --prod` y `contracts:*` pasan. |
 | F8.2 — Build/Next/Docker | PARCIAL | `proxy.ts`, typecheck y runner no-root están; faltan arranque/health Docker actual, TLS público, error boundaries y evidencia del bundle. |
 | F8.3 — CI | PARCIAL | El workflow ejecuta todos los gates; ahora pueden pasar localmente. Falta verificar branch protection obligatoria en GitHub. |
-| F9 — Documentación/privacidad | PARCIAL | Verify/JSON/PDF usan DTO mínimo. `src/app/actions.ts` ya no expone legal name, email, phone ni contactos en DTOs públicos; relaciones y credenciales públicas filtran por `is_public`/`active`/`status`. Docs/manifiesto siguen desactualizados. |
+| F9 — Documentación/privacidad | PARCIAL | Verify/JSON/PDF usan DTO mínimo. `src/app/actions.ts` ya no expone PII en DTOs públicos. `README.md` fue actualizado a Next.js 16.3, baseline de pnpm, fallback en memoria y migas hasta `0011`. `testnet-manifest.json` actualizó `generatedAt` y mantiene allowlist/IDs/hashes. Faltan `CODEMAP.md`, `docs/architecture.md`, `docs/evidence.md` y los ledgers E2E. |
 | F10 — Producción operativa | PARCIAL | Identity, signed recovery, worker runtime, transacciones multi-tabla en PostgreSQL y rate/budget durables avanzaron; faltan migraciones reales, indexador/TTL completo, HTTPS final, secrets, backup/restore, observabilidad y aprobación. |
 
 ### Baseline local reejecutado
@@ -1299,7 +1299,7 @@ Alinear documentación con el sistema ejecutable y dejar un handoff que no depen
 
 ## Unidad 9.1 — Actualizar fuentes históricas
 
-**Estado: PARCIAL.** README/CODEMAP/arquitectura/evidence siguen desactualizados, pero la frontera pública de datos ya fue corregida.
+**Estado: PARCIAL.** `README.md` fue actualizado a Next.js 16.3, baseline de pnpm, fallback en memoria y migraciones hasta `0011`; `docs/manifests/testnet-manifest.json` actualizó `generatedAt`. `CODEMAP.md`, `docs/architecture.md` y `docs/evidence.md` siguen desactualizados.
 
 **Archivos probables:**
 
@@ -1312,11 +1312,11 @@ Alinear documentación con el sistema ejecutable y dejar un handoff que no depen
 
 ### Pasos
 
-- [x] Sustituir los comandos principales de instalación y gates por pnpm.
+- [x] Sustituir los comandos principales de instalación y gates por pnpm; agregar baseline completo al README.
 - [ ] Eliminar credenciales y afirmaciones demo obsoletas presentadas como acceso vigente.
 - [ ] Documentar consistentemente gateway real, demo fiel y ausencia de los mocks Stellar legacy.
-- [ ] Actualizar contratos, passkey, relayer, estados y límites de persistencia al estado actual.
-- [ ] Marcar claramente qué pertenece a integración Testnet y qué queda para producción operativa.
+- [x] Actualizar contratos, passkey, relayer, estados y límites de persistencia al estado actual (parcial — README refleja fallback en memoria, rate/budget durables y migración `0011_rate_budget.sql`).
+- [ ] Marcar claramente qué pertenece a integración Testnet y qué queda para producción operativa (pendiente en `docs/architecture.md` y `docs/evidence.md`).
 - [x] Actualizar este checklist únicamente con evidencia real.
 - [x] Reducir `/api/verify`, export JSON y PDF a un DTO mínimo sin PII.
 - [ ] Preservar digest/schema al verificar revocadas: `verifyIndexedCredential` toma el último evento y `CredentialRevoked` puede no incluir metadata, devolviendo canonical `null`.
@@ -1332,7 +1332,7 @@ Un nuevo ejecutor puede comprender arquitectura, ejecutar tests y distinguir dem
 
 ## Unidad 9.2 — Completar manifiesto Testnet
 
-**Estado: PARCIAL.** Contract IDs, versiones, hashes WASM y allowlist smart-wallet están registrados; faltan ledgers de despliegue, evidencia on-chain/E2E y corregir la nota obsoleta que afirma que la allowlist está vacía.
+**Estado: PARCIAL.** Contract IDs, versiones, hashes WASM y allowlist smart-wallet están registrados; `generatedAt` y notas revisadas. Faltan ledgers de despliegue, evidencia on-chain/E2E (bloqueado por aprobación para mutar Testnet) y validar el hash/código de la smart wallet desplegada.
 
 **Archivo principal:** `docs/manifests/testnet-manifest.json`.
 

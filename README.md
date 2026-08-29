@@ -14,7 +14,7 @@ graph TD
     end
 
     subgraph Servidor / VPS
-        NextApp[Next.js 16.2 Standalone / Node 22 + pnpm 10]
+        NextApp[Next.js 16.3 Standalone / Node 22 + pnpm 10]
         PostgreSQL[(PostgreSQL 17)]
         StellarModule[Stellar / Soroban Gateway]
     end
@@ -26,10 +26,10 @@ graph TD
 ```
 
 ### Componentes de la Arquitectura:
-1. **Core Web Engine**: Next.js 16.2 (App Router) con modo `output: "standalone"`.
+1. **Core Web Engine**: Next.js 16.3 (App Router) con modo `output: "standalone"`.
 2. **Base de Datos**: PostgreSQL 17 con migraciones SQL en `database/migrations/`.
    - **Producción**: conectado vía `DATABASE_URL`.
-   - **Desarrollo / Offline**: `src/lib/db.ts` es un mock en memoria que se debe retirar antes de producción.
+   - **Desarrollo / Offline**: `InMemoryOperationStore`, `InMemoryIdentityStore` y `InMemoryRateBudgetStore` proveen fallback en memoria; no hay credenciales de demo hardcodeadas.
 3. **Capa Blockchain Stellar/Soroban**:
    - `CanonicalHashService` (`src/infrastructure/hashing/`): canonicalización JCS + SHA-256 con separación de dominio.
    - `SorobanStellarGateway` (`src/infrastructure/stellar/`): prepara, firma, envía y reconcilia operaciones on-chain.
@@ -42,12 +42,12 @@ graph TD
 2. **CRUDs de Entidades:** Personas, organizaciones y proveedores técnicos.
 3. **Códigos QR Dinámicos:** Pasaportes, perfiles y credenciales públicas.
 4. **Credenciales Verificables:** Certificados oficiales con estados vigente/pendiente/revocado y anclaje opcional a Stellar/Soroban.
-5. **Motor de Datos Dual:** PostgreSQL con `pg` en producción; `localStorage`/mock en desarrollo offline.
+5. **Motor de Datos Dual:** PostgreSQL con `pg` cuando `DATABASE_URL` está configurado; implementaciones en memoria (`InMemory*`) como fallback local para desarrollo y tests.
 
 ---
 
 ## 🛠️ Tecnologías Utilizadas
-* **Core:** Next.js 16.2 (App Router)
+* **Core:** Next.js 16.3 (App Router)
 * **Lenguaje:** TypeScript
 * **Estilos (CSS):** Tailwind CSS v4
 * **Base de datos:** PostgreSQL 17 (`pg`)
@@ -66,8 +66,8 @@ graph TD
 * `src/components/ui/` — Librería de componentes visuales.
 * `src/infrastructure/` — Adaptadores de PostgreSQL, Stellar, auth y observabilidad.
 * `src/ports/` — Contratos (interfaces) de dominio.
-* `src/lib/` — Utilidades y helpers. **`src/lib/db.ts` es un mock** que se debe retirar antes de producción.
-* `database/migrations/` — Migraciones SQL (`0001` a `0007`).
+* `src/lib/` — Utilidades, helpers y hooks del cliente.
+* `database/migrations/` — Migraciones SQL (ej. `0001` a `0011`); no editar migraciones ya aplicadas.
 * `contracts/` — Contratos Rust para Soroban.
 * `docs/` — Documentación técnica (`HANDOFF.md`, `architecture.md`, manifiestos).
 
@@ -91,6 +91,19 @@ NEXT_PUBLIC_CULTURAGO_ENV=testnet
 CULTURAGO_ENV=testnet
 NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE="Test SDF Network ; September 2015"
 NEXT_PUBLIC_SOROBAN_RPC_URL=https://soroban-testnet.stellar.org
+```
+
+### Baseline de calidad (local)
+```bash
+pnpm install --frozen-lockfile
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+pnpm audit --prod
+pnpm contracts:lint
+pnpm contracts:test
+pnpm contracts:build
 ```
 
 ### Aplicar migraciones
