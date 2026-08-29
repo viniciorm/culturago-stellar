@@ -59,13 +59,13 @@ Este estado fue contrastado nuevamente con código, commits y gates locales. La 
 | `pnpm install --frozen-lockfile` | COMPLETO |
 | `pnpm lint --max-warnings=0` | COMPLETO, cero warnings |
 | `pnpm typecheck` | COMPLETO |
-| `pnpm test` | COMPLETO: 210 pasan; 3 PostgreSQL skipped por falta de `DATABASE_URL` |
+| `pnpm test` | COMPLETO: 212 pasan; 3 PostgreSQL skipped por falta de `DATABASE_URL` |
 | `pnpm build` | COMPLETO con Next.js 16.3.3 (Turbopack) |
 | `pnpm audit --prod` | COMPLETO: sin vulnerabilidades conocidas |
 | `pnpm contracts:lint` | COMPLETO: `fmt` y `clippy` pasan |
 | `pnpm contracts:test` | COMPLETO: 51/51 pasan |
 | `pnpm contracts:build` | COMPLETO: hashes WASM coinciden con el manifiesto |
-| Git | COMPLETO — F5.1, F7.1, F9.1 y F3.1 listos para commit; working tree limpio |
+| Git | COMPLETO — merge `cfc6b7d` aplicado; dependencias corregidas y listas para commit |
 
 ### Pendientes prioritarios
 
