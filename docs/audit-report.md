@@ -11,7 +11,7 @@
 - **F0 Baseline** es reproducible y verde.
 - **F8.1 Dependencias** se cerró: se eliminaron los overrides flotantes (`>=...`), se pinneó `postcss: 8.5.26` y se actualizó `next`/`eslint-config-next` a `16.3.3` para resolver `sharp <0.35.0`.
 - **F2.2 Claves/fees** se marcó `COMPLETO` y se corrigió la referencia a rate/budget en memoria.
-- **F5.2 Worker runtime** avanzó: se implementó `parsePositiveInt` para las opciones `STELLAR_WORKER_*` y se agregaron tests de rechazo de valores no numéricos y no positivos.
+- **F5.2 Worker runtime** avanzó: se implementó `parsePositiveInt` para las opciones `STELLAR_WORKER_*` y se agregaron tests de rechazo de valores no numéricos y no positivos. `/api/metrics` ahora expone `worker.staleMs` y `phases` con el número de operaciones por fase; `countByPhase` se implementó en `InMemoryOperationStore` y `PostgreSQLOperationStore`.
 - La inconsistencia del plan respecto al `working tree` fue resuelta con un commit.
 - `F6 E2E Testnet/cleanup` sigue bloqueado por aprobación humana explícita para mutar Testnet.
 

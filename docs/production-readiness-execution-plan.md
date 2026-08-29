@@ -41,7 +41,7 @@ Este estado fue contrastado nuevamente con código, commits y gates locales. La 
 | F4.1 — IDs/hash canónico | PARCIAL | `computeEntityMetadataHash` usa `CanonicalHashService` y `tests/infrastructure/canonical-hash-parity.test.ts` está implementado, pero queda `skipped` sin `DATABASE_URL`; falta ejecutarlo sobre migraciones aplicadas y aportar evidencia TS/Rust. |
 | F4.2 — Gateway en UI | PARCIAL | El dashboard de organizaciones (`src/app/dashboard/organizaciones/page.tsx`) ya puede registrar una entidad en Stellar mediante `prepareEntityForStellar` + `signAndSubmitOperation`. Faltan emitir/revocar credenciales desde el frontend, pruebas UI completas y E2E real. |
 | F5.1 — Estado/polling | PARCIAL | El endpoint `/api/operations/[operationId]` devuelve 404 uniforme, `useOperationPoller` usa backoff exponencial acotado con `AbortController`, y el gateway rechaza ledgers `null`. Existen tests del Route Handler y del hook. Faltan rate limit en la ruta, correlation ID accionable en la UI y UX completa por fase. |
-| F5.2 — Worker runtime | PARCIAL | Manager, worker, `/api/metrics` y heartbeats están implementados con tests de arranque/parada. Se agregó `parsePositiveInt` para `STELLAR_WORKER_*` con tests de rechazo de valores no numéricos y no positivos. Faltan métricas de lag/fases por fase y evidencia runtime real con PostgreSQL. |
+| F5.2 — Worker runtime | PARCIAL | Manager, worker, `/api/metrics` y heartbeats están implementados con tests de arranque/parada. `parsePositiveInt` valida las opciones `STELLAR_WORKER_*`. `/api/metrics` expone `staleMs` del worker y `phases` con el número de operaciones por fase via `countByPhase` en ambos stores. Falta evidencia runtime real con PostgreSQL y separar/supervisar TTL/indexador. |
 | F5-f — Provisioning admin Testnet | PARCIAL | Funcionalidad, cleanup CLI y recovery de operaciones no terminales existen. Falta E2E on-chain y aprobación para ejecutar `admin_provision`. |
 | F6 — E2E Testnet/cleanup | PENDIENTE | `scripts/testnet-exercise.mjs` implementa flujo SDK con admin/operador, cleanup en `finally` y readback, pero no hay evidencia commiteada (`manifest` aún tiene `ledger: null`), no usa passkey/smart wallet desde el frontend y genera IDs aleatorios en lugar de UUIDs canónicos del UI. Bloqueado por F0/F5 y por aprobación humana para mutar Testnet. |
 | F7.1 — Retiro del harness | PARCIAL | `/api/sign/prepare`, `harnessHandler.ts` y `harnessGuard.ts` fueron eliminados en working tree; `/api/sign/submit` y `/api/smart-wallet/deploy` usan sesión, origin allowlist y rate/budget. Las eliminaciones y cleanup on-chain aún no están commiteados ni evidenciados. |
@@ -59,7 +59,7 @@ Este estado fue contrastado nuevamente con código, commits y gates locales. La 
 | `pnpm install --frozen-lockfile` | COMPLETO |
 | `pnpm lint --max-warnings=0` | COMPLETO, cero warnings |
 | `pnpm typecheck` | COMPLETO |
-| `pnpm test` | COMPLETO: 188 pasan; 3 PostgreSQL skipped por falta de `DATABASE_URL` |
+| `pnpm test` | COMPLETO: 191 pasan; 3 PostgreSQL skipped por falta de `DATABASE_URL` |
 | `pnpm build` | COMPLETO con Next.js 16.3.3 (Turbopack) |
 | `pnpm audit --prod` | COMPLETO: sin vulnerabilidades conocidas |
 | `pnpm contracts:lint` | COMPLETO: `fmt` y `clippy` pasan |
@@ -874,7 +874,7 @@ Revertir endpoint, cliente de polling y copy de estados. No revertir las reglas 
 
 - [x] Definir un proceso explícito que inicia `StellarWorker` desde `src/instrumentation.ts` mediante un manager singleton.
 - [x] Implementar leases/`SKIP LOCKED` para que workers concurrentes no reclamen la misma operación.
-- [ ] Publicar heartbeat, último ciclo, lag y número de operaciones por fase.
+- [x] Publicar heartbeat, último ciclo, lag (`worker.staleMs`) y número de operaciones por fase (`phases` en `/api/metrics`, `countByPhase` en `InMemoryOperationStore` y `PostgreSQLOperationStore`).
 - [x] Soportar shutdown mediante `AbortController`, `SIGTERM` y `SIGINT`.
 - [x] Usar PostgreSQL para operaciones durables cuando `DATABASE_URL` está configurada y no sobredeclarar el store en memoria.
 - [x] Recuperar fases `signed` y reconciliables con reintentos/backoff sin que el worker firme.
