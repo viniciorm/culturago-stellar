@@ -15,7 +15,7 @@
 - **F7.1 Retiro del harness** cerrado: `/api/sign/prepare`, `harnessHandler.ts` y `harnessGuard.ts` fueron eliminados y commiteados; no quedan referencias a `harness` en `src/`. `/api/sign/submit` y `/api/smart-wallet/deploy` usan sesión, origin allowlist y rate/budget.
 - **F5.1 Estado/polling** avanzó: `/api/operations/[operationId]` aplica `assertRateLimit` (240/min por actor) conservando el 404 uniforme para operaciones inexistentes o ajenas.
 - **F4.2 Gateway en UI** avanzó: el dashboard de credenciales (`src/app/dashboard/credenciales/page.tsx`) ahora emite y revoca credenciales en Stellar usando `prepareCredentialIssue`/`prepareCredentialRevoke` y `signAndSubmitOperation`. Se corrigió el `idempotencyKey` a `issue:/revoke:` para que `/api/sign/submit` actualice `issuedLedger`/`revokedLedger` tras confirmación. `StellarStatusBlock` ahora soporta `onSubmit`.
-- **F9.1 Documentación** avanzó: `README.md` se actualizó a Next.js 16.3, baseline de pnpm, fallback en memoria y migraciones hasta `0011`; `testnet-manifest.json` actualizó `generatedAt`.
+- **F9.1 Documentación** avanzó: `README.md` se actualizó a Next.js 16.3, baseline de pnpm, fallback en memoria y migraciones hasta `0011`; `docs/architecture.md`, `CODEMAP.md` y `docs/evidence.md` fueron refrescados; `testnet-manifest.json` actualizó `generatedAt`.
 - La inconsistencia del plan respecto al `working tree` fue resuelta con commits.
 - `F6 E2E Testnet/cleanup` sigue bloqueado por aprobación humana explícita para mutar Testnet.
 
