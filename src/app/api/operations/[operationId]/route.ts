@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createStellarGateway } from '@/infrastructure/stellar/createStellarGateway';
 import { requireActorFromSession } from '@/infrastructure/auth/getActorFromSession';
+import { assertRateLimit } from '@/infrastructure/perimeter/perimeter';
 import { isDomainError } from '@/domain/errors';
 
 export async function GET(
@@ -9,6 +10,7 @@ export async function GET(
 ) {
   try {
     const actor = await requireActorFromSession();
+    await assertRateLimit(actor.accountId ?? actor.walletAddress ?? 'anonymous', { limit: 240 });
     if (!actor.walletAddress) {
       return NextResponse.json(
         { error: 'actor has no on-chain wallet configured' },
