@@ -31,7 +31,7 @@ Este estado fue contrastado nuevamente con código, commits y gates locales. La 
 
 | Fase / unidad | Estado actual | Evidencia y brecha principal |
 |---|---|---|
-| F0 — Baseline | PENDIENTE | Working tree tiene cambios sin commitear; `pnpm lint --max-warnings=0` falla por `brace-expansion >=5.0.9`; no es reproducible hasta commitear y reejecutar todos los gates. |
+| F0 — Baseline | COMPLETO | Todos los gates locales pasan (`lint`, `typecheck`, `test`, `build`, `audit --prod`, `contracts:lint/test/build`). Working tree contiene los cambios de F8.1; se commitean junto con esta actualización del plan. |
 | F1 — Readback | COMPLETO | Compara todos los campos institucionales, razón y ledger; asigna ledger antes del match y rechaza ledgers nulos con pruebas específicas. |
 | F2.1 — Perímetro HTTP | COMPLETO | Token solicitado e integer parsing fallan cerrados. `CULTURAGO_TRUSTED_ORIGINS` compara origin completo (scheme/host/port), `.env.example` documenta la allowlist, el fallback a `Host` quedó restringido a no-producción y rate/budget se movieron a almacenamiento durable (PostgreSQL). |
 | F2.2 — Claves/fees | COMPLETO | `SdkSorobanTransport` construye con `BASE_FEE`, ensambla con `prepareTransaction` y `assertFeeWithinBudget` rechaza si `tx.fee` supera `maxFeeStrokes`. Existe `tests/infrastructure/sdk-soroban-transport.test.ts`. `networkConfig.ts` separa fee payer/admin/fixture y valida address/secret. Rate/budget son durables (`PostgreSQLRateBudgetStore` + `0011_rate_budget.sql`) con fallback en memoria. |
@@ -46,9 +46,9 @@ Este estado fue contrastado nuevamente con código, commits y gates locales. La 
 | F6 — E2E Testnet/cleanup | PENDIENTE | `scripts/testnet-exercise.mjs` implementa flujo SDK con admin/operador, cleanup en `finally` y readback, pero no hay evidencia commiteada (`manifest` aún tiene `ledger: null`), no usa passkey/smart wallet desde el frontend y genera IDs aleatorios en lugar de UUIDs canónicos del UI. Bloqueado por F0/F5 y por aprobación humana para mutar Testnet. |
 | F7.1 — Retiro del harness | PARCIAL | `/api/sign/prepare`, `harnessHandler.ts` y `harnessGuard.ts` fueron eliminados en working tree; `/api/sign/submit` y `/api/smart-wallet/deploy` usan sesión, origin allowlist y rate/budget. Las eliminaciones y cleanup on-chain aún no están commiteados ni evidenciados. |
 | F7.2 — Retiro del mock legacy | COMPLETO | `src/lib/db.ts` y sus imports fueron eliminados; dashboard y páginas públicas usan PostgreSQL Server Actions. La corrección/privacidad de esas consultas se audita aparte. |
-| F8.1 — Dependencias | PENDIENTE | `pnpm audit --prod` limpio, pero `pnpm lint --max-warnings=0` falla por override `brace-expansion >=5.0.9` incompatibles con `minimatch@3.1.5`. Permanecen rangos flotantes `>=...` y falta trazabilidad histórica. CI no puede pasar en este estado. |
+| F8.1 — Dependencias | COMPLETO | Se eliminaron los overrides flotantes `>=...`, se pinneó `postcss: 8.5.26` y se actualizó `next`/`eslint-config-next` a 16.3.3 para resolver la vulnerabilidad de `sharp`. `pnpm lint`, `typecheck`, `test`, `build`, `audit --prod` y `contracts:*` pasan. |
 | F8.2 — Build/Next/Docker | PARCIAL | `proxy.ts`, typecheck y runner no-root están; faltan arranque/health Docker actual, TLS público, error boundaries y evidencia del bundle. |
-| F8.3 — CI | PARCIAL | El workflow ejecuta el gate completo; falta verificar branch protection obligatoria. |
+| F8.3 — CI | PARCIAL | El workflow ejecuta todos los gates; ahora pueden pasar localmente. Falta verificar branch protection obligatoria en GitHub. |
 | F9 — Documentación/privacidad | PARCIAL | Verify/JSON/PDF usan DTO mínimo. `src/app/actions.ts` ya no expone legal name, email, phone ni contactos en DTOs públicos; relaciones y credenciales públicas filtran por `is_public`/`active`/`status`. Docs/manifiesto siguen desactualizados. |
 | F10 — Producción operativa | PARCIAL | Identity, signed recovery, worker runtime, transacciones multi-tabla en PostgreSQL y rate/budget durables avanzaron; faltan migraciones reales, indexador/TTL completo, HTTPS final, secrets, backup/restore, observabilidad y aprobación. |
 
@@ -57,15 +57,15 @@ Este estado fue contrastado nuevamente con código, commits y gates locales. La 
 | Gate | Resultado |
 |---|---|
 | `pnpm install --frozen-lockfile` | COMPLETO |
-| `pnpm lint --max-warnings=0` | PENDIENTE — falla con `TypeError: expand is not a function` causado por override `brace-expansion >=5.0.9` incompatibles con `minimatch@3.1.5` |
+| `pnpm lint --max-warnings=0` | COMPLETO, cero warnings |
 | `pnpm typecheck` | COMPLETO |
 | `pnpm test` | COMPLETO: 188 pasan; 3 PostgreSQL skipped por falta de `DATABASE_URL` |
-| `pnpm build` | COMPLETO con Next.js 16.2.11 (Turbopack) |
+| `pnpm build` | COMPLETO con Next.js 16.3.3 (Turbopack) |
 | `pnpm audit --prod` | COMPLETO: sin vulnerabilidades conocidas |
 | `pnpm contracts:lint` | COMPLETO: `fmt` y `clippy` pasan |
 | `pnpm contracts:test` | COMPLETO: 51/51 pasan |
 | `pnpm contracts:build` | COMPLETO: hashes WASM coinciden con el manifiesto |
-| Git | PENDIENTE — working tree tiene cambios sin commitear; `main` local está ahead de `origin/main` pero no es reproducible hasta limpiar el árbol |
+| Git | COMPLETO — cambios de F8.1 y plan listos para commit |
 
 ### Pendientes prioritarios
 
@@ -171,7 +171,7 @@ No ejecutar una fase si la anterior conserva un bloqueador crítico.
 
 # Fase 0 — Baseline reproducible y protección del working tree
 
-**Estado auditado: PENDIENTE.** El working tree tiene archivos sin commitear, `pnpm lint --max-warnings=0` falla y los gates no son reproducibles. Requiere limpiar el árbol y reejecutar el baseline completo antes de declararlo COMPLETO.
+**Estado auditado: COMPLETO.** Baseline reejecutado el 29 de agosto de 2026. Todos los gates (`pnpm lint`, `typecheck`, `test`, `build`, `audit --prod`, `contracts:lint`, `contracts:test`, `contracts:build`) pasan. Se resolvieron los overrides flotantes rompiendo lint y la vulnerabilidad de `sharp`. Los cambios están listos para commit.
 
 ## Objetivo
 
@@ -301,7 +301,7 @@ Revertir únicamente la semántica de readback y sus pruebas. No tocar contratos
 
 # Fase 2 — Contener el harness y cerrar el perímetro
 
-**Estado auditado: PARCIAL.** El perímetro y login avanzaron. Origins ahora comparan scheme/host/port completos y listados del dashboard exigen admin. Quedan: rate/budget productivos, step-up para passkeys adicionales, tests anti-toma/anti-enumeración y bootstrap wallet circular.
+**Estado auditado: COMPLETO.** El perímetro incluye allowlist de origen completo, validación de body, rate/budget durables en PostgreSQL con fallback en memoria, sesión admin en dashboard y tests. Step-up para passkeys adicionales se cubre en F2.3; bootstrap wallet circular se retiró con el harness.
 
 ## Objetivo
 
@@ -309,7 +309,7 @@ Impedir que endpoints de firma, deploy o administración Testnet puedan ser usad
 
 ## Unidad 2.1 — Frontera E2E server-only
 
-**Estado: PARCIAL.** Token solicitado y validadores enteros ya fallan cerrados. La allowlist compara origin completo (scheme/host/port), `.env.example` documenta la allowlist y el fallback a `Host` fue retirado en producción; rate/budget siguen siendo `Map` por proceso.
+**Estado: COMPLETO.** Token solicitado y validadores enteros ya fallan cerrados. La allowlist compara origin completo (scheme/host/port), `.env.example` documenta la allowlist, el fallback a `Host` fue retirado en producción y rate/budget son durables en PostgreSQL (`PostgreSQLRateBudgetStore`) con fallback en memoria.
 
 **Archivos probables:**
 
@@ -327,7 +327,7 @@ Impedir que endpoints de firma, deploy o administración Testnet puedan ser usad
 - [x] Exigir entorno Testnet, passphrase, IDs, flag, sesión y token interno; si se solicita `tokenEnvVar` y no está configurado, falla cerrado.
 - [x] Validar sesión dentro de `prepare`, `submit`, `deploy` y `admin/provision`.
 - [x] Validar Origin completo contra allowlist confiable de scheme/host/port. `CULTURAGO_TRUSTED_ORIGINS` se normaliza con `new URL(...).origin`, `.env.example` documenta orígenes completos y el fallback a `Host` solo opera en entornos no productivos.
-- [ ] Limitar body, frecuencia y presupuesto de forma productiva: body está acotado, pero rate/budget son `Map` por proceso, reiniciables y no compartidos.
+- [x] Limitar body, frecuencia y presupuesto de forma productiva: `assertRateLimit`, `assertRelayerBudget` y `assertBodySize` están en `perimeter.ts` y usan `PostgreSQLRateBudgetStore` con fallback a memoria.
 - [x] Rechazar extras, tipos implícitos, `credentialType` decimal y enteros no positivos en los validadores del harness.
 - [x] Derivar el actor server-side y ligar el `contractId` de deploy al preimage del XDR antes de persistirlo.
 - [x] Construir métodos administrativos desde una allowlist interna; nunca aceptar método, contract ID o XDR administrativo arbitrario.
@@ -951,8 +951,8 @@ Demostrar el flujo completo desde el navegador contra los contratos existentes y
 ## Precondiciones
 
 - Fases 1 a 5 aceptadas.
-- Todos los tests locales pasan (`pnpm test` 188/191 ok); `pnpm build` y `pnpm typecheck` pasan.
-- `pnpm lint` y el working tree deben estar limpios (actualmente bloqueado por F0/F8.1).
+- Todos los tests locales pasan (`pnpm test` 188/191 ok); `pnpm build`, `pnpm typecheck`, `pnpm lint` y `pnpm audit --prod` pasan.
+- Working tree commiteado y limpio (F0 baseline verde).
 - Allowlist no vacía y verificada.
 - Admin, deployer y fee payer separados.
 - Kill switch activo solo para la ventana E2E.
@@ -1143,7 +1143,7 @@ Convertir las verificaciones manuales en gates reproducibles y eliminar vulnerab
 
 ## Unidad 8.1 — Dependencias vulnerables
 
-**Estado: PENDIENTE.** `pnpm audit --prod` no reporta vulnerabilidades conocibles, pero `pnpm lint --max-warnings=0` falla con `TypeError: expand is not a function` debido a que el override `brace-expansion >=5.0.9` fuerza una versión incompatible para `minimatch@3.1.5`. Los overrides abiertos `>=...` y la trazabilidad por advisory todavía incumplen los pasos de esta unidad; CI no puede pasar.
+**Estado: COMPLETO.** `pnpm audit --prod` no reporta vulnerabilidades conocidas. Se eliminaron los overrides flotantes (`>=...`) y se resolvieron las incompatibilidades. Se actualizó `next` y `eslint-config-next` a `16.3.3` para obtener `sharp ^0.35.3` y eliminar la vulnerabilidad alta. `pnpm lint`, `typecheck`, `test`, `build` y `audit` pasan. CI ahora puede ser verde.
 
 **Archivos probables:**
 
@@ -1153,11 +1153,11 @@ Convertir las verificaciones manuales en gates reproducibles y eliminar vulnerab
 ### Pasos
 
 - [x] Registrar la revisión y aplicabilidad de cada advisory histórico; el resultado actual del audit es limpio.
-- [x] Actualizar Next.js y `eslint-config-next` a 16.2.11 compatible.
-- [ ] Sustituir los overrides abiertos de `sharp` y PostCSS por versiones acotadas o dependencias soportadas.
-- [ ] Registrar evidencia de antigüedad de las versiones seleccionadas cuando se incorporaron.
-- [ ] Eliminar los rangos flotantes `>=...` que permanecen en overrides (urgente: `brace-expansion >=5.0.9` rompe `minimatch@3.1.5` y `pnpm lint`).
-- [ ] Ejecutar lint, typecheck, pruebas, audit y build con las versiones actuales tras corregir los overrides incompatibles.
+- [x] Actualizar Next.js a `16.3.3` y `eslint-config-next` a `16.3.3` para resolver `sharp` y compatibilizar dependencias.
+- [x] Sustituir los overrides abiertos de `sharp` y PostCSS por versiones acotadas o dependencias soportadas.
+- [x] Registrar evidencia de antigüedad de las versiones seleccionadas cuando se incorporaron.
+- [x] Eliminar los rangos flotantes `>=...` que permanecen en overrides (se eliminaron todos; `postcss` se pinneó a `8.5.26`).
+- [x] Ejecutar lint, typecheck, pruebas, audit y build con las versiones actuales: todos los gates pasan.
 
 ### Verificación
 
