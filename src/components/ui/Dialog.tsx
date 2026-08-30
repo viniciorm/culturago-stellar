@@ -47,7 +47,12 @@ export const Dialog: React.FC<DialogProps> = ({
       />
 
       {/* Content Container */}
-      <div className={`relative w-full ${sizeClasses[size]} bg-[#FCFBF7] rounded-xl border border-stone-200/80 shadow-2xl overflow-hidden transition-all duration-300 animate-in fade-in zoom-in-95`}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className={`relative w-full ${sizeClasses[size]} bg-[#FCFBF7] rounded-xl border border-stone-200/80 shadow-2xl overflow-hidden transition-all duration-300 animate-in fade-in zoom-in-95`}
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200/60 bg-stone-50/50">
           <h3 className="text-base font-semibold text-[#1C1A17]">{title}</h3>

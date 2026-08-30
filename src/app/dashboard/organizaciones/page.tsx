@@ -145,6 +145,7 @@ export default function OrganizacionesCRUDPage() {
         <div className="text-stone-400 py-12 text-center">Cargando registros...</div>
       ) : (
         <Table
+          getRowId={(row) => row.entity_id}
           columns={[
             {
               header: 'Organización',
@@ -197,6 +198,7 @@ export default function OrganizacionesCRUDPage() {
             variant="secondary"
             size="sm"
             className="text-xs"
+            aria-label="Registrar en Stellar"
             disabled={row.entity.stellar_status === 'pending' || row.entity.stellar_status === 'registered'}
             onClick={() => handleRegisterOnStellar(row.entity_id)}
           >

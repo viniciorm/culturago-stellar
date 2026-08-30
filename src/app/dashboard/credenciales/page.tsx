@@ -51,10 +51,20 @@ export default function CredencialesCRUDPage() {
     loadData();
   }, []);
 
+  useEffect(() => {
+    if (!selectedCredential) return;
+    const selectedId = selectedCredential.id;
+    setSelectedCredential((current) => {
+      if (!current || current.id !== selectedId) return current;
+      const updated = credentials.find((c) => c.id === selectedId);
+      return updated ?? current;
+    });
+  }, [credentials, selectedCredential]);
+
   const handleCreateSubmit = async (credentialData: any) => {
     await createCredential(credentialData);
     setIsAddOpen(false);
-    loadData();
+    await loadData();
   };
 
   const handleRevoke = async (id: string) => {
@@ -78,7 +88,7 @@ export default function CredencialesCRUDPage() {
       } else {
         setStatus(`Error en Stellar: ${result.message}`);
       }
-      loadData();
+      await loadData();
     } catch (e) {
       setStatus(e instanceof Error ? e.message : 'Error revocando en Stellar');
     }
@@ -130,6 +140,7 @@ export default function CredencialesCRUDPage() {
         <div className="text-stone-400 py-12 text-center">Cargando credenciales...</div>
       ) : (
         <Table
+          getRowId={(row) => row.id}
           columns={[
             {
               header: 'Código',
@@ -165,7 +176,7 @@ export default function CredencialesCRUDPage() {
               header: 'Acciones',
               accessor: (row) => (
                 <div className="flex gap-2 justify-end">
-                  <Button variant="secondary" size="sm" className="text-xs" onClick={() => handleOpenStellar(row)}>
+                  <Button variant="secondary" size="sm" className="text-xs" aria-label="Ver en Stellar" onClick={() => handleOpenStellar(row)}>
                     <Cpu className="w-3.5 h-3.5" />
                   </Button>
                   <a href={`/credencial/${row.credential_code}`} target="_blank" rel="noreferrer">
@@ -197,14 +208,14 @@ export default function CredencialesCRUDPage() {
         <StellarStatusBlock
           credential={selectedCredential}
           operation={stellarPrepared?.operation ?? null}
-          onUpdate={() => {
-            loadData();
+          onUpdate={async () => {
+            await loadData();
           }}
           onPrepare={async () => {
             if (!selectedCredential) return;
             const prepared = await prepareCredentialIssue(selectedCredential.id);
             setStellarPrepared(prepared);
-            loadData();
+            await loadData();
           }}
           onSubmit={async () => {
             if (!stellarPrepared) return;
@@ -221,13 +232,13 @@ export default function CredencialesCRUDPage() {
             } else {
               setStatus(`Error en Stellar: ${result.message}`);
             }
-            loadData();
+            await loadData();
           }}
           onReconcile={async () => {
             if (!stellarPrepared) return;
             const state = await reconcileOperation(stellarPrepared.operation.operationId);
             setStellarPrepared({ ...stellarPrepared, operation: state });
-            loadData();
+            await loadData();
           }}
         />
       </Dialog>

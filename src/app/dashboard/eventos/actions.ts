@@ -190,7 +190,7 @@ export async function getEventBySlug(slug: string): Promise<(Event & { entity: E
       so.phase AS stellar_phase,
       so.tx_hash AS stellar_tx_hash,
       ev2.name AS event_name,
-      ev2.slug AS event_slug,
+      e.slug AS event_slug,
       ev2.year,
       ev2.start_date,
       ev2.end_date,

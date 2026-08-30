@@ -10,7 +10,7 @@ export async function GET(
 ) {
   try {
     const actor = await requireActorFromSession();
-    await assertRateLimit(actor.accountId ?? actor.walletAddress ?? 'anonymous', { limit: 240 });
+    await assertRateLimit(actor.walletAddress ?? actor.accountId ?? 'anonymous', { limit: 240 });
     if (!actor.walletAddress) {
       return NextResponse.json(
         { error: 'actor has no on-chain wallet configured' },

@@ -270,7 +270,7 @@ export async function getPublicCredentialByCode(code: string): Promise<Populated
       ie.display_name AS issuer_display_name,
       se.display_name AS subject_display_name,
       e.name AS event_name,
-      e.slug AS event_slug,
+      ee.slug AS event_slug,
       e.year AS event_year,
       e.start_date AS event_start_date,
       so.phase AS stellar_phase,
@@ -279,6 +279,7 @@ export async function getPublicCredentialByCode(code: string): Promise<Populated
     JOIN entities ie ON ie.id = c.issuer_entity_id
     JOIN entities se ON se.id = c.subject_entity_id
     JOIN events e ON e.entity_id = c.event_id
+    JOIN entities ee ON ee.id = c.event_id
     LEFT JOIN LATERAL (
       SELECT phase, tx_hash
       FROM stellar_operations
@@ -363,7 +364,7 @@ export async function getPublicEventBySlug(slug: string): Promise<(Event & { ent
       so.phase AS stellar_phase,
       so.tx_hash AS stellar_tx_hash,
       ev2.name AS event_name,
-      ev2.slug AS event_slug,
+      e.slug AS event_slug,
       ev2.year,
       ev2.start_date,
       ev2.end_date,

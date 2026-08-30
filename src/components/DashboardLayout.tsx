@@ -17,6 +17,7 @@ import {
   Globe
 } from 'lucide-react';
 import { ActorContext } from '../infrastructure/auth/actorContext';
+import { WalletStatus } from './WalletStatus';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -78,7 +79,9 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, acto
           })}
         </nav>
 
-        <div className="p-4 border-t border-stone-200 bg-stone-50/50">
+        <div className="p-4 border-t border-stone-200 bg-stone-50/50 space-y-3">
+          <WalletStatus actor={actor} />
+
           <Link
             href="/"
             className="flex items-center gap-3 px-4 py-2 rounded-lg text-sm text-stone-600 hover:bg-stone-100 hover:text-stone-900 font-medium mb-2"

@@ -11,6 +11,7 @@ interface TableProps<T> {
   data: T[];
   emptyMessage?: string;
   className?: string;
+  getRowId?: (row: T) => string;
 }
 
 export function Table<T>({
@@ -18,6 +19,7 @@ export function Table<T>({
   data,
   emptyMessage = 'No hay registros disponibles.',
   className = '',
+  getRowId,
 }: TableProps<T>) {
   return (
     <div className={`w-full overflow-x-auto rounded-lg border border-stone-200/80 bg-white ${className}`}>
@@ -40,8 +42,9 @@ export function Table<T>({
             </tr>
           ) : (
             data.map((row, rowIdx) => (
-              <tr 
-                key={rowIdx} 
+              <tr
+                key={rowIdx}
+                data-row-id={getRowId ? getRowId(row) : String(rowIdx)}
                 className="hover:bg-[#FCFBF7]/50 transition-colors duration-150"
               >
                 {columns.map((col, colIdx) => (

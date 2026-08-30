@@ -9,6 +9,11 @@ function getRpId(): string | undefined {
   return window.location.hostname;
 }
 
+function getTestWebAuthn() {
+  if (typeof window === 'undefined') return undefined;
+  return (window as unknown as { __culturagoWebAuthn?: unknown }).__culturagoWebAuthn;
+}
+
 function getPublicEnv(): { rpcUrl: string; networkPassphrase: string; walletWasmHash: string; acceptedWasmHashes: string[] } {
   const rpcUrl = process.env.NEXT_PUBLIC_STELLAR_RPC_URL?.trim() ?? '';
   const networkPassphrase = process.env.NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE?.trim() ?? '';
@@ -78,7 +83,8 @@ export async function signAndSubmitOperation(
     networkPassphrase,
     walletWasmHash,
     acceptedWasmHashes.length > 0 ? acceptedWasmHashes : [walletWasmHash],
-    getRpId()
+    getRpId(),
+    getTestWebAuthn() as ConstructorParameters<typeof PasskeyKitSigner>[5]
   );
 
   try {

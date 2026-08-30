@@ -3,6 +3,7 @@ import { domainError } from '@/domain/errors';
 import { PreparedTransactionPayload, SignedTransactionPayload, SignerPort } from '@/ports/SignerPort';
 import { Address, Transaction, TransactionBuilder, xdr } from '@stellar/stellar-sdk';
 import type { StorageAdapter, StoredPasskey } from 'passkey-kit';
+import type { PasskeyKitConfig } from 'passkey-kit';
 
 async function buildStorage(): Promise<StorageAdapter> {
   try {
@@ -73,7 +74,8 @@ export class PasskeyKitSigner implements SignerPort {
     private readonly networkPassphrase: string,
     private readonly walletWasmHash: string,
     private readonly acceptedWasmHashes: readonly string[] = [walletWasmHash],
-    private readonly rpId: string | undefined = undefined
+    private readonly rpId: string | undefined = undefined,
+    private readonly webAuthn?: PasskeyKitConfig['WebAuthn']
   ) {}
 
   private async buildKit(): Promise<import('passkey-kit').PasskeyKit> {
@@ -88,6 +90,7 @@ export class PasskeyKitSigner implements SignerPort {
       storage,
       // Deployment is always server-side; the client never has a deployer secret.
       deploySource: undefined,
+      ...(this.webAuthn ? { WebAuthn: this.webAuthn } : {}),
     });
   }
 

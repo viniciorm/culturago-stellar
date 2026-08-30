@@ -26,6 +26,7 @@ export const CredentialForm: React.FC<CredentialFormProps> = ({
     .map(e => ({ value: e.id, label: e.display_name }));
 
   const [credentialCode, setCredentialCode] = useState('');
+  const [isCodeDirty, setIsCodeDirty] = useState(false);
   const [issuerId, setIssuerId] = useState(defaultIssuerId ?? issuers[0]?.value ?? '');
   const [subjectId, setSubjectId] = useState('');
   const [credentialType, setCredentialType] = useState('dancer_participant');
@@ -52,7 +53,9 @@ export const CredentialForm: React.FC<CredentialFormProps> = ({
       : 'DEMO';
 
     const randomSuffix = Math.floor(100 + Math.random() * 900);
-    setCredentialCode(`CRED-FDVC26-${codePrefix}-${subjectNamePart}-${randomSuffix}`);
+    if (!isCodeDirty) {
+      setCredentialCode(`CRED-FDVC26-${codePrefix}-${subjectNamePart}-${randomSuffix}`);
+    }
 
     const defaultTitles: Record<string, string> = {
       dancer_participant: 'Bailarina Participante FDVC 2026',
@@ -62,7 +65,9 @@ export const CredentialForm: React.FC<CredentialFormProps> = ({
       official_videographer: 'Camarógrafo Oficial FDVC 2026',
       venue_sponsor: 'Auspiciador / Aliado Cultural FDVC 2026',
     };
-    setTitle(defaultTitles[credentialType] || 'Credencial CulturaGO');
+    if (!title) {
+      setTitle(defaultTitles[credentialType] || 'Credencial CulturaGO');
+    }
 
     const defaultDescriptions: Record<string, string> = {
       dancer_participant: 'Acreditación oficial que certifica la participación de la bailarina solista en las muestras artísticas de FDVC 2026.',
@@ -72,9 +77,11 @@ export const CredentialForm: React.FC<CredentialFormProps> = ({
       official_videographer: 'Acreditación de prensa y cobertura de video/audiovisual autorizada en el escenario del festival.',
       venue_sponsor: 'Acreditación de patrocinio, colaboración y alianza cultural oficial con el Festival Nacional Danza del Vientre Chile 2026.',
     };
-    setDescription(defaultDescriptions[credentialType] || '');
+    if (!description) {
+      setDescription(defaultDescriptions[credentialType] || '');
+    }
 
-  }, [credentialType, subjectId, entities]);
+  }, [credentialType, subjectId, entities, isCodeDirty, title, description]);
 
   // Set default subject on mount
   useEffect(() => {
@@ -163,7 +170,10 @@ export const CredentialForm: React.FC<CredentialFormProps> = ({
         <Input
           label="Código de Credencial (Autogenerado)"
           value={credentialCode}
-          onChange={(e) => setCredentialCode(e.target.value)}
+          onChange={(e) => {
+            setCredentialCode(e.target.value);
+            setIsCodeDirty(true);
+          }}
           required
         />
       </div>
