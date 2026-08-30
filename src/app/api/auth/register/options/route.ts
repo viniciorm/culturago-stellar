@@ -17,9 +17,8 @@ export async function POST(request: Request) {
   } catch (error) {
     const code = isDomainError(error) ? (error as { code: string }).code : undefined;
     const status = code === 'UNAUTHORIZED' ? 401 : isDomainError(error) ? 400 : 500;
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'internal error' },
-      { status }
-    );
+    // Do not leak account existence, status or passkey state.
+    const message = status === 400 ? 'invalid registration request' : status === 401 ? 'unauthorized' : 'internal error';
+    return NextResponse.json({ error: message }, { status });
   }
 }

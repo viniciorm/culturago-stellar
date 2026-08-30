@@ -23,7 +23,6 @@ export class PostgreSQLRateBudgetStore implements RateBudgetStore {
        ON CONFLICT (actor_id, window_type) DO UPDATE
        SET count = CASE
          WHEN rate_budget_windows.reset_at <= $4 THEN 1
-         WHEN rate_budget_windows.count >= $5 THEN rate_budget_windows.count
          ELSE rate_budget_windows.count + 1
        END,
        reset_at = CASE
@@ -31,7 +30,7 @@ export class PostgreSQLRateBudgetStore implements RateBudgetStore {
          ELSE rate_budget_windows.reset_at
        END
        RETURNING count, reset_at`,
-      [key, windowType, resetAt, now, limit]
+      [key, windowType, resetAt, now]
     );
 
     const row = result.rows[0];

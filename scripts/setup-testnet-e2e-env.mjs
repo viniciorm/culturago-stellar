@@ -38,14 +38,33 @@ function loadEnv(path) {
 }
 
 function saveEnv(path, env) {
-  const lines = env.__lines.map((entry) => {
+  const seen = new Map();
+  // Keep the last definition of each key; preserve comments and blank lines.
+  for (let i = 0; i < env.__lines.length; i++) {
+    const entry = env.__lines[i];
+    if (typeof entry === 'object') {
+      seen.set(entry.key, i);
+    }
+  }
+
+  const output = [];
+  for (const [key, index] of seen.entries()) {
+    const value = env[key];
+    const needsQuotes = /\s|[#"']/u.test(value);
+    output[index] = `${key}=${needsQuotes ? '"' + value.replace(/"/g, '\\"') + '"' : value}`;
+  }
+
+  const lines = env.__lines.map((entry, i) => {
     if (typeof entry === 'string') return entry;
-    if (env[entry.key] === entry.value) return entry.raw;
-    const needsQuotes = /\s|[#"']/u.test(env[entry.key]);
-    return `${entry.key}=${needsQuotes ? '"' + env[entry.key].replace(/"/g, '\\"') + '"' : env[entry.key]}`;
+    return output[i] ?? '';
+  }).filter((line, i) => {
+    const entry = env.__lines[i];
+    if (typeof entry === 'string') return true;
+    return seen.get(entry.key) === i;
   });
+
   for (const [key, value] of Object.entries(env)) {
-    if (key === '__lines' || lines.some((l) => typeof l === 'object' && l.key === key)) continue;
+    if (key === '__lines' || seen.has(key)) continue;
     const needsQuotes = /\s|[#"']/u.test(value);
     lines.push(`${key}=${needsQuotes ? '"' + value.replace(/"/g, '\\"') + '"' : value}`);
   }
@@ -84,6 +103,13 @@ if (!env.STELLAR_TESTNET_ADMIN_SECRET) {
 const adminKeypair = Keypair.fromSecret(env.STELLAR_TESTNET_ADMIN_SECRET);
 if (adminKeypair.publicKey() !== env.STELLAR_TESTNET_ADMIN_ADDRESS) {
   throw new Error('STELLAR_TESTNET_ADMIN_SECRET public key does not match STELLAR_TESTNET_ADMIN_ADDRESS.');
+}
+
+// Fee payer: for approved Testnet E2E, reuse the admin wallet as fee payer.
+if (env.STELLAR_TESTNET_ADMIN_SECRET && env.STELLAR_TESTNET_ADMIN_ADDRESS) {
+  env.STELLAR_FEEPAYER_SECRET = env.STELLAR_TESTNET_ADMIN_SECRET;
+  env.STELLAR_FEEPAYER_ADDRESS = env.STELLAR_TESTNET_ADMIN_ADDRESS;
+  console.log('Fee payer set to admin wallet.');
 }
 
 // Ensure operator exists and is different from admin

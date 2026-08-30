@@ -28,8 +28,10 @@ export async function POST(request: Request) {
     return res;
   } catch (error) {
     const status = isDomainError(error) ? 400 : 500;
+    // Return a generic message for all domain errors to prevent enumeration of
+    // account existence, account status or challenge consumption state.
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'internal error' },
+      { error: status === 400 ? 'invalid or expired claim code' : 'internal error' },
       { status }
     );
   }

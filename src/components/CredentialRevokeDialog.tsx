@@ -26,16 +26,21 @@ export function CredentialRevokeDialog({
   const [reason, setReason] = useState('');
   const [prepared, setPrepared] = useState<PrepareCredentialResult | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isPreparing, setIsPreparing] = useState(false);
 
   if (!isOpen || !credential) return null;
 
   const handlePrepare = async () => {
+    if (isPreparing) return;
+    setIsPreparing(true);
     setSubmitError(null);
     try {
       const result = await prepareCredentialRevoke(credential.id, reason);
       setPrepared(result);
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : 'Error preparando revocación');
+    } finally {
+      setIsPreparing(false);
     }
   };
 
@@ -102,7 +107,8 @@ export function CredentialRevokeDialog({
               size="sm"
               className="w-full text-xs font-semibold"
               onClick={handlePrepare}
-              disabled={!reason.trim()}
+              disabled={!reason.trim() || isPreparing}
+              isLoading={isPreparing}
             >
               Preparar revocación Stellar
             </Button>

@@ -64,7 +64,7 @@ describe('UUID TS ↔ SQL parity', () => {
       const expectedDigest = await sha256Node(buildDigestInput('culturago.entity.v1', canonical));
 
       const result = await getPool().query<{ h: string }>(
-        'SELECT culturago_canonical_hash($1, to_json($2)::text) AS h',
+        'SELECT culturago_canonical_hash($1, to_json($2::text)::text) AS h',
         ['culturago.entity.v1', id]
       );
       expect(result.rows[0].h).toBe(expectedDigest);

@@ -45,7 +45,7 @@ describe('/api/claim route', () => {
     expect(setCookie).toContain('culturago_session');
   });
 
-  it('rejects an invalid claim code', async () => {
+  it('rejects an invalid claim code without leaking account state', async () => {
     const res = await POST(
       new Request('http://localhost/api/claim', {
         method: 'POST',
@@ -54,5 +54,68 @@ describe('/api/claim route', () => {
     );
 
     expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe('invalid or expired claim code');
+  });
+
+  it('returns the same generic error for an already-consumed code', async () => {
+    const { store } = createAuthBundle();
+    const account = await store.createAccount({
+      id: 'acc-claim-consumed',
+      status: 'pending_claim',
+      personEntityId: null,
+      walletContractAddress: null,
+    });
+
+    const claimService = new ClaimService(store);
+    const code = await claimService.createClaimCode(account.id);
+    await claimService.claimAccount(code); // consume
+
+    const res = await POST(
+      new Request('http://localhost/api/claim', {
+        method: 'POST',
+        body: JSON.stringify({ code }),
+      })
+    );
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe('invalid or expired claim code');
+  });
+
+  it('returns the same generic error for a code bound to a non-pending account', async () => {
+    const { store } = createAuthBundle();
+    const account = await store.createAccount({
+      id: 'acc-claim-active',
+      status: 'active',
+      personEntityId: null,
+      walletContractAddress: null,
+    });
+
+    const claimService = new ClaimService(store);
+    const code = await claimService.createClaimCode(account.id);
+
+    const res = await POST(
+      new Request('http://localhost/api/claim', {
+        method: 'POST',
+        body: JSON.stringify({ code }),
+      })
+    );
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe('invalid or expired claim code');
+  });
+
+  it('does not create a session when the claim is rejected', async () => {
+    const res = await POST(
+      new Request('http://localhost/api/claim', {
+        method: 'POST',
+        body: JSON.stringify({ code: 'not-a-real-code' }),
+      })
+    );
+
+    expect(res.status).toBe(400);
+    expect(res.headers.get('set-cookie')).toBeNull();
   });
 });

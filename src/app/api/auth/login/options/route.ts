@@ -10,8 +10,9 @@ export async function POST(request: Request) {
     return NextResponse.json(options);
   } catch (error) {
     const status = isDomainError(error) ? 400 : 500;
+    // Generic message prevents distinguishing account existence from missing passkeys.
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'internal error' },
+      { error: status === 400 ? 'invalid authentication request' : 'internal error' },
       { status }
     );
   }

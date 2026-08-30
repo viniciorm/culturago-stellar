@@ -20,8 +20,9 @@ export async function POST(request: Request) {
     return res;
   } catch (error) {
     const status = isDomainError(error) ? 400 : 500;
+    // Generic message prevents distinguishing unknown credentials from stale challenges.
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'internal error' },
+      { error: status === 400 ? 'invalid authentication response' : 'internal error' },
       { status }
     );
   }

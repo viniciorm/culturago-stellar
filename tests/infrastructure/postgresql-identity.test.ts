@@ -50,7 +50,7 @@ describeIfPg('PostgreSQLIdentityStore integration', () => {
       expiresAt: new Date(Date.now() + 60_000),
     });
 
-    const digest = '54f2b5e28865eb8b46e5193cf06fd25b8a2a5578d4e36ff4225f4b7b9e5d8b9e'; // sha256('raw-challenge-value')
+    const digest = '282ed34d009b00c49c294123733c85bfd85ee75957cf4e5ff7e54f98448238f6'; // sha256('raw-challenge-value')
     const first = await store.consumeChallenge(digest);
     expect(first).not.toBeNull();
     expect(first?.accountId).toBe(account.id);

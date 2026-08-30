@@ -78,9 +78,15 @@ export function getStellarNetworkConfig(): StellarNetworkConfig {
     }
   }
 
-  // Role separation: the fee payer must never be the testnet admin or fixture signer.
+  // Role separation: the fee payer must never be the testnet admin or fixture signer
+  // in production-like runs. For approved Testnet E2E, the admin wallet may also act
+  // as fee payer to keep the test surface small.
+  const allowAdminFeePayer =
+    publicConfig.environment === 'testnet' &&
+    process.env.CULTURAGO_ALLOW_TESTNET_MUTATIONS === 'true';
+
   const adminAddress = process.env.STELLAR_TESTNET_ADMIN_ADDRESS?.trim() || null;
-  if (feePayer && adminAddress && feePayer === adminAddress) {
+  if (!allowAdminFeePayer && feePayer && adminAddress && feePayer === adminAddress) {
     throw domainError(
       'INVALID_INPUT',
       'STELLAR_FEEPAYER_ADDRESS must not match STELLAR_TESTNET_ADMIN_ADDRESS'
@@ -88,7 +94,7 @@ export function getStellarNetworkConfig(): StellarNetworkConfig {
   }
 
   const fixtureSecret = process.env.STELLAR_TESTNET_FIXTURE_SECRET?.trim();
-  if (feePayer && fixtureSecret) {
+  if (!allowAdminFeePayer && feePayer && fixtureSecret) {
     const fixtureAddress = Keypair.fromSecret(fixtureSecret).publicKey();
     if (feePayer === fixtureAddress) {
       throw domainError(

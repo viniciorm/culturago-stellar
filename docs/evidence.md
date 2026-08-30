@@ -1,5 +1,29 @@
 # Evidencia reproducible por fase
 
+## Avance F2.3, F3.2, F4.2, F7.1 — 29 de agosto de 2026
+
+**Implementado**
+
+- **F2.3 Anti-toma/anti-enumeración**: `src/app/api/claim/route.ts`, `src/app/api/auth/login/options/route.ts`, `src/app/api/auth/login/verify/route.ts`, `src/app/api/auth/register/options/route.ts`, `src/app/api/auth/register/verify/route.ts` devuelven mensajes de error genéricos (`invalid or expired claim code`, `invalid authentication request`, `invalid authentication response`, `invalid registration request`, `unauthorized`) en lugar de detalles específicos. `tests/app/claim-route.test.ts`, `tests/app/login-route.test.ts` y `tests/app/register-route.test.ts` cubren códigos inválidos, consumidos, no pendientes, cuentas inexistentes, challenge de otra cuenta, respuesta replay/stale y ausencia de cookie de sesión. `docs/auth-stores.md` documenta los límites entre `InMemoryIdentityStore`, `PostgreSQLIdentityStore` y `createAuthBundle`.
+- **F4.2 UI doble-clic**: `src/components/CredentialRevokeDialog.tsx` ahora bloquea múltiples clics en “Preparar revocación Stellar” con un estado `isPreparing` y deshabilita el botón mientras carga.
+- **F7.1 Residuos del harness**: no quedan referencias a `STELLAR_HARNESS_RATE_LIMIT`, `grant-roles` ni `/smart-wallet` en `src/`, `tests/` o `.env.example`; se agregó aviso histórico en `docs/smart-wallet-e2e-remediation-plan.md`.
+- **F3.2 E2E real con relayer**: `scripts/testnet-smart-wallet-deploy-e2e.mjs` despliega una smart wallet real en Stellar Testnet usando `PasskeyKit` con un WebAuthn software client, `PasskeyServer` y el relayer OpenZeppelin Channels. El fee payer es la wallet admin (`STELLAR_FEEPAYER_SECRET`/`STELLAR_FEEPAYER_ADDRESS`) con kill switch `CULTURAGO_ALLOW_TESTNET_MUTATIONS=true`. El contract id derivado y el tx hash se guardan en `docs/manifests/testnet-manifest.json`.
+
+**Verificación (2026-08-29, post-cambios)**
+
+- `pnpm lint --max-warnings=0` → cero warnings.
+- `pnpm run typecheck` → limpio.
+- `pnpm test` → **230/233 pasan**, 3 skipped por `DATABASE_URL`.
+
+**Verificación F3.2 Testnet**
+
+| Paso | Valor | Ledger |
+|---|---|---|
+| Smart wallet contract id | `CAW3QB5N4OLQ4CT3XRNJFTCEX7GNPGTAOJSS6ABM3CUTV2R44UZ5WKCG` | — |
+| Deploy tx hash | `754e29c8ddf4064d68bd5a464cd0d629a277a54e28c8e6c3ffc40b8ea5b16b5b` | 1788047522 |
+
+**Pendiente**: F6 “E2E Testnet completo desde frontend con passkey, adversariales, readback de permisos” requiere un navegador (Playwright) y una base de datos PostgreSQL para correr la app en modo testnet; o puede ejecutarse como E2E Node con el mismo flujo passkey/relayer.
+
 ## Avance F3.1, F4.2, F8.2, F9, F5-f, F6 — 29 de agosto de 2026
 
 **Implementado**

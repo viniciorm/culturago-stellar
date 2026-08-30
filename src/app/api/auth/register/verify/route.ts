@@ -17,9 +17,8 @@ export async function POST(request: Request) {
   } catch (error) {
     const code = isDomainError(error) ? (error as { code: string }).code : undefined;
     const status = code === 'UNAUTHORIZED' ? 401 : isDomainError(error) ? 400 : 500;
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'internal error' },
-      { status }
-    );
+    // Do not leak whether the challenge exists, was consumed or belongs to another account.
+    const message = status === 400 ? 'invalid registration response' : status === 401 ? 'unauthorized' : 'internal error';
+    return NextResponse.json({ error: message }, { status });
   }
 }

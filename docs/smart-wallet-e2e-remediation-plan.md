@@ -1,5 +1,12 @@
 # Plan de remediación para el E2E de smart wallet
 
+> **Histórico / 2026-08-29:** el harness temporal `/smart-wallet` y sus endpoints
+> exclusivos de prueba fueron eliminados del código. El flujo de smart wallet se
+> ejecuta ahora desde el dashboard autenticado (`/dashboard`) usando
+> `PasskeyKitSigner`, `/api/smart-wallet/deploy` y `StellarStatusBlock`. Este
+> documento conserva las decisiones de diseño; las rutas y servicios temporales que
+> describe ya no existen.
+
 ## Resultado esperado
 
 Completar una prueba E2E real en Stellar Testnet que demuestre este recorrido:

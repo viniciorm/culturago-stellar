@@ -37,7 +37,16 @@
     ],
     "implementation": "passkey-kit",
     "version": "0.16.5",
-    "source": "https://github.com/stellar/passkey-kit/tree/main/docs/deployments-testnet-2026-07-11.md"
+    "source": "https://github.com/stellar/passkey-kit/tree/main/docs/deployments-testnet-2026-07-11.md",
+    "testnetDeployed": [
+      {
+        "contractId": "CAW3QB5N4OLQ4CT3XRNJFTCEX7GNPGTAOJSS6ABM3CUTV2R44UZ5WKCG",
+        "keyId": "WicLroxKafoQBhLo0UzVtMp54VWnz-Fs-0i4MkUhdTw",
+        "txHash": "754e29c8ddf4064d68bd5a464cd0d629a277a54e28c8e6c3ffc40b8ea5b16b5b",
+        "wasmHash": "fdefad64b96837147e1c333e51f537b696eab925e9f147e63d597c04e3c903f0",
+        "deployedAt": "2026-08-29T23:52:06.659Z"
+      }
+    ]
   },
   "tools": {
     "stellarCli": "27.1.0",

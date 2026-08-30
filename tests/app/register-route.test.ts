@@ -147,4 +147,53 @@ describe('/api/auth/register route', () => {
     const body = await res.json();
     expect(body.credentialId).toBe('cred-register');
   });
+
+  it('rejects verification when the challenge was issued for a different account', async () => {
+    const bundle = createAuthBundle();
+    await bundle.store.createAccount({
+      id: 'other-actor',
+      status: 'active',
+      personEntityId: null,
+      walletContractAddress: null,
+    });
+
+    vi.mocked(generateRegistrationOptions).mockResolvedValue({
+      challenge: 'other-register-challenge',
+      user: { id: 'u', name: 'other-actor', displayName: 'Other' },
+      excludeCredentials: [],
+    } as never);
+
+    // Issue a challenge for a different account directly (bypassing route actor check).
+    const otherChallenge = await bundle.passkeys.startRegistration('other-actor', 'Other');
+
+    const res = await postVerify(
+      new Request('http://localhost/api/auth/register/verify', {
+        method: 'POST',
+        body: JSON.stringify({
+          accountId: 'test-actor',
+          response: registrationResponse('cred-register-other', otherChallenge.challenge),
+        }),
+      })
+    );
+
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error).toBe('unauthorized');
+  });
+
+  it('rejects verification with a stale or unknown response', async () => {
+    const res = await postVerify(
+      new Request('http://localhost/api/auth/register/verify', {
+        method: 'POST',
+        body: JSON.stringify({
+          accountId: 'test-actor',
+          response: registrationResponse('cred-register-stale', 'not-a-known-challenge'),
+        }),
+      })
+    );
+
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error).toBe('unauthorized');
+  });
 });

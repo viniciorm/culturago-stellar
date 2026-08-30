@@ -90,7 +90,7 @@ describe('perimeter', () => {
   });
 
   it('enforces rate limit per key', async () => {
-    const key = 'actor-1';
+    const key = `perimeter-rate-limit-${Math.random().toString(36).slice(2)}`;
     for (let i = 0; i < 5; i += 1) {
       await assertRateLimit(key, { limit: 5, windowMs: 60_000 });
     }
