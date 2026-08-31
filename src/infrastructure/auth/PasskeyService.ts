@@ -34,13 +34,14 @@ export class PasskeyService {
     const options = await generateRegistrationOptions({
       rpName: RP_NAME,
       rpID: this.rpId,
-      userName: accountId,
+      userName: displayName || accountId,
       userDisplayName: displayName,
+      userID: Buffer.from(accountId, 'utf-8'),
       excludeCredentials: existing.map((c) => ({
         id: c.credentialId,
         transports: c.transports as AuthenticatorTransportFuture[] | undefined,
       })),
-      authenticatorSelection: { residentKey: 'preferred', userVerification: 'preferred' },
+      authenticatorSelection: { residentKey: 'required', userVerification: 'required' },
       attestationType: 'none',
     });
 
@@ -88,24 +89,26 @@ export class PasskeyService {
     return passkey;
   }
 
-  async startAuthentication(accountId: string) {
-    const passkeys = await this.store.listPasskeys(accountId);
-    if (passkeys.length === 0) throw domainError('NOT_FOUND', 'no active passkeys for account');
+  async startAuthentication(accountId?: string) {
+    const passkeys = accountId ? await this.store.listPasskeys(accountId) : [];
+    if (accountId && passkeys.length === 0) throw domainError('NOT_FOUND', 'no active passkeys for account');
 
     const options = await generateAuthenticationOptions({
       rpID: this.rpId,
-      allowCredentials: passkeys.map((c) => ({
-        id: c.credentialId,
-        transports: c.transports as AuthenticatorTransportFuture[] | undefined,
-      })),
-      userVerification: 'preferred',
+      allowCredentials: accountId
+        ? passkeys.map((c) => ({
+            id: c.credentialId,
+            transports: c.transports as AuthenticatorTransportFuture[] | undefined,
+          }))
+        : undefined,
+      userVerification: 'required',
     });
 
     await this.store.createChallenge({
       id: randomUUID(),
       challenge: options.challenge,
       purpose: 'authenticate',
-      accountId,
+      accountId: accountId ?? null,
       expiresAt: new Date(Date.now() + CHALLENGE_TTL_MS),
     });
 
