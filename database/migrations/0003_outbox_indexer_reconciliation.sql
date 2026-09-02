@@ -95,11 +95,13 @@ CREATE TABLE IF NOT EXISTS stellar_ttl_jobs (
 CREATE INDEX IF NOT EXISTS idx_ttl_jobs_next_run
     ON stellar_ttl_jobs (next_run_at) WHERE status IN ('pending', 'alerted');
 
+DROP TRIGGER IF EXISTS trg_stellar_ttl_jobs_modtime ON stellar_ttl_jobs;
 CREATE TRIGGER trg_stellar_ttl_jobs_modtime
     BEFORE UPDATE ON stellar_ttl_jobs
     FOR EACH ROW EXECUTE FUNCTION update_modified_column();
 
 -- ---------- Trigger para updated_at de stellar_operations ----------
+DROP TRIGGER IF EXISTS trg_stellar_operations_modtime ON stellar_operations;
 CREATE TRIGGER trg_stellar_operations_modtime
     BEFORE UPDATE ON stellar_operations
     FOR EACH ROW EXECUTE FUNCTION update_modified_column();
