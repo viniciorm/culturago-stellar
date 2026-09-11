@@ -42,7 +42,8 @@ jobs:
 
       - name: Install Stellar CLI
         run: |
-          cargo install --locked stellar-cli --version 27.1.0
+          curl -fsSL https://github.com/stellar/stellar-cli/releases/download/v27.1.0/stellar-cli_27.1.0_amd64.deb -o /tmp/stellar.deb
+          sudo dpkg -i /tmp/stellar.deb
           rustup target add wasm32v1-none || true
 
       - name: Contracts build
