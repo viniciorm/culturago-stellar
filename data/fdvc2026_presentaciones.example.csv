@@ -1,0 +1,4 @@
+numero_presentacion,nombre_baile,tipo_participacion,nombre_escuela,nombre_encargada,email_contacto,telefono_contacto,cantidad_bailarinas,nombres_bailarinas,instagram,facebook,tiktok,resena,observaciones,estado_carga
+1,Danza del Sable,Grupal / Escuela,Academia Farah,María José Pérez,maria.perez@farahdanza.cl,+56912345678,6,"María José Pérez, Ana Torres, Carla Rivas, Sofia Vega, Elena Ruiz, Lucia Morales",@academiafarah,facebook.com/academiafarah,tiktok.com/@academiafarah,Presentación grupal de danza del sable tradicional.,,pendiente
+2,Raks Sharqi Solista,Solista / Profesional,,Carolina Gómez,carolina.gomez@gmail.com,+56987654321,1,Carolina Gómez,@carogomez_oriental,,tiktok.com/@carogomez,Interpretación solista estilo egipcio clásico.,,pendiente
+3,Tabla Solo Dúo,Grupal / Dúo,Estudio Orient,Daniela Silva,daniela.silva@orient.cl,+56911223344,2,"Daniela Silva, Patricia Araya",@estudioorient,facebook.com/estudioorient,,Rutina dinámica de tabla solo en dúo.,,pendiente

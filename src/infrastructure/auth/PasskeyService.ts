@@ -9,7 +9,9 @@ import {
 } from '@simplewebauthn/server';
 import { domainError } from '../../domain/errors';
 import { IdentityStore } from '../../ports/IdentityStore';
+import { Logger } from '../observability/Logger';
 
+const log = new Logger('PasskeyService');
 const sha256Hex = (value: string): string => createHash('sha256').update(value).digest('hex');
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
 const RP_NAME = 'CulturaGO';
@@ -64,12 +66,23 @@ export class PasskeyService {
     if (challenge.purpose !== 'register_passkey') throw domainError('UNAUTHORIZED', 'wrong challenge purpose');
     if (challenge.accountId !== accountId) throw domainError('UNAUTHORIZED', 'challenge does not match account');
 
-    const verification = await verifyRegistrationResponse({
-      response,
-      expectedChallenge: extractedChallenge,
-      expectedOrigin: [...this.expectedOrigins],
-      expectedRPID: this.rpId,
-    });
+    let verification;
+    try {
+      verification = await verifyRegistrationResponse({
+        response,
+        expectedChallenge: extractedChallenge,
+        expectedOrigin: [...this.expectedOrigins],
+        expectedRPID: this.rpId,
+      });
+    } catch (err) {
+      if (err instanceof Error) {
+        log.error('webauthn_registration_failed', { error: err.message });
+      }
+      throw domainError(
+        'UNAUTHORIZED',
+        'No pudimos registrar tu passkey. Intenta nuevamente.'
+      );
+    }
 
     if (!verification.verified || !verification.registrationInfo) {
       throw domainError('UNAUTHORIZED', 'WebAuthn registration verification failed');
@@ -125,18 +138,29 @@ export class PasskeyService {
     const passkey = await this.store.getPasskey(response.id);
     if (!passkey || passkey.revokedAt) throw domainError('UNAUTHORIZED', 'unknown or revoked credential');
 
-    const verification = await verifyAuthenticationResponse({
-      response,
-      expectedChallenge: extractedChallenge,
-      expectedOrigin: [...this.expectedOrigins],
-      expectedRPID: this.rpId,
-      credential: {
-        id: passkey.credentialId,
-        publicKey: Uint8Array.from(passkey.publicKey),
-        counter: passkey.signCounter,
-        transports: passkey.transports as AuthenticatorTransportFuture[] | undefined,
-      },
-    });
+    let verification;
+    try {
+      verification = await verifyAuthenticationResponse({
+        response,
+        expectedChallenge: extractedChallenge,
+        expectedOrigin: [...this.expectedOrigins],
+        expectedRPID: this.rpId,
+        credential: {
+          id: passkey.credentialId,
+          publicKey: Uint8Array.from(passkey.publicKey),
+          counter: passkey.signCounter,
+          transports: passkey.transports as AuthenticatorTransportFuture[] | undefined,
+        },
+      });
+    } catch (err) {
+      if (err instanceof Error) {
+        log.error('webauthn_authentication_failed', { error: err.message });
+      }
+      throw domainError(
+        'UNAUTHORIZED',
+        'No pudimos verificar tu passkey. Intenta nuevamente.'
+      );
+    }
 
     if (!verification.verified) {
       throw domainError('UNAUTHORIZED', 'WebAuthn authentication verification failed');

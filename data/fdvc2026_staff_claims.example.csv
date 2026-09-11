@@ -1,0 +1,3 @@
+id_staff,nombre_completo,email_contacto,telefono_contacto,rol_oficial,titulo_credencial,descripcion_credencial,tipo_rol
+1,Marcos Reyes,marcos@culturago.cl,+56900001111,Productor / Organizador General,Certificado de Rol Oficial FDVC 2026,Reconocimiento de Rol Oficial — Productor General FDVC 2026,organizer
+2,Danilo,danilo@culturago.cl,+56900002222,Staff Equipo Tecnología CulturaGO,Certificado de Rol Oficial FDVC 2026,Reconocimiento de Rol Oficial — Staff Equipo Tecnología CulturaGO,staff
