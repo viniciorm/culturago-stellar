@@ -53,10 +53,15 @@ export default function LoginClient({ env }: LoginClientProps) {
       });
       const verify = await verifyRes.json();
       if (!verifyRes.ok || hasError(verify)) {
-        throw new Error(hasError(verify) ? verify.error : 'Verificación de passkey fallida');
+        throw new Error(hasError(verify) ? verify.error : 'No pudimos verificar tu passkey. Intenta nuevamente.');
       }
 
-      router.push('/dashboard');
+      // Query landing destination based on session role & assigned credentials
+      const meRes = await fetch('/api/auth/me', { method: 'GET', cache: 'no-store' });
+      const me = await meRes.json();
+      const destination = meRes.ok && me.redirectTo ? me.redirectTo : '/dashboard';
+
+      router.push(destination);
     } catch (error) {
       setStatus(`Error: ${error instanceof Error ? error.message : 'Error desconocido'}`);
     }
@@ -114,8 +119,13 @@ export default function LoginClient({ env }: LoginClientProps) {
         throw new Error(hasError(verify) ? verify.error : 'Verificación de registro fallida');
       }
 
-      setStatus('Passkey registrado. Ahora podés iniciar sesión.');
-      setMode('login');
+      // Query landing destination and redirect to credential page or home
+      const meRes = await fetch('/api/auth/me', { method: 'GET', cache: 'no-store' });
+      const me = await meRes.json();
+      const destination = meRes.ok && me.redirectTo ? me.redirectTo : '/login';
+
+      setStatus('Passkey registrado exitosamente. Redirigiendo...');
+      router.push(destination);
     } catch (error) {
       setStatus(`Error: ${error instanceof Error ? error.message : 'Error desconocido'}`);
     }
