@@ -56,7 +56,7 @@ export async function GET() {
       role: actor.role,
       redirectTo: '/',
     });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'internal error' }, { status: 500 });
   }
 }
