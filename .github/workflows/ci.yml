@@ -40,6 +40,11 @@ jobs:
       - name: Contracts test
         run: pnpm contracts:test
 
+      - name: Install Stellar CLI
+        run: |
+          cargo install --locked stellar-cli --version 27.1.0
+          rustup target add wasm32v1-none || true
+
       - name: Contracts build
         run: pnpm contracts:build
 
