@@ -85,9 +85,12 @@ async function main() {
   const localCheck = await exec(conn, 'curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3080/api/health');
   console.log(`Local app health code: ${localCheck.out.trim()}`);
 
-  console.log('\n=== Host Nginx HTTPS smoke (port 443) ===');
-  const httpsCheck = await exec(conn, `curl -s -o /dev/null -w "%{http_code}" -H "Host: ${publicHost}" https://127.0.0.1/login -k`);
+  console.log('\n=== Host Nginx HTTPS smoke (port 443 with SNI) ===');
+  const httpsCheck = await exec(conn, `curl --resolve "${publicHost}:443:127.0.0.1" -s -o /dev/null -w "%{http_code}" "https://${publicHost}/login"`);
   console.log(`HTTPS login code: ${httpsCheck.out.trim()}`);
+  if (httpsCheck.out.trim() !== '200' && httpsCheck.out.trim() !== '308') {
+    throw new Error(`HTTPS smoke falló con código ${httpsCheck.out.trim()}`);
+  }
 
   console.log('\n=== App logs (tail) ===');
   await exec(conn, 'docker logs --tail 30 culturago-app');
