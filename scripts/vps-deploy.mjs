@@ -59,82 +59,6 @@ function uploadFile(conn, remotePath, content) {
   });
 }
 
-function buildRemoteEnv() {
-  const localEnv = readLocalEnv('.env');
-  const testnetEnv = readLocalEnv('.env.testnet');
-  const merged = { ...localEnv, ...testnetEnv };
-
-  const safeVars = [
-    'NEXT_PUBLIC_CULTURAGO_ENV',
-    'NEXT_PUBLIC_APP_URL',
-    'NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE',
-    'NEXT_PUBLIC_STELLAR_RPC_URL',
-    'NEXT_PUBLIC_ENTITY_REGISTRY_CONTRACT_ID',
-    'NEXT_PUBLIC_CREDENTIAL_REGISTRY_CONTRACT_ID',
-    'NEXT_PUBLIC_STELLAR_EXPLORER_BASE',
-    'NEXT_PUBLIC_SMART_WALLET_WASM_HASH',
-    'NEXT_PUBLIC_SMART_WALLET_ACCEPTED_WASM_HASHES',
-    'WEBAUTHN_RP_ID',
-    'WEBAUTHN_ORIGINS',
-    'STELLAR_FEEPAYER_ADDRESS',
-    'STELLAR_FEEPAYER_SECRET',
-    'STELLAR_TESTNET_ADMIN_ADDRESS',
-    'STELLAR_TESTNET_DEPLOYER_SECRET',
-    'SMART_WALLET_RELAYER_BASE_URL',
-    'SMART_WALLET_RELAYER_API_KEY',
-    'CULTURAGO_DOMAIN',
-    'ACME_EMAIL',
-    'CULTURAGO_IMAGE',
-    'CULTURAGO_IMAGE_TAG',
-    'HOSTNAME',
-    'PORT',
-    'NODE_ENV',
-    'NEXT_TELEMETRY_DISABLED',
-    'POSTGRES_USER',
-    'POSTGRES_PASSWORD',
-    'POSTGRES_DB',
-    'DATABASE_URL',
-    'CULTURAGO_HTTP_PORT',
-    'CULTURAGO_HTTPS_PORT',
-  ];
-
-  merged.CULTURAGO_HTTP_PORT ||= '8080';
-  merged.CULTURAGO_HTTPS_PORT ||= '8444';
-  merged.CULTURAGO_DOMAIN ||= host;
-
-  const out = [];
-  for (const key of safeVars) {
-    if (merged[key] !== undefined && merged[key] !== '') {
-      const v = String(merged[key]);
-      const needsQuotes = /[\s;#"']/.test(v);
-      out.push(needsQuotes ? `${key}="${v.replace(/"/g, '\\"')}"` : `${key}=${v}`);
-    }
-  }
-
-  if (!out.some((l) => l.startsWith('DATABASE_URL='))) {
-    const u = merged.POSTGRES_USER || 'culturago_app';
-    const p = merged.POSTGRES_PASSWORD || 'dev';
-    const db = merged.POSTGRES_DB || 'culturago';
-    out.push(`DATABASE_URL=postgres://${u}:${p}@culturago-postgres:5432/${db}`);
-  }
-  const port = merged.CULTURAGO_HTTPS_PORT || '8443';
-  if (!out.some((l) => l.startsWith('NEXT_PUBLIC_APP_URL='))) {
-    const domain = merged.CULTURAGO_DOMAIN || host;
-    const portSuffix = port !== '443' ? `:${port}` : '';
-    out.push(`NEXT_PUBLIC_APP_URL=https://${domain}${portSuffix}`);
-  }
-  if (!out.some((l) => l.startsWith('WEBAUTHN_RP_ID='))) {
-    const domain = merged.CULTURAGO_DOMAIN || host;
-    out.push(`WEBAUTHN_RP_ID=${domain}`);
-  }
-  if (!out.some((l) => l.startsWith('WEBAUTHN_ORIGINS='))) {
-    const domain = merged.CULTURAGO_DOMAIN || host;
-    const portSuffix = port !== '443' ? `:${port}` : '';
-    out.push(`WEBAUTHN_ORIGINS=https://${domain}${portSuffix}`);
-  }
-  return out.join('\n') + '\n';
-}
-
 function readLocalEnv(filename) {
   try {
     const path = resolve(__dirname, '..', filename);
@@ -159,19 +83,18 @@ function readLocalEnv(filename) {
 }
 
 async function updateEnvOnly(conn) {
-  const remoteEnv = buildRemoteEnv();
-  console.log('\nUploading .env to VPS (ENV_ONLY)...');
-  const upload = await uploadFile(conn, `${deployDir}/.env`, remoteEnv);
-  if (upload.exit !== 0) {
-    console.error(red('Failed to write .env'));
+  console.log('\nVerifying production env at /opt/culturago/.env...');
+  const envCheck = await exec(conn, 'test -f /opt/culturago/.env');
+  if (envCheck.exit !== 0) {
+    console.error(red('Production env file /opt/culturago/.env does not exist on the VPS.'));
     process.exit(1);
   }
 
-  console.log('Removing old containers...');
-  await exec(conn, 'docker rm -f culturago-app culturago-caddy 2>/dev/null || true');
+  console.log('Removing old app container...');
+  await exec(conn, 'docker rm -f culturago-app 2>/dev/null || true');
 
-  console.log(green('Recreating containers with new env (no build)...'));
-  const up = await exec(conn, `cd ${deployDir} && docker compose --env-file .env -f deploy/docker-compose.app.yml up -d --no-build`);
+  console.log(green('Recreating containers with /opt/culturago/.env (no build)...'));
+  const up = await exec(conn, `cd ${deployDir} && docker compose -f deploy/docker-compose.app.yml --env-file /opt/culturago/.env up -d --no-build`);
   if (up.exit !== 0) {
     console.error(red('Docker compose recreate failed'));
     process.exit(1);
@@ -211,18 +134,14 @@ async function main() {
     return updateEnvOnly(conn);
   }
 
-  console.log('\nOpening firewall ports...');
-  await exec(conn, '(ufw allow 22/tcp && ufw allow 8080/tcp && ufw allow 8444/tcp && ufw reload) 2>/dev/null || true');
-  await exec(conn, 'iptables -C INPUT -p tcp --dport 8080 -j ACCEPT 2>/dev/null || iptables -I INPUT -p tcp --dport 8080 -j ACCEPT');
-  await exec(conn, 'iptables -C INPUT -p tcp --dport 8444 -j ACCEPT 2>/dev/null || iptables -I INPUT -p tcp --dport 8444 -j ACCEPT');
+  console.log('\nChecking firewall ports (80/443 managed by host Nginx)...');
+  await exec(conn, '(ufw allow 22/tcp && ufw allow 80/tcp && ufw allow 443/tcp && ufw reload) 2>/dev/null || true');
 
   console.log('\n=== Firewall status ===');
   const ufwStatus = await exec(conn, 'ufw status verbose 2>/dev/null || echo "ufw not available"');
   console.log(ufwStatus.out);
-  const iptablesStatus = await exec(conn, 'iptables -L INPUT -n --line-numbers 2>/dev/null | head -20');
-  console.log(iptablesStatus.out);
   console.log('\n=== Listening ports ===');
-  const listening = await exec(conn, 'ss -tlnp 2>/dev/null | grep -E "8080|8444" || netstat -tlnp 2>/dev/null | grep -E "8080|8444"');
+  const listening = await exec(conn, 'ss -tlnp 2>/dev/null | grep -E "3080|80|443" || netstat -tlnp 2>/dev/null | grep -E "3080|80|443"');
   console.log(listening.out);
 
   console.log('\nChecking Docker...');
@@ -238,38 +157,35 @@ async function main() {
     await exec(conn, 'systemctl enable docker && systemctl start docker');
   }
 
+  console.log('\nVerifying production configuration (/opt/culturago/.env)...');
+  const envCheck = await exec(conn, 'test -f /opt/culturago/.env');
+  if (envCheck.exit !== 0) {
+    console.error(red('Production env file /opt/culturago/.env does not exist on the VPS. Aborting deploy to prevent misconfiguration.'));
+    process.exit(1);
+  }
+
   console.log('\nPreparing app directory...');
-  await exec(conn, `rm -rf ${deployDir} && git clone --depth 1 ${repoUrl} ${deployDir}`);
+  // Preserve /opt/culturago/.env during code deployment
+  await exec(conn, `cp /opt/culturago/.env /tmp/culturago.env.bak && rm -rf ${deployDir} && git clone --depth 1 ${repoUrl} ${deployDir} && cp /tmp/culturago.env.bak /opt/culturago/.env && rm -f /tmp/culturago.env.bak`);
 
   console.log('\nUploading deploy config...');
   const composeLocal = readFileSync(resolve(__dirname, '..', 'deploy/docker-compose.app.yml'), 'utf8');
   await uploadFile(conn, `${deployDir}/deploy/docker-compose.app.yml`, composeLocal);
 
-  const caddyLocal = readFileSync(resolve(__dirname, '..', 'deploy/Caddyfile'), 'utf8');
-  await uploadFile(conn, `${deployDir}/deploy/Caddyfile`, caddyLocal);
-
-  const remoteEnv = buildRemoteEnv();
-  console.log('\nUploading .env to VPS...');
-  const upload = await uploadFile(conn, `${deployDir}/.env`, remoteEnv);
-  if (upload.exit !== 0) {
-    console.error(red('Failed to write .env'));
-    process.exit(1);
-  }
-
   if (process.env.SKIP_BUILD !== '1') {
     console.log(green('\nBuilding...'));
-    const build = await exec(conn, `cd ${deployDir} && docker compose --env-file .env -f deploy/docker-compose.app.yml build`);
+    const build = await exec(conn, `cd ${deployDir} && docker compose -f deploy/docker-compose.app.yml --env-file /opt/culturago/.env build`);
     if (build.exit !== 0) {
       console.error(red('Docker build failed'));
       process.exit(1);
     }
   }
 
-  console.log('\nRemoving old app and caddy containers...');
-  await exec(conn, `docker rm -f culturago-app culturago-caddy`);
+  console.log('\nRemoving old app container...');
+  await exec(conn, `docker rm -f culturago-app 2>/dev/null || true`);
 
   console.log('\nStarting all services...');
-  const up = await exec(conn, `cd ${deployDir} && docker compose --env-file .env -f deploy/docker-compose.app.yml up -d --no-recreate`);
+  const up = await exec(conn, `cd ${deployDir} && docker compose -f deploy/docker-compose.app.yml --env-file /opt/culturago/.env up -d --no-recreate`);
   if (up.exit !== 0) {
     console.error(red('Docker compose up failed'));
     process.exit(1);
@@ -278,12 +194,9 @@ async function main() {
   console.log('\nContainer status:');
   await exec(conn, `docker ps --filter name=culturago-`);
 
-  const publicHttp = process.env.CULTURAGO_HTTP_PORT || '8080';
-  const publicHttps = process.env.CULTURAGO_HTTPS_PORT || '8444';
-  const publicHost = process.env.CULTURAGO_DOMAIN || host;
+  const publicHost = process.env.CULTURAGO_DOMAIN || 'culturago.cl';
   console.log(green('\nDeploy command finished. Run "docker logs culturago-app -f" on the VPS to watch startup.'));
-  console.log(`HTTP:  http://${publicHost}:${publicHttp}`);
-  console.log(`HTTPS: https://${publicHost}:${publicHttps}`);
+  console.log(`URL: https://${publicHost}`);
   conn.end();
 }
 

@@ -63,6 +63,6 @@ Este documento mapea la arquitectura, rutas, componentes, modelos de datos y uti
 
 ## 🚀 Infraestructura de Despliegue (`deploy/`)
 
-*   `deploy/Dockerfile`: Imagen Docker basada en Node 22 + `pnpm@10`.
-*   `deploy/docker-compose.app.yml`: Servicio de producción con app, Caddy y PostgreSQL privada.
-*   `deploy/Caddyfile`: HTTPS con `tls internal` (Testnet) — requiere reemplazo por certificado público en producción.
+*   `deploy/Dockerfile`: Imagen Docker multi-stage basada en Node 22 Alpine + `pnpm@10`.
+*   `deploy/docker-compose.app.yml`: Orquestación de producción con contenedor `culturago-app` (Next.js en puerto interno `127.0.0.1:3080`) y `culturago-postgres` (PostgreSQL 16 privada sin puertos públicos expuestos).
+*   **Host Proxy (Nginx)**: Nginx ejecutándose en el host VPS (`166.0.112.1`) gestionando TLS/HTTPS público (puertos 80 y 443) y reenviando el tráfico hacia `http://127.0.0.1:3080`.
