@@ -20,7 +20,7 @@ function b64uEncode(buf) {
   return Buffer.from(buf).toString('base64url');
 }
 
-const RP_ID = process.env.WEBAUTHN_RP_ID ?? 'culturago.vercel.app';
+const RP_ID = process.env.WEBAUTHN_RP_ID ?? 'culturago.cl';
 const ORIGIN = process.env.WEBAUTHN_ORIGINS ?? `https://${RP_ID}`;
 const WASM_HASH = process.env.SMART_WALLET_WASM_HASH ??
   process.env.NEXT_PUBLIC_SMART_WALLET_WASM_HASH;

@@ -94,13 +94,9 @@ function buildRemoteEnv() {
     'POSTGRES_PASSWORD',
     'POSTGRES_DB',
     'DATABASE_URL',
-    'CULTURAGO_HTTP_PORT',
-    'CULTURAGO_HTTPS_PORT',
   ];
 
-  merged.CULTURAGO_HTTP_PORT ||= '8080';
-  merged.CULTURAGO_HTTPS_PORT ||= '8444';
-  merged.CULTURAGO_DOMAIN ||= host;
+  merged.CULTURAGO_DOMAIN ||= 'culturago.cl';
 
   const out = [];
   for (const key of safeVars) {
@@ -117,20 +113,15 @@ function buildRemoteEnv() {
     const db = merged.POSTGRES_DB || 'culturago';
     out.push(`DATABASE_URL=postgres://${u}:${p}@culturago-postgres:5432/${db}`);
   }
-  const port = merged.CULTURAGO_HTTPS_PORT || '8443';
+  const domain = merged.CULTURAGO_DOMAIN || 'culturago.cl';
   if (!out.some((l) => l.startsWith('NEXT_PUBLIC_APP_URL='))) {
-    const domain = merged.CULTURAGO_DOMAIN || host;
-    const portSuffix = port !== '443' ? `:${port}` : '';
-    out.push(`NEXT_PUBLIC_APP_URL=https://${domain}${portSuffix}`);
+    out.push(`NEXT_PUBLIC_APP_URL=https://${domain}`);
   }
   if (!out.some((l) => l.startsWith('WEBAUTHN_RP_ID='))) {
-    const domain = merged.CULTURAGO_DOMAIN || host;
     out.push(`WEBAUTHN_RP_ID=${domain}`);
   }
   if (!out.some((l) => l.startsWith('WEBAUTHN_ORIGINS='))) {
-    const domain = merged.CULTURAGO_DOMAIN || host;
-    const portSuffix = port !== '443' ? `:${port}` : '';
-    out.push(`WEBAUTHN_ORIGINS=https://${domain}${portSuffix}`);
+    out.push(`WEBAUTHN_ORIGINS=https://${domain}`);
   }
   return out.join('\n') + '\n';
 }
@@ -167,8 +158,8 @@ async function updateEnvOnly(conn) {
     process.exit(1);
   }
 
-  console.log('Removing old containers...');
-  await exec(conn, 'docker rm -f culturago-app culturago-caddy 2>/dev/null || true');
+  console.log('Removing old app container...');
+  await exec(conn, 'docker rm -f culturago-app 2>/dev/null || true');
 
   console.log(green('Recreating containers with new env (no build)...'));
   const up = await exec(conn, `cd ${deployDir} && docker compose --env-file .env -f deploy/docker-compose.app.yml up -d --no-build`);
@@ -211,18 +202,14 @@ async function main() {
     return updateEnvOnly(conn);
   }
 
-  console.log('\nOpening firewall ports...');
-  await exec(conn, '(ufw allow 22/tcp && ufw allow 8080/tcp && ufw allow 8444/tcp && ufw reload) 2>/dev/null || true');
-  await exec(conn, 'iptables -C INPUT -p tcp --dport 8080 -j ACCEPT 2>/dev/null || iptables -I INPUT -p tcp --dport 8080 -j ACCEPT');
-  await exec(conn, 'iptables -C INPUT -p tcp --dport 8444 -j ACCEPT 2>/dev/null || iptables -I INPUT -p tcp --dport 8444 -j ACCEPT');
+  console.log('\nChecking firewall ports (80/443 managed by host Nginx)...');
+  await exec(conn, '(ufw allow 22/tcp && ufw allow 80/tcp && ufw allow 443/tcp && ufw reload) 2>/dev/null || true');
 
   console.log('\n=== Firewall status ===');
   const ufwStatus = await exec(conn, 'ufw status verbose 2>/dev/null || echo "ufw not available"');
   console.log(ufwStatus.out);
-  const iptablesStatus = await exec(conn, 'iptables -L INPUT -n --line-numbers 2>/dev/null | head -20');
-  console.log(iptablesStatus.out);
   console.log('\n=== Listening ports ===');
-  const listening = await exec(conn, 'ss -tlnp 2>/dev/null | grep -E "8080|8444" || netstat -tlnp 2>/dev/null | grep -E "8080|8444"');
+  const listening = await exec(conn, 'ss -tlnp 2>/dev/null | grep -E "3080|80|443" || netstat -tlnp 2>/dev/null | grep -E "3080|80|443"');
   console.log(listening.out);
 
   console.log('\nChecking Docker...');
@@ -245,9 +232,6 @@ async function main() {
   const composeLocal = readFileSync(resolve(__dirname, '..', 'deploy/docker-compose.app.yml'), 'utf8');
   await uploadFile(conn, `${deployDir}/deploy/docker-compose.app.yml`, composeLocal);
 
-  const caddyLocal = readFileSync(resolve(__dirname, '..', 'deploy/Caddyfile'), 'utf8');
-  await uploadFile(conn, `${deployDir}/deploy/Caddyfile`, caddyLocal);
-
   const remoteEnv = buildRemoteEnv();
   console.log('\nUploading .env to VPS...');
   const upload = await uploadFile(conn, `${deployDir}/.env`, remoteEnv);
@@ -265,8 +249,8 @@ async function main() {
     }
   }
 
-  console.log('\nRemoving old app and caddy containers...');
-  await exec(conn, `docker rm -f culturago-app culturago-caddy`);
+  console.log('\nRemoving old app container...');
+  await exec(conn, `docker rm -f culturago-app 2>/dev/null || true`);
 
   console.log('\nStarting all services...');
   const up = await exec(conn, `cd ${deployDir} && docker compose --env-file .env -f deploy/docker-compose.app.yml up -d --no-recreate`);
@@ -278,12 +262,9 @@ async function main() {
   console.log('\nContainer status:');
   await exec(conn, `docker ps --filter name=culturago-`);
 
-  const publicHttp = process.env.CULTURAGO_HTTP_PORT || '8080';
-  const publicHttps = process.env.CULTURAGO_HTTPS_PORT || '8444';
-  const publicHost = process.env.CULTURAGO_DOMAIN || host;
+  const publicHost = process.env.CULTURAGO_DOMAIN || 'culturago.cl';
   console.log(green('\nDeploy command finished. Run "docker logs culturago-app -f" on the VPS to watch startup.'));
-  console.log(`HTTP:  http://${publicHost}:${publicHttp}`);
-  console.log(`HTTPS: https://${publicHost}:${publicHttps}`);
+  console.log(`URL: https://${publicHost}`);
   conn.end();
 }
 
