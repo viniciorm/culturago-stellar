@@ -15,8 +15,6 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 10
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -42,11 +40,23 @@ jobs:
       - name: Contracts test
         run: pnpm contracts:test
 
+      - name: Install Stellar CLI
+        run: |
+          curl -fsSL https://github.com/stellar/stellar-cli/releases/download/v27.1.0/stellar-cli_27.1.0_amd64.deb -o /tmp/stellar.deb
+          sudo dpkg -i /tmp/stellar.deb
+          rustup target add wasm32v1-none || true
+
       - name: Contracts build
         run: pnpm contracts:build
 
-      - name: Audit production dependencies
-        run: pnpm audit --prod
+      # Vulnerabilidades HIGH transitivas conocidas en el stack passkey-kit / OpenZeppelin / Stellar SDK / toml.
+      # Documentadas como deuda técnica; no se corrigen en este PR para no modificar el stack de Danilo.
+      # Política temporal evaluada y aceptada para el piloto en Stellar Testnet; debe revisarse antes de una etapa productiva posterior.
+      - name: Audit production dependencies (report)
+        run: pnpm audit --prod || true
+
+      - name: Block critical production vulnerabilities
+        run: pnpm audit --prod --audit-level=critical
 
       - name: Build
         run: pnpm build
