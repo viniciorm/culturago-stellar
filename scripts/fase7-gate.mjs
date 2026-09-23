@@ -7,9 +7,7 @@ import { Client } from 'ssh2';
 const host = process.env.VPS_HOST;
 const user = process.env.VPS_USER;
 const password = (process.env.VPS_SSH_KEY || process.env.VPS_PASSWORD || '').trim();
-const publicHost = process.env.CULTURAGO_DOMAIN || host;
-const publicHttp = process.env.CULTURAGO_HTTP_PORT || '8080';
-const publicHttps = process.env.CULTURAGO_HTTPS_PORT || '8444';
+const publicHost = process.env.CULTURAGO_DOMAIN || 'culturago.cl';
 
 if (!host || !user || !password) {
   console.error('Faltan VPS_HOST, VPS_USER o VPS_PASSWORD/VPS_SSH_KEY en .env');
@@ -83,19 +81,16 @@ async function main() {
   console.log('\n=== Remote container status ===');
   await exec(conn, 'docker ps --filter name=culturago-');
 
-  console.log('\n=== Caddy logs ===');
-  await exec(conn, 'docker logs --tail 30 culturago-caddy');
+  console.log('\n=== Local app container health check (port 3080) ===');
+  const localCheck = await exec(conn, 'curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3080/api/health');
+  console.log(`Local app health code: ${localCheck.out.trim()}`);
 
-  console.log('\n=== HTTP smoke ===');
-  const httpCheck = await exec(conn, `curl -s -o /dev/null -w '%{http_code}' http://localhost:${publicHttp}`);
-  console.log(`HTTP code: ${httpCheck.out.trim()}`);
-  if (httpCheck.out.trim() !== '200' && httpCheck.out.trim() !== '308') {
-    throw new Error('HTTP smoke no retornó 200/308');
+  console.log('\n=== Host Nginx HTTPS smoke (port 443 with SNI) ===');
+  const httpsCheck = await exec(conn, `curl --resolve "${publicHost}:443:127.0.0.1" -s -o /dev/null -w "%{http_code}" "https://${publicHost}/login"`);
+  console.log(`HTTPS login code: ${httpsCheck.out.trim()}`);
+  if (httpsCheck.out.trim() !== '200' && httpsCheck.out.trim() !== '308') {
+    throw new Error(`HTTPS smoke falló con código ${httpsCheck.out.trim()}`);
   }
-
-  console.log('\n=== HTTPS smoke ===');
-  const httpsCheck = await exec(conn, `curl -k -s -o /dev/null -w '%{http_code}' https://localhost:${publicHttps}`);
-  console.log(`HTTPS code: ${httpsCheck.out.trim()}`);
 
   console.log('\n=== App logs (tail) ===');
   await exec(conn, 'docker logs --tail 30 culturago-app');
@@ -103,9 +98,7 @@ async function main() {
   conn.end();
 
   console.log(green('\nFase 7 OK.'));
-  console.log(`URLs:`);
-  console.log(`  http://${publicHost}:${publicHttp}`);
-  console.log(`  https://${publicHost}:${publicHttps}`);
+  console.log(`URL: https://${publicHost}`);
 }
 
 main().catch((err) => {
