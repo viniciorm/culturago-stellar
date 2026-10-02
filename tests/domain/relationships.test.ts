@@ -55,6 +55,27 @@ describe('relationship validation matrix', () => {
     ).not.toThrow();
   });
 
+  it('accepts a person as organizer_of an event', () => {
+    expect(() =>
+      validateRelationship(
+        rel({ type: 'organizer_of', fromKind: 'person', toKind: 'event', contextEventId: null })
+      )
+    ).not.toThrow();
+  });
+
+  it('accepts producer_of from a person or organization to an event', () => {
+    expect(() =>
+      validateRelationship(
+        rel({ type: 'producer_of', fromKind: 'person', toKind: 'event', contextEventId: null })
+      )
+    ).not.toThrow();
+    expect(() =>
+      validateRelationship(
+        rel({ type: 'producer_of', fromKind: 'organization', toKind: 'event', contextEventId: null })
+      )
+    ).not.toThrow();
+  });
+
   it('rejects unknown relationship types', () => {
     expect(() =>
       validateRelationship(rel({ type: 'best_friend_of' as never }))

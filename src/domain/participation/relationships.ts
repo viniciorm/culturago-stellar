@@ -4,6 +4,7 @@ export type DomainEntityKind = 'person' | 'organization' | 'provider' | 'event';
 
 export type RelationshipType =
   | 'organizer_of'
+  | 'producer_of'
   | 'participant_of'
   | 'member_of'
   | 'teacher_at'
@@ -31,7 +32,8 @@ const PERSON_TO_ORG = ['member_of', 'teacher_at', 'director_of', 'founder_of'] a
  * entity kinds, and whether a concrete event context is mandatory.
  */
 export const RELATIONSHIP_RULES: Readonly<Record<RelationshipType, RelationshipRule>> = {
-  organizer_of: { from: ['organization'], to: ['event'], requiresEventContext: false },
+  organizer_of: { from: ['organization', 'person'], to: ['event'], requiresEventContext: false },
+  producer_of: { from: ['organization', 'person'], to: ['event'], requiresEventContext: false },
   participant_of: { from: ['person', 'organization'], to: ['event'], requiresEventContext: true },
   member_of: { from: ['person'], to: ['organization'], requiresEventContext: false },
   teacher_at: { from: ['person'], to: ['organization'], requiresEventContext: false },
