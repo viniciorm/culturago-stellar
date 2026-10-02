@@ -1,3 +1,11 @@
+<!-- lore:always-on -->
+# Lore Governance — CulturaGO
+- Governs: Criterios invariantes, modelo de identidad cultural y arquitectura de CulturaGO
+- Lore directory: `lore/`
+- State: `FASES.md`
+- Invocation: Si vas a modificar criterios, principios o arquitectura, invoca las skills de Lore (`save-to-lore`, `transmute-lore`) en lugar de redactar de memoria o escribir criterios a mano.
+<!-- /lore:always-on -->
+
 <!-- BEGIN:nextjs-agent-rules -->
 # This is NOT the Next.js you know
 
