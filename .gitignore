@@ -48,8 +48,15 @@ next-env.d.ts
 /contracts/target/
 test_snapshots/
 
-# Data manifests & real CSVs (contain claim codes & PII)
+# Data manifests & real CSVs/JSON/TXT (contain claim codes & PII)
 data/*.json
 data/*.csv
+data/*.txt
 !data/*.example.csv
+!data/*.example.json
+
+# Database snapshots & backups
+backups/
+*.dump
+*.sql.bak
 

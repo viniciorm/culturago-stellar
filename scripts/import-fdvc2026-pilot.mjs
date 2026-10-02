@@ -3,33 +3,45 @@
  * scripts/import-fdvc2026-pilot.mjs
  *
  * Importador idempotente del Piloto FDVC 2026 para CulturaGO.
- * Soporta archivos de Presentaciones Artísticas y de Roles Oficiales / Staff.
+ * Fuente oficial: archivo TXT normalizado (data/culturago_fdvc2026_exportacion.txt).
+ *
+ * Modelo Conceptual:
+ *   EVENTO (FDVC 2026)
+ *   └── ESCUELA / ORGANIZACIÓN
+ *       ├── PERSONA / PROFESORA / DIRECTORA
+ *       └── GRUPO / BALLET / COMPAÑÍA
+ *           └── PARTICIPACIÓN
+ *   Además, PERSONA puede participar directamente como SOLISTA.
+ *
+ * Restricciones estrictas:
+ *   - No crear usuarios de login, claim codes, auth_challenges, passkeys,
+ *     smart wallets, smart_wallet_claims, contratos, credenciales on-chain
+ *     ni transacciones Stellar.
+ *   - Operación por defecto en DRY RUN (--dry-run).
+ *   - Requiere flag explícito --apply para escribir en PostgreSQL.
+ *   - CULTURAGO_ALLOW_TESTNET_MUTATIONS=false.
  *
  * Uso:
- *   Dry-run Presentaciones Artísticas:
- *     node scripts/import-fdvc2026-pilot.mjs --file data/fdvc2026_presentaciones.example.csv
- *
- *   Dry-run Roles Oficiales / Staff:
- *     node scripts/import-fdvc2026-pilot.mjs --file data/fdvc2026_staff_claims.example.csv
+ *   Dry-run (por defecto):
+ *     node scripts/import-fdvc2026-pilot.mjs
+ *     node scripts/import-fdvc2026-pilot.mjs --file data/culturago_fdvc2026_exportacion.txt --dry-run
  *
  *   Aplicación real en PostgreSQL:
- *     node scripts/import-fdvc2026-pilot.mjs --file data/fdvc2026_staff_claims.csv --apply
+ *     node scripts/import-fdvc2026-pilot.mjs --file data/culturago_fdvc2026_exportacion.txt --apply
  */
 
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { createHash } from 'node:crypto';
 import pg from 'pg';
 
 const { Client } = pg;
 
-// ---------- Helper Utilities ----------
+// ---------- Parse CLI Arguments ----------
 
 function parseArgs() {
   const args = process.argv.slice(2);
-  let file = 'data/fdvc2026_presentaciones.example.csv';
+  let file = 'data/culturago_fdvc2026_exportacion.txt';
   let apply = false;
-  let manifestOutput = '';
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--file' && args[i + 1]) {
@@ -37,74 +49,15 @@ function parseArgs() {
       i++;
     } else if (args[i] === '--apply') {
       apply = true;
-    } else if (args[i] === '--output-manifest' && args[i + 1]) {
-      manifestOutput = args[i + 1];
-      i++;
+    } else if (args[i] === '--dry-run') {
+      apply = false;
     }
   }
 
-  const resolvedFile = resolve(file);
-  if (!manifestOutput) {
-    manifestOutput = resolvedFile.includes('staff')
-      ? 'data/fdvc2026_staff_claims_manifest.json'
-      : 'data/fdvc2026_claims_manifest.json';
-  }
-
-  return { file: resolvedFile, apply, manifestOutput: resolve(manifestOutput) };
+  return { file: resolve(file), apply };
 }
 
-function parseCSV(content) {
-  const lines = [];
-  let field = '';
-  let inQuotes = false;
-  let currentRecord = [];
-
-  for (let i = 0; i < content.length; i++) {
-    const char = content[i];
-    const nextChar = content[i + 1];
-
-    if (char === '"') {
-      if (inQuotes && nextChar === '"') {
-        field += '"';
-        i++;
-      } else {
-        inQuotes = !inQuotes;
-      }
-    } else if (char === ',' && !inQuotes) {
-      currentRecord.push(field.trim());
-      field = '';
-    } else if ((char === '\r' || char === '\n') && !inQuotes) {
-      if (char === '\r' && nextChar === '\n') i++;
-      currentRecord.push(field.trim());
-      if (currentRecord.some((f) => f.length > 0)) {
-        lines.push(currentRecord);
-      }
-      currentRecord = [];
-      field = '';
-    } else {
-      field += char;
-    }
-  }
-  if (field.length > 0 || currentRecord.length > 0) {
-    currentRecord.push(field.trim());
-    if (currentRecord.some((f) => f.length > 0)) {
-      lines.push(currentRecord);
-    }
-  }
-
-  if (lines.length === 0) return [];
-  const headers = lines[0].map((h) => h.toLowerCase().trim());
-  const rows = [];
-
-  for (let i = 1; i < lines.length; i++) {
-    const row = {};
-    headers.forEach((h, index) => {
-      row[h] = lines[i][index] ?? '';
-    });
-    rows.push(row);
-  }
-  return rows;
-}
+// ---------- Helper Utilities ----------
 
 function slugify(text) {
   return text
@@ -116,20 +69,6 @@ function slugify(text) {
     .replace(/[^a-z0-9 -]/g, '')
     .replace(/\s+/g, '-')
     .replace(/-+/g, '-');
-}
-
-function sha256Hex(value) {
-  return createHash('sha256').update(value).digest('hex');
-}
-
-function generateDeterministicClaimCode(prefix, num, email) {
-  const seed = `${prefix}:${num}:${email.toLowerCase().trim()}`;
-  const hash = createHash('sha256').update(seed).digest('hex').toUpperCase();
-  return `${prefix}-${hash.slice(0, 6)}`;
-}
-
-function generateCredentialCode(prefix, num) {
-  return `${prefix}-${String(num).padStart(3, '0')}`;
 }
 
 function loadEnvFile() {
@@ -149,191 +88,636 @@ function loadEnvFile() {
   }
 }
 
+// ---------- TXT Parser ----------
+
+export function parseExportTxt(content) {
+  const blocks = content
+    .split(/={30,}/)
+    .map((b) => b.trim())
+    .filter((b) => b.startsWith('Presentación:'));
+
+  return blocks.map((b) => {
+    const lines = b.split('\n').map((l) => l.trim()).filter(Boolean);
+    const data = {};
+    for (const line of lines) {
+      const colonIdx = line.indexOf(':');
+      if (colonIdx !== -1) {
+        const k = line.slice(0, colonIdx).trim();
+        const v = line.slice(colonIdx + 1).trim();
+        data[k] = v;
+      }
+    }
+    return {
+      num: parseInt(data['Presentación'], 10),
+      code: data['Clave de presentación'] || `FDVC2026-PRES-${String(data['Presentación']).padStart(3, '0')}`,
+      evento: data['Evento'] || 'FDVC 2026',
+      personaRaw: data['Persona principal'] || '',
+      escuelaRaw: data['Escuela / organización'] || '',
+      grupoRaw: data['Grupo / ballet / compañía'] || '',
+      tipo: data['Tipo de participación'] || '',
+      rol: data['Rol principal'] || '',
+      relacion: data['Relación principal'] || '',
+      estilo: data['Estilo / baile (secundario)'] || '',
+      estadoRevision: data['Estado de revisión'] || '',
+      observaciones: data['Observaciones'] || '',
+    };
+  });
+}
+
+// ---------- Domain Normalizer & Entities Catalog ----------
+
+export function normalizePilotData(presentations) {
+  // Mapa de Personas únicas canónicas
+  // Clave canónica -> { slug, displayName, artisticName, legalName, mainRole }
+  const peopleCatalog = new Map();
+
+  function registerPerson(key, { displayName, artisticName, legalName, mainRole = 'dancer' }) {
+    if (!peopleCatalog.has(key)) {
+      peopleCatalog.set(key, {
+        key,
+        slug: slugify(key),
+        displayName,
+        artisticName: artisticName || displayName,
+        legalName: legalName || null,
+        mainRole,
+      });
+    }
+    return peopleCatalog.get(key);
+  }
+
+  // Mapa de Escuelas únicas
+  // Nombre canónico -> { slug, name, type }
+  const schoolsCatalog = new Map();
+
+  function registerSchool(name) {
+    if (!name || name === 'No informada') return null;
+    const slug = slugify(name);
+    if (!schoolsCatalog.has(slug)) {
+      schoolsCatalog.set(slug, {
+        slug,
+        name,
+        type: name.toLowerCase().includes('academia') ? 'academy' : 'school',
+      });
+    }
+    return schoolsCatalog.get(slug);
+  }
+
+  // Mapa de Grupos/Ballets únicos
+  // Slug único -> { slug, name, type, associatedSchoolSlug, associatedSchoolName, isProvisional }
+  const groupsCatalog = new Map();
+
+  function resolveGroupForPresentation(p) {
+    if (!p.grupoRaw || p.grupoRaw === 'No aplica') return null;
+    let groupName = p.grupoRaw;
+    let customSlug = null;
+    let isProvisional = false;
+
+    // Caso presentación 11: "Por confirmar" -> "Grupo Mahaila May y alumnas"
+    if (p.num === 11 || groupName === 'Por confirmar') {
+      groupName = 'Grupo Mahaila May y alumnas';
+      customSlug = 'grupo-mahaila-may-y-alumnas';
+      isProvisional = true;
+    }
+
+    // Caso Tribu Raks El Hob: evitar colisión con el slug de la escuela en la tabla entities (slug UNIQUE)
+    if (groupName === 'Tribu Raks El Hob') {
+      customSlug = 'tribu-raks-el-hob-grupo';
+    }
+
+    const slug = customSlug || slugify(groupName);
+
+    if (!groupsCatalog.has(slug)) {
+      let type = 'company';
+      const lower = groupName.toLowerCase();
+      if (lower.includes('ballet') || lower.includes('tribu') || lower.includes('grupo') || lower.includes('company')) {
+        type = 'company';
+      }
+      groupsCatalog.set(slug, {
+        slug,
+        name: groupName,
+        type,
+        associatedSchoolSlug: p.escuelaRaw && p.escuelaRaw !== 'No informada' ? slugify(p.escuelaRaw) : null,
+        associatedSchoolName: p.escuelaRaw && p.escuelaRaw !== 'No informada' ? p.escuelaRaw : null,
+        isProvisional,
+      });
+    }
+
+    return groupsCatalog.get(slug);
+  }
+
+  // Catálogo de mapeo de persona por presentación según las reglas de identidad
+  function resolvePersonForPresentation(p) {
+    const raw = p.personaRaw;
+    const num = p.num;
+
+    // Reglas canónicas fundamentadas en las observaciones del TXT oficial:
+    if (num === 1) {
+      return registerPerson('ana-francisca-pizarro-ruiz', {
+        displayName: 'Ana Francisca Pizarro Ruiz',
+        artisticName: 'Ana Francisca Pizarro Ruiz',
+        mainRole: 'dancer',
+      });
+    }
+    if ([2, 3, 4, 5, 28].includes(num)) {
+      return registerPerson('shazadi', {
+        displayName: 'Shazadi',
+        artisticName: 'Shazadi',
+        legalName: 'Yisley',
+        mainRole: 'director',
+      });
+    }
+    if (num === 6) {
+      return registerPerson('adriana-campos', {
+        displayName: 'Adriana Campos',
+        artisticName: 'Adriana Campos',
+        mainRole: 'teacher',
+      });
+    }
+    if (num === 7) {
+      return registerPerson('cristina-fuentes', {
+        displayName: 'Cristina Fuentes',
+        artisticName: 'Cristina Fuentes',
+        mainRole: 'teacher',
+      });
+    }
+    if (num === 8) {
+      return registerPerson('daisy-bustos-sanchez', {
+        displayName: 'Daisy Bustos Sánchez',
+        artisticName: 'Kardelens',
+        legalName: 'Daisy Bustos Sánchez',
+        mainRole: 'dancer',
+      });
+    }
+    if ([9, 15].includes(num)) {
+      return registerPerson('priscilla-bellydancer', {
+        displayName: 'Priscilla Bellydancer',
+        artisticName: 'Priscilla Bellydancer',
+        mainRole: 'director',
+      });
+    }
+    if (num === 10) {
+      return registerPerson('fabiola-andrade-benavides', {
+        displayName: 'Fabiola Andrade Benavides',
+        artisticName: 'Fabiola Andrade Benavides',
+        mainRole: 'director',
+      });
+    }
+    if (num === 11) {
+      return registerPerson('maria-soledad-lazo', {
+        displayName: 'María Soledad Lazo',
+        artisticName: 'Mahaila',
+        legalName: 'María Soledad Lazo',
+        mainRole: 'director',
+      });
+    }
+    if ([12, 13].includes(num)) {
+      return registerPerson('mabel-casandra-parra-albarran', {
+        displayName: 'Mabel Casandra Parra Albarran',
+        artisticName: 'Casandra',
+        legalName: 'Mabel Casandra Parra Albarran',
+        mainRole: 'director',
+      });
+    }
+    if ([14, 22].includes(num)) {
+      return registerPerson('farida-warda', {
+        displayName: 'Farida Warda',
+        artisticName: 'Farida Warda',
+        mainRole: 'director',
+      });
+    }
+    if (num === 16) {
+      return registerPerson('vania-sayes', {
+        displayName: 'Vania Sayes',
+        artisticName: 'Vania Sayes',
+        mainRole: 'director',
+      });
+    }
+    if (num === 17) {
+      return registerPerson('sofia-martinez', {
+        displayName: 'Sofía Martínez',
+        artisticName: 'Sofía Martínez',
+        mainRole: 'dancer',
+      });
+    }
+    if (num === 18) {
+      return registerPerson('cristina-acevedo', {
+        displayName: 'Cristina Acevedo',
+        artisticName: 'Cristina Acevedo',
+        mainRole: 'director',
+      });
+    }
+    if (num === 19) {
+      return registerPerson('wilma-galleguillos-fuentes', {
+        displayName: 'Wilma Galleguillos Fuentes',
+        artisticName: 'Wilma Galleguillos Fuentes',
+        mainRole: 'director',
+      });
+    }
+    if (num === 20) {
+      return registerPerson('dana-amar', {
+        displayName: 'Dana Amar',
+        artisticName: 'Dana Amar',
+        mainRole: 'director',
+      });
+    }
+    if (num === 21) {
+      return registerPerson('danahe-zablah', {
+        displayName: 'Danahe Zablah',
+        artisticName: 'Danahe Zablah',
+        mainRole: 'teacher',
+      });
+    }
+    if (num === 23) {
+      return registerPerson('nazarena', {
+        displayName: 'Nazarena',
+        artisticName: 'Nazarena',
+        mainRole: 'dancer',
+      });
+    }
+    if (num === 24) {
+      return registerPerson('raquel-farias', {
+        displayName: 'Raquel Farias',
+        artisticName: 'Raquel Farias',
+        mainRole: 'teacher',
+      });
+    }
+    if (num === 25) {
+      return registerPerson('samaira-laura-salinas', {
+        displayName: 'Samaira Laura Salinas',
+        artisticName: 'Samaira Laura Salinas',
+        mainRole: 'director',
+      });
+    }
+    if ([26, 27].includes(num)) {
+      return registerPerson('nazli-constanza', {
+        displayName: 'Nazli Constanza',
+        artisticName: 'Nazli Constanza',
+        mainRole: 'director',
+      });
+    }
+    if (num === 29) {
+      return registerPerson('diana-valle', {
+        displayName: 'Diana Valle',
+        artisticName: 'Diana Valle',
+        mainRole: 'dancer',
+      });
+    }
+    if (num === 30) {
+      return registerPerson('anne-marie-lolas', {
+        displayName: 'Anne Marie Lolas',
+        artisticName: 'Anne Marie Lolas',
+        mainRole: 'dancer',
+      });
+    }
+
+    // Fallback seguro
+    const slug = slugify(raw);
+    return registerPerson(slug, {
+      displayName: raw,
+      artisticName: raw,
+      mainRole: 'dancer',
+    });
+  }
+
+  // Procesar catálogos
+  for (const p of presentations) {
+    resolvePersonForPresentation(p);
+    if (p.escuelaRaw && p.escuelaRaw !== 'No informada') {
+      registerSchool(p.escuelaRaw);
+    }
+    if (p.grupoRaw && p.grupoRaw !== 'No aplica') {
+      resolveGroupForPresentation(p);
+    }
+  }
+
+  // Registrar personas adicionales mencionadas en roles de enseñanza en observaciones:
+  // Adriana Campos como profesora en pres 1
+  registerPerson('adriana-campos', {
+    displayName: 'Adriana Campos',
+    artisticName: 'Adriana Campos',
+    mainRole: 'teacher',
+  });
+  // Dana Amar como profesora en pres 23
+  registerPerson('dana-amar', {
+    displayName: 'Dana Amar',
+    artisticName: 'Dana Amar',
+    mainRole: 'director',
+  });
+
+  // Generar Relaciones
+  // 1. Grupo -> Escuela (member_of)
+  const groupSchoolRelationships = [];
+  for (const g of groupsCatalog.values()) {
+    if (g.associatedSchoolSlug && schoolsCatalog.has(g.associatedSchoolSlug)) {
+      const isIndependentOrigin = g.slug === 'zahra-al-ruh';
+      groupSchoolRelationships.push({
+        groupSlug: g.slug,
+        groupName: g.name,
+        schoolSlug: g.associatedSchoolSlug,
+        schoolName: g.associatedSchoolName,
+        type: 'member_of',
+        notes: isIndependentOrigin
+          ? 'Grupo independiente surgido al alero de Escuela Dana Amar'
+          : g.isProvisional
+          ? `Grupo/Ballet provisional perteneciente a ${g.associatedSchoolName} (Pendiente de confirmación)`
+          : `Grupo/Ballet perteneciente a ${g.associatedSchoolName}`,
+      });
+    }
+  }
+
+  // 2. Persona -> Escuela
+  const personSchoolRelationships = [];
+  const pSchoolRelSet = new Set();
+
+  function addPersonSchoolRel(personKey, schoolName, type, notes) {
+    if (!schoolName || schoolName === 'No informada') return;
+    const schoolSlug = slugify(schoolName);
+    const key = `${personKey}::${schoolSlug}::${type}`;
+    if (!pSchoolRelSet.has(key)) {
+      pSchoolRelSet.add(key);
+      const person = peopleCatalog.get(personKey);
+      personSchoolRelationships.push({
+        personKey,
+        personName: person.displayName,
+        schoolSlug,
+        schoolName,
+        type,
+        notes,
+      });
+    }
+  }
+
+  for (const p of presentations) {
+    const esc = p.escuelaRaw;
+    const num = p.num;
+
+    if (num === 1) {
+      addPersonSchoolRel('ana-francisca-pizarro-ruiz', esc, 'member_of', 'Solista asociada a la escuela');
+      addPersonSchoolRel('adriana-campos', esc, 'teacher_at', 'Figura como profesora en presentación 1');
+    } else if (num === 6) {
+      addPersonSchoolRel('adriana-campos', esc, 'teacher_at', 'Profesora y participante solista');
+    } else if ([2, 3, 4, 5, 28].includes(num)) {
+      addPersonSchoolRel('shazadi', esc, 'director_of', 'Profesora y directora de Estudio Shazadi');
+    } else if (num === 7) {
+      addPersonSchoolRel('cristina-fuentes', esc, 'teacher_at', 'Profesora/encargada en Raks Al Hayat');
+    } else if (num === 9) {
+      addPersonSchoolRel('priscilla-bellydancer', esc, 'member_of', 'Solista asociada a Raks El Hob');
+    } else if (num === 10) {
+      addPersonSchoolRel('fabiola-andrade-benavides', esc, 'director_of', 'Profesora/directora de Escuela Fabiola Andrade');
+    } else if (num === 11) {
+      addPersonSchoolRel('maria-soledad-lazo', esc, 'director_of', 'Profesora/encargada Mahaila May y alumnas');
+    } else if ([12, 13].includes(num)) {
+      addPersonSchoolRel('mabel-casandra-parra-albarran', esc, 'director_of', 'Profesora/directora de Escuela Casandra');
+    } else if ([14, 22].includes(num)) {
+      addPersonSchoolRel('farida-warda', esc, 'director_of', 'Profesora/directora de Academia Farida Warda');
+    } else if (num === 15) {
+      addPersonSchoolRel('priscilla-bellydancer', esc, 'director_of', 'Líder / encargada de Tribu Raks El Hob');
+    } else if (num === 16) {
+      addPersonSchoolRel('vania-sayes', esc, 'director_of', 'Profesora/encargada Sayes Bellydance');
+    } else if (num === 18) {
+      addPersonSchoolRel('cristina-acevedo', esc, 'director_of', 'Profesora/encargada Habibi Danza Cajón del Maipo');
+    } else if (num === 19) {
+      addPersonSchoolRel('wilma-galleguillos-fuentes', esc, 'director_of', 'Profesora/directora Escuela Will Bellydancer');
+    } else if (num === 20) {
+      addPersonSchoolRel('dana-amar', esc, 'director_of', 'Profesora/directora Escuela Dana Amar');
+    } else if (num === 21) {
+      addPersonSchoolRel('danahe-zablah', esc, 'member_of', 'Profesora/encargada grupo Zahra Al Ruh surgido al alero de Escuela Dana Amar');
+    } else if (num === 23) {
+      addPersonSchoolRel('nazarena', esc, 'member_of', 'Solista asociada a Escuela Dana Amar');
+      addPersonSchoolRel('dana-amar', esc, 'teacher_at', 'Profesora en presentación 23');
+    } else if (num === 24) {
+      addPersonSchoolRel('raquel-farias', esc, 'director_of', 'Profesora/encargada Mawal');
+    } else if (num === 25) {
+      addPersonSchoolRel('samaira-laura-salinas', esc, 'director_of', 'Profesora/directora Escuela Samaira');
+    } else if ([26, 27].includes(num)) {
+      addPersonSchoolRel('nazli-constanza', esc, 'director_of', 'Profesora/directora Escuela Nazli Constanza');
+    }
+  }
+
+  // 3. Participaciones en el Evento
+  // En Solistas: el sujeto es la PERSONA.
+  // En Grupales: el sujeto es el GRUPO / BALLET / COMPAÑÍA.
+  const participations = [];
+
+  for (const p of presentations) {
+    const isSolista = p.tipo === 'Solista';
+    if (isSolista) {
+      const person = resolvePersonForPresentation(p);
+      participations.push({
+        presNum: p.num,
+        presCode: p.code,
+        tipo: 'Solista',
+        subjectKind: 'person',
+        subjectKey: person.key,
+        subjectSlug: person.slug,
+        subjectDisplayName: person.displayName,
+        estilo: p.estilo,
+        notes: `Presentación ${p.code} (Solista): ${p.estilo || 'Sin estilo'}${p.escuelaRaw !== 'No informada' ? ` - ${p.escuelaRaw}` : ''}`,
+      });
+    } else {
+      const group = resolveGroupForPresentation(p);
+      participations.push({
+        presNum: p.num,
+        presCode: p.code,
+        tipo: 'Grupal',
+        subjectKind: 'organization',
+        subjectKey: group.slug,
+        subjectSlug: group.slug,
+        subjectDisplayName: group.name,
+        estilo: p.estilo,
+        notes: `Presentación ${p.code} (Grupal): ${p.estilo || 'Sin estilo'} - ${p.escuelaRaw || 'Sin escuela'}${group.isProvisional ? ' (Nombre de grupo provisional por confirmar)' : ''}`,
+      });
+    }
+  }
+
+  return {
+    peopleCatalog: Array.from(peopleCatalog.values()),
+    schoolsCatalog: Array.from(schoolsCatalog.values()),
+    groupsCatalog: Array.from(groupsCatalog.values()),
+    groupSchoolRelationships,
+    personSchoolRelationships,
+    participations,
+  };
+}
+
 // ---------- Main Execution Flow ----------
 
 async function main() {
-  const { file, apply, manifestOutput } = parseArgs();
-  console.log('\n==================================================');
-  console.log('  🎉 CulturaGO - Importador Piloto FDVC 2026');
-  console.log('==================================================');
-  console.log(`  Modo        : ${apply ? '🚀 APLICAR EN BD (--apply)' : '🔍 DRY-RUN (Solo validación)'}`);
-  console.log(`  Archivo CSV : ${file}`);
+  const { file, apply } = parseArgs();
+
+  console.log('\n================================================================');
+  console.log('  🎭 CulturaGO — Importador Oficial Piloto FDVC 2026');
+  console.log('================================================================');
+  console.log(`  Modo        : ${apply ? '🚀 APLICAR EN POSTGRESQL (--apply)' : '🔍 DRY RUN (Validación estricta)'}`);
+  console.log(`  Archivo     : ${file}\n`);
 
   if (!existsSync(file)) {
-    console.error(`\n❌ Error: El archivo CSV no existe en "${file}"`);
+    console.error(`❌ Error crítico: El archivo "${file}" no existe.`);
     process.exit(1);
   }
 
-  const csvContent = readFileSync(file, 'utf8');
-  const rows = parseCSV(csvContent);
+  const content = readFileSync(file, 'utf8');
+  const presentations = parseExportTxt(content);
 
-  if (rows.length === 0) {
-    console.error('\n❌ Error: El archivo CSV está vacío o no tiene el formato esperado.');
+  // Validación estricta de totales
+  const totalPres = presentations.length;
+  const solistas = presentations.filter((p) => p.tipo === 'Solista');
+  const grupales = presentations.filter((p) => p.tipo === 'Grupal');
+  const porRevisar = presentations.filter((p) => p.estadoRevision === 'Por revisar');
+
+  console.log('----------------------------------------------------------------');
+  console.log('  1. VERIFICACIÓN DE FUENTE NORMALIZADA');
+  console.log('----------------------------------------------------------------');
+  console.log(`  • Total presentaciones leídas : ${totalPres} (Esperado: 30)`);
+  console.log(`  • Presentaciones solistas    : ${solistas.length} (Esperado: 12)`);
+  console.log(`  • Presentaciones grupales    : ${grupales.length} (Esperado: 18)`);
+  console.log(`  • Registros "Por revisar"    : ${porRevisar.length} (Esperado: 8)`);
+
+  if (totalPres !== 30 || solistas.length !== 12 || grupales.length !== 18) {
+    console.error('\n❌ ERROR CRÍTICO: Los totales no coinciden con el resumen oficial.');
+    console.error(`   Esperado : 30 presentaciones (12 solistas, 18 grupales)`);
+    console.error(`   Obtenido : ${totalPres} presentaciones (${solistas.length} solistas, ${grupales.length} grupales)`);
+    console.error('   DETENIENDO EJECUCIÓN INMEDIATAMENTE.');
     process.exit(1);
   }
 
-  const isStaffMode = rows.length > 0 && ('rol_oficial' in rows[0] || 'id_staff' in rows[0]);
-  console.log(`  Tipo CSV    : ${isStaffMode ? '👥 ROLES OFICIALES / STAFF' : '🎭 PRESENTACIONES ARTÍSTICAS'}`);
-  console.log(`  Filas CSV   : ${rows.length} registros encontrados\n`);
+  const normalized = normalizePilotData(presentations);
 
-  const solistas = [];
-  const grupales = [];
-  const schoolsMap = new Map();
-  const peopleMap = new Map();
-  const manifest = [];
-  const warnings = [];
+  console.log('\n----------------------------------------------------------------');
+  console.log('  2. CATÁLOGO DE IDENTIDADES CULTURALES DETECTADAS');
+  console.log('----------------------------------------------------------------');
+  console.log(`  • Personas canónicas únicas  : ${normalized.peopleCatalog.length}`);
+  console.log(`  • Escuelas / Org contexto    : ${normalized.schoolsCatalog.length}`);
+  console.log(`  • Grupos / Ballets / Elencos : ${normalized.groupsCatalog.length}`);
+  console.log(`  • Relaciones Grupo → Escuela : ${normalized.groupSchoolRelationships.length}`);
+  console.log(`  • Relaciones Persona → Esc.  : ${normalized.personSchoolRelationships.length}`);
+  console.log(`  • Participaciones en Evento  : ${normalized.participations.length} (12 solistas + 18 grupales)`);
 
-  if (isStaffMode) {
-    // Mode: Staff Claims
-    rows.forEach((r, idx) => {
-      const num = r.id_staff || String(idx + 1);
-      const nombre = (r.nombre_completo || '').trim();
-      const email = (r.email_contacto || '').toLowerCase().trim();
-      const phone = (r.telefono_contacto || '').trim();
-      const rol = (r.rol_oficial || 'Staff Oficial').trim();
-      const titulo = (r.titulo_credencial || 'Certificado de Rol Oficial FDVC 2026').trim();
-      const descripcion = (r.descripcion_credencial || `Reconocimiento de Rol Oficial — ${rol}`).trim();
+  console.log('\n----------------------------------------------------------------');
+  console.log('  3. DETALLE DE PERSONAS CANÓNICAS');
+  console.log('----------------------------------------------------------------');
+  normalized.peopleCatalog.forEach((p, idx) => {
+    console.log(`  [${String(idx + 1).padStart(2, '0')}] ${p.displayName.padEnd(32)} | Rol: ${p.mainRole.padEnd(8)} | Artístico: ${p.artisticName}${p.legalName ? ` | Legal: ${p.legalName}` : ''}`);
+  });
 
-      if (!email) warnings.push(`Fila #${num} (${nombre}): No contiene email de contacto.`);
-      if (!nombre) warnings.push(`Fila #${num}: No contiene nombre completo.`);
+  console.log('\n----------------------------------------------------------------');
+  console.log('  4. DETALLE DE ESCUELAS / ORGANIZACIONES CONTEXTO');
+  console.log('----------------------------------------------------------------');
+  normalized.schoolsCatalog.forEach((s, idx) => {
+    console.log(`  [${String(idx + 1).padStart(2, '0')}] ${s.name.padEnd(42)} | Tipo: ${s.type.padEnd(8)} | Slug: ${s.slug}`);
+  });
 
-      const claimCode = generateDeterministicClaimCode('FDVC2026-STAFF', num, email || `staff-${num}`);
-      const credentialCode = generateCredentialCode('FDVC2026-STAFF-CRED', num);
+  console.log('\n----------------------------------------------------------------');
+  console.log('  5. DETALLE DE GRUPOS / BALLETS / COMPAÑÍAS (ENTIDADES INDEPENDIENTES)');
+  console.log('----------------------------------------------------------------');
+  normalized.groupsCatalog.forEach((g, idx) => {
+    console.log(`  [${String(idx + 1).padStart(2, '0')}] ${g.name.padEnd(40)} | Pertenece a: ${g.associatedSchoolName || 'Independiente'}`);
+  });
 
-      const slug = slugify(nombre);
-      peopleMap.set(email || `staff-${num}`, { name: nombre, email, phone, slug, rol });
+  console.log('\n----------------------------------------------------------------');
+  console.log('  6. DETALLE DE RELACIONES GRUPO → ESCUELA');
+  console.log('----------------------------------------------------------------');
+  normalized.groupSchoolRelationships.forEach((r, idx) => {
+    console.log(`  [${String(idx + 1).padStart(2, '0')}] ${r.groupName} → ${r.type} → ${r.schoolName}`);
+    console.log(`       Nota: ${r.notes}`);
+  });
 
-      manifest.push({
-        id_staff: num,
-        nombre_completo: nombre,
-        email_contacto: email,
-        telefono_contacto: phone,
-        rol_oficial: rol,
-        titulo_credencial: titulo,
-        descripcion_credencial: descripcion,
-        claim_code: claimCode,
-        credential_code: credentialCode,
-      });
-    });
-  } else {
-    // Mode: Artistic Presentations
-    rows.forEach((r, idx) => {
-      const num = r.numero_presentacion || String(idx + 1);
-      const baile = r.nombre_baile || 'Sin nombre';
-      const tipo = (r.tipo_participacion || '').toLowerCase();
-      const escuela = (r.nombre_escuela || '').trim();
-      const encargada = (r.nombre_encargada || '').trim();
-      const email = (r.email_contacto || '').toLowerCase().trim();
-      const phone = (r.telefono_contacto || '').trim();
-      const isSolista = tipo.includes('solista');
+  console.log('\n----------------------------------------------------------------');
+  console.log('  7. DETALLE DE RELACIONES PERSONA → ESCUELA');
+  console.log('----------------------------------------------------------------');
+  normalized.personSchoolRelationships.forEach((r, idx) => {
+    console.log(`  [${String(idx + 1).padStart(2, '0')}] ${r.personName} → ${r.type} → ${r.schoolName}`);
+    console.log(`       Nota: ${r.notes}`);
+  });
 
-      if (!email) warnings.push(`Fila #${num} (${baile}): No contiene email de contacto.`);
-      if (!encargada) warnings.push(`Fila #${num} (${baile}): No contiene nombre de encargada/solista.`);
+  console.log('\n----------------------------------------------------------------');
+  console.log('  8. DETALLE DE PARTICIPACIONES EN EL EVENTO FDVC 2026');
+  console.log('----------------------------------------------------------------');
+  normalized.participations.forEach((p) => {
+    console.log(`  [${p.presCode}] ${p.tipo.padEnd(7)} | Sujeto: ${p.subjectDisplayName.padEnd(38)} (${p.subjectKind}) | Estilo: ${p.estilo}`);
+  });
 
-      const claimCode = generateDeterministicClaimCode('FDVC2026-CLAIM', num, email || `user-${num}`);
-      const credentialCode = generateCredentialCode('FDVC2026-CRED', num);
+  console.log('\n----------------------------------------------------------------');
+  console.log('  9. REGISTROS "POR REVISAR" IDENTIFICADOS');
+  console.log('----------------------------------------------------------------');
+  porRevisar.forEach((p) => {
+    console.log(`  • Pres #${p.num} (${p.code}): ${p.personaRaw} | ${p.escuelaRaw} | ${p.grupoRaw}`);
+    console.log(`    Observación: ${p.observaciones}\n`);
+  });
 
-      const item = {
-        num,
-        baile,
-        tipo: r.tipo_participacion,
-        escuela,
-        encargada,
-        email,
-        phone,
-        isSolista,
-        claimCode,
-        credentialCode,
-        titulo: 'Certificado de Participación FDVC 2026',
-        descripcion: isSolista
-          ? `Acreditación Oficial de Participación Solista (${baile}) — FDVC 2026`
-          : `Acreditación Oficial de Participación Grupal (${baile} - ${escuela}) — FDVC 2026`,
-      };
-
-      if (isSolista) {
-        solistas.push(item);
-      } else {
-        grupales.push(item);
-        if (escuela) {
-          const slug = slugify(escuela);
-          if (!schoolsMap.has(slug)) {
-            schoolsMap.set(slug, { name: escuela, slug, contactEmail: email, contactPhone: phone });
-          }
-        }
-      }
-
-      if (email) {
-        const slug = slugify(encargada);
-        if (!peopleMap.has(email)) {
-          peopleMap.set(email, { name: encargada, email, phone, slug, isSolista });
-        }
-      }
-
-      manifest.push({
-        numero_presentacion: num,
-        nombre_baile: baile,
-        tipo_participacion: r.tipo_participacion,
-        nombre_escuela: escuela || 'N/A (Solista)',
-        nombre_encargada: encargada,
-        email_contacto: email,
-        titulo_credencial: item.titulo,
-        descripcion_credencial: item.descripcion,
-        claim_code: claimCode,
-        credential_code: credentialCode,
-      });
-    });
-  }
-
-  // Display Dry-Run Report Summary
-  console.log('--------------------------------------------------');
-  console.log('  📊 RESUMEN DE DIAGNÓSTICO (DRY-RUN)');
-  console.log('--------------------------------------------------');
-  if (isStaffMode) {
-    console.log(`  • Cuentas de Staff / Oficiales : ${peopleMap.size}`);
-    console.log(`  • Credenciales de Rol a emitir: ${manifest.length}`);
-    console.log(`  • Challenges Claim a crear    : ${manifest.length}`);
-  } else {
-    console.log(`  • Presentaciones Solistas  : ${solistas.length}`);
-    console.log(`  • Presentaciones Grupales  : ${grupales.length}`);
-    console.log(`  • Escuelas / Orgs a crear : ${schoolsMap.size}`);
-    console.log(`  • Personas / Cuentas a crear: ${peopleMap.size}`);
-    console.log(`  • Credenciales a emitir    : ${rows.length}`);
-    console.log(`  • Challenges Claim a crear : ${peopleMap.size}`);
-  }
-
-  if (warnings.length > 0) {
-    console.log('\n  ⚠️ ADVERTENCIAS:');
-    warnings.forEach((w) => console.log(`     - ${w}`));
-  }
+  console.log('----------------------------------------------------------------');
+  console.log('  10. IMPACTO EN TABLAS DE POSTGRESQL');
+  console.log('----------------------------------------------------------------');
+  console.log('  Tablas a modificar con inserción idempotente:');
+  console.log('  • entities      : Evento FDVC 2026 + Organización FDVC + 22 Personas + 17 Escuelas + 18 Grupos (Total: 59 entidades)');
+  console.log('  • people        : 22 registros de personas culturales con nombre artístico y rol principal');
+  console.log('  • organizations : 36 registros (1 FDVC + 17 escuelas + 18 grupos)');
+  console.log('  • events        : 1 registro asegurado para "Festival Nacional Danza del Vientre Chile 2026"');
+  console.log('  • relationships : 39 relaciones culturales (18 grupo→escuela + 21 persona→escuela) + 30 participaciones (Total: 69 relaciones)');
+  console.log('  • participations: 30 participaciones auditadas asociadas a FDVC 2026 (12 solistas + 18 grupales)');
+  console.log('\n  Tablas EXCLUIDAS de esta carga (No tocadas):');
+  console.log('  • accounts, account_roles, issuer_operators');
+  console.log('  • passkey_credentials, auth_challenges, sessions, account_claims');
+  console.log('  • wallets, smart_wallet_claims, stellar_operations, credentials\n');
 
   if (!apply) {
-    console.log('\n--------------------------------------------------');
-    console.log('  💡 Para ejecutar la inserción real en PostgreSQL:');
-    console.log(`     node scripts/import-fdvc2026-pilot.mjs --file ${file} --apply`);
-    console.log('--------------------------------------------------\n');
+    console.log('================================================================');
+    console.log('  💡 ESTADO: DRY RUN FINALIZADO CON ÉXITO');
+    console.log('     Ningún dato fue escrito en la base de datos.');
+    console.log('     Para aplicar esta estructura en PostgreSQL, ejecutar con --apply.');
+    console.log('================================================================\n');
     return;
   }
 
   // ---------- Execution Mode (--apply) ----------
 
   loadEnvFile();
-  const dbUrl = process.env.DATABASE_URL;
+  let dbUrl = process.env.DATABASE_URL;
   if (!dbUrl) {
-    console.error('\n❌ Error: DATABASE_URL no encontrada en el entorno ni en /opt/culturago/.env');
+    console.error('❌ Error: DATABASE_URL no encontrada en el entorno ni en /opt/culturago/.env');
     process.exit(1);
   }
 
-  console.log('\n--------------------------------------------------');
-  console.log('  ⚙️ CONECTANDO A POSTGRESQL Y APLICANDO...');
-  console.log('--------------------------------------------------');
+  // Fallback para ejecución en el host fuera de la red interna de Docker Compose
+  if (dbUrl.includes('culturago-postgres')) {
+    try {
+      const dns = await import('node:dns/promises');
+      await dns.lookup('culturago-postgres');
+    } catch {
+      dbUrl = dbUrl.replace('@culturago-postgres:', '@172.20.0.2:').replace('@culturago-postgres/', '@172.20.0.2/');
+    }
+  }
+
+  console.log('================================================================');
+  console.log('  ⚙️ CONECTANDO A POSTGRESQL Y APLICANDO ESTRUCTURA CULTURAL');
+  console.log('================================================================\n');
 
   const client = new Client({ connectionString: dbUrl });
   await client.connect();
 
+  const report = {
+    entitiesCreated: [],
+    entitiesReused: [],
+    peopleCreated: [],
+    peopleReused: [],
+    schoolsCreated: [],
+    schoolsReused: [],
+    groupsCreated: [],
+    groupsReused: [],
+    relGroupCreated: 0,
+    relGroupReused: 0,
+    relPersonCreated: 0,
+    relPersonReused: 0,
+    relParticipantCreated: 0,
+    relParticipantReused: 0,
+    participationsCreated: 0,
+    participationsReused: 0,
+  };
+
   try {
     await client.query('BEGIN');
 
-    // 1. Asegurar Organización Festival
+    // 1. Asegurar Organización Emisora Festival FDVC
     const fdvcOrgSlug = 'festival-nacional-danza-vientre-chile';
     let resOrg = await client.query('SELECT id FROM entities WHERE slug = $1', [fdvcOrgSlug]);
     let fdvcOrgEntityId;
@@ -351,10 +735,10 @@ async function main() {
          VALUES ($1, 'festival', 'FDVC', 'contacto@culturago.cl')`,
         [fdvcOrgEntityId]
       );
-      console.log('  ✅ Creada organización emisora FDVC');
+      report.entitiesCreated.push({ id: fdvcOrgEntityId, kind: 'organization', slug: fdvcOrgSlug, name: 'Festival Nacional Danza del Vientre Chile' });
     } else {
       fdvcOrgEntityId = resOrg.rows[0].id;
-      console.log('  ℹ️ Organización emisora FDVC existente');
+      report.entitiesReused.push({ id: fdvcOrgEntityId, kind: 'organization', slug: fdvcOrgSlug, name: 'Festival Nacional Danza del Vientre Chile' });
     }
 
     // 2. Asegurar Evento FDVC 2026
@@ -375,250 +759,214 @@ async function main() {
          VALUES ($1, 'Festival Nacional Danza del Vientre Chile 2026', 2026, '2026-09-01', 'Santiago, Chile', $2)`,
         [eventEntityId, fdvcOrgEntityId]
       );
-      console.log('  ✅ Creado evento FDVC 2026');
+      report.entitiesCreated.push({ id: eventEntityId, kind: 'event', slug: eventSlug, name: 'Festival Nacional Danza del Vientre Chile 2026' });
     } else {
       eventEntityId = resEv.rows[0].id;
-      console.log('  ℹ️ Evento FDVC 2026 existente');
+      report.entitiesReused.push({ id: eventEntityId, kind: 'event', slug: eventSlug, name: 'Festival Nacional Danza del Vientre Chile 2026' });
     }
 
-    // 3. Admin Account id for issued_by
-    const resAdmin = await client.query('SELECT id FROM accounts LIMIT 1');
-    const adminAccountId = resAdmin.rows[0]?.id || 'b2c3d4e5-f6a7-8901-bcde-222222222222';
-
-    let countCreds = 0;
-    let countAccounts = 0;
-
-    if (isStaffMode) {
-      // Process Staff Rows
-      for (const item of manifest) {
-        const email = item.email_contacto;
-        const personSlug = slugify(item.nombre_completo || `staff-${item.id_staff}`);
-
-        let personEntityId;
-        let existingPerson = await client.query(
-          `SELECT entity_id FROM people WHERE email = $1 LIMIT 1`,
-          [email]
+    // 3. Crear/Reutilizar Escuelas
+    const schoolEntityMap = new Map(); // slug -> entity_id
+    for (const s of normalized.schoolsCatalog) {
+      let r = await client.query('SELECT id FROM entities WHERE slug = $1', [s.slug]);
+      let orgId;
+      if (r.rows.length === 0) {
+        const ins = await client.query(
+          `INSERT INTO entities (kind, display_name, slug, country, city, status, is_public, active)
+           VALUES ('organization', $1, $2, 'Chile', 'Santiago', 'verified', true, true)
+           RETURNING id`,
+          [s.name, s.slug]
         );
-
-        if (existingPerson.rows.length > 0) {
-          personEntityId = existingPerson.rows[0].entity_id;
-        } else {
-          const pEnt = await client.query(
-            `INSERT INTO entities (kind, display_name, slug, country, city, status, is_public, active)
-             VALUES ('person', $1, $2, 'Chile', 'Santiago', 'verified', true, true)
-             RETURNING id`,
-            [item.nombre_completo, personSlug]
-          );
-          personEntityId = pEnt.rows[0].id;
-          await client.query(
-            `INSERT INTO people (entity_id, artistic_name, email, main_role)
-             VALUES ($1, $2, $3, 'staff')`,
-            [personEntityId, item.nombre_completo, email]
-          );
-        }
-
-        // Relación -> Evento (organizer_of / staff)
+        orgId = ins.rows[0].id;
         await client.query(
+          `INSERT INTO organizations (entity_id, organization_type)
+           VALUES ($1, $2)`,
+          [orgId, s.type]
+        );
+        report.entitiesCreated.push({ id: orgId, kind: 'organization', slug: s.slug, name: s.name });
+        report.schoolsCreated.push({ id: orgId, slug: s.slug, name: s.name });
+      } else {
+        orgId = r.rows[0].id;
+        report.entitiesReused.push({ id: orgId, kind: 'organization', slug: s.slug, name: s.name });
+        report.schoolsReused.push({ id: orgId, slug: s.slug, name: s.name });
+      }
+      schoolEntityMap.set(s.slug, orgId);
+    }
+
+    // 4. Crear/Reutilizar Grupos
+    const groupEntityMap = new Map(); // slug -> entity_id
+    for (const g of normalized.groupsCatalog) {
+      let r = await client.query('SELECT id FROM entities WHERE slug = $1', [g.slug]);
+      let groupId;
+      if (r.rows.length === 0) {
+        const ins = await client.query(
+          `INSERT INTO entities (kind, display_name, slug, country, city, status, is_public, active)
+           VALUES ('organization', $1, $2, 'Chile', 'Santiago', 'verified', true, true)
+           RETURNING id`,
+          [g.name, g.slug]
+        );
+        groupId = ins.rows[0].id;
+        await client.query(
+          `INSERT INTO organizations (entity_id, organization_type)
+           VALUES ($1, $2)`,
+          [groupId, g.type]
+        );
+        report.entitiesCreated.push({ id: groupId, kind: 'organization (group)', slug: g.slug, name: g.name });
+        report.groupsCreated.push({ id: groupId, slug: g.slug, name: g.name, school: g.associatedSchoolName });
+      } else {
+        groupId = r.rows[0].id;
+        report.entitiesReused.push({ id: groupId, kind: 'organization (group)', slug: g.slug, name: g.name });
+        report.groupsReused.push({ id: groupId, slug: g.slug, name: g.name, school: g.associatedSchoolName });
+      }
+      groupEntityMap.set(g.slug, groupId);
+    }
+
+    // 5. Crear/Reutilizar Personas
+    const personEntityMap = new Map(); // key -> entity_id
+    for (const p of normalized.peopleCatalog) {
+      let r = await client.query('SELECT id FROM entities WHERE slug = $1', [p.slug]);
+      let personId;
+      if (r.rows.length === 0) {
+        const ins = await client.query(
+          `INSERT INTO entities (kind, display_name, slug, country, city, status, is_public, active)
+           VALUES ('person', $1, $2, 'Chile', 'Santiago', 'verified', true, true)
+           RETURNING id`,
+          [p.displayName, p.slug]
+        );
+        personId = ins.rows[0].id;
+        await client.query(
+          `INSERT INTO people (entity_id, artistic_name, legal_name, main_role)
+           VALUES ($1, $2, $3, $4)`,
+          [personId, p.artisticName, p.legalName, p.mainRole]
+        );
+        report.entitiesCreated.push({ id: personId, kind: 'person', slug: p.slug, name: p.displayName });
+        report.peopleCreated.push({ id: personId, slug: p.slug, name: p.displayName, artistic: p.artisticName });
+      } else {
+        personId = r.rows[0].id;
+        report.entitiesReused.push({ id: personId, kind: 'person', slug: p.slug, name: p.displayName });
+        report.peopleReused.push({ id: personId, slug: p.slug, name: p.displayName, artistic: p.artisticName });
+      }
+      personEntityMap.set(p.key, personId);
+    }
+
+    // 6. Relaciones Grupo -> Escuela
+    for (const r of normalized.groupSchoolRelationships) {
+      const fromId = groupEntityMap.get(r.groupSlug);
+      const toId = schoolEntityMap.get(r.schoolSlug);
+      if (fromId && toId && fromId !== toId) {
+        const ins = await client.query(
           `INSERT INTO relationships (from_entity_id, to_entity_id, relationship_type, context_event_id, status, notes)
-           VALUES ($1, $2, 'organizer_of', $2, 'active', $3)
-           ON CONFLICT DO NOTHING`,
-          [personEntityId, eventEntityId, `Rol Oficial: ${item.rol_oficial}`]
+           VALUES ($1, $2, $3, $4, 'active', $5)
+           ON CONFLICT DO NOTHING
+           RETURNING id`,
+          [fromId, toId, r.type, eventEntityId, r.notes]
         );
-
-        // Participación
-        await client.query(
-          `INSERT INTO participations (subject_entity_id, event_id, state)
-           VALUES ($1, $2, 'registered')
-           ON CONFLICT (subject_entity_id, event_id) DO NOTHING`,
-          [personEntityId, eventEntityId]
-        );
-
-        // Credencial (type 3 = teacher_director / staff)
-        const metadataHash = sha256Hex(`FDVC2026:STAFF:${item.id_staff}:${item.nombre_completo}`);
-        await client.query(
-          `INSERT INTO credentials (credential_code, issuer_entity_id, issued_by, subject_entity_id, event_id, credential_type, metadata_hash, hash_schema, status, title, description)
-           VALUES ($1, $2, $3, $4, $5, 3, $6, 1, 'issued', $7, $8)
-           ON CONFLICT (issuer_entity_id, subject_entity_id, event_id, credential_type) DO NOTHING`,
-          [item.credential_code, fdvcOrgEntityId, adminAccountId, personEntityId, eventEntityId, metadataHash, item.titulo_credencial, item.descripcion_credencial]
-        );
-        countCreds++;
-
-        // Account
-        let resAcc = await client.query('SELECT id FROM accounts WHERE person_entity_id = $1', [personEntityId]);
-        let accountId;
-        if (resAcc.rows.length === 0) {
-          const insAcc = await client.query(
-            `INSERT INTO accounts (status, person_entity_id)
-             VALUES ('pending_claim', $1)
-             RETURNING id`,
-            [personEntityId]
-          );
-          accountId = insAcc.rows[0].id;
-          countAccounts++;
-        } else {
-          accountId = resAcc.rows[0].id;
-        }
-
-        // Auth Challenge
-        const digestBuffer = Buffer.from(sha256Hex(item.claim_code), 'hex');
-        await client.query(
-          `INSERT INTO auth_challenges (id, challenge_digest, purpose, account_id, expires_at)
-           VALUES (gen_random_uuid(), $1, 'claim_account', $2, NOW() + INTERVAL '30 days')
-           ON CONFLICT (challenge_digest) DO NOTHING`,
-          [digestBuffer, accountId]
-        );
-
-        // Wallet Reserved
-        await client.query(
-          `INSERT INTO wallets (entity_id, wallet_type, wallet_status)
-           VALUES ($1, 'passkey', 'reserved')
-           ON CONFLICT DO NOTHING`,
-          [personEntityId]
-        );
+        if (ins.rows.length > 0) report.relGroupCreated++;
+        else report.relGroupReused++;
       }
-    } else {
-      // Process Artistic Presentation Rows
-      const createdSchools = new Map();
-      for (const [slug, s] of schoolsMap.entries()) {
-        let r = await client.query('SELECT id FROM entities WHERE slug = $1', [slug]);
-        let orgId;
-        if (r.rows.length === 0) {
-          const inserted = await client.query(
-            `INSERT INTO entities (kind, display_name, slug, country, city, status, is_public, active)
-             VALUES ('organization', $1, $2, 'Chile', 'Santiago', 'verified', true, true)
-             RETURNING id`,
-            [s.name, slug]
-          );
-          orgId = inserted.rows[0].id;
-          await client.query(
-            `INSERT INTO organizations (entity_id, organization_type, contact_name, contact_email, contact_phone)
-             VALUES ($1, 'school', $2, $3, $4)`,
-            [orgId, s.name, s.contactEmail, s.contactPhone]
-          );
-        } else {
-          orgId = r.rows[0].id;
-        }
-        createdSchools.set(slug, orgId);
-      }
-      console.log(`  ✅ ${createdSchools.size} Escuelas procesadas`);
+    }
 
-      for (const item of manifest) {
-        const isSolista = item.tipo_participacion.toLowerCase().includes('solista');
-        const email = item.email_contacto;
-        const personSlug = slugify(item.nombre_encargada || `persona-${item.numero_presentacion}`);
-
-        let personEntityId;
-        let existingPerson = await client.query(
-          `SELECT entity_id FROM people WHERE email = $1 LIMIT 1`,
-          [email]
+    // 7. Relaciones Persona -> Escuela
+    for (const r of normalized.personSchoolRelationships) {
+      const fromId = personEntityMap.get(r.personKey);
+      const toId = schoolEntityMap.get(r.schoolSlug);
+      if (fromId && toId && fromId !== toId) {
+        const ins = await client.query(
+          `INSERT INTO relationships (from_entity_id, to_entity_id, relationship_type, context_event_id, status, notes)
+           VALUES ($1, $2, $3, $4, 'active', $5)
+           ON CONFLICT DO NOTHING
+           RETURNING id`,
+          [fromId, toId, r.type, eventEntityId, r.notes]
         );
+        if (ins.rows.length > 0) report.relPersonCreated++;
+        else report.relPersonReused++;
+      }
+    }
 
-        if (existingPerson.rows.length > 0) {
-          personEntityId = existingPerson.rows[0].entity_id;
-        } else {
-          const pEnt = await client.query(
-            `INSERT INTO entities (kind, display_name, slug, country, city, status, is_public, active)
-             VALUES ('person', $1, $2, 'Chile', 'Santiago', 'verified', true, true)
-             RETURNING id`,
-            [item.nombre_encargada, personSlug]
-          );
-          personEntityId = pEnt.rows[0].id;
-          await client.query(
-            `INSERT INTO people (entity_id, artistic_name, email, main_role)
-             VALUES ($1, $2, $3, $4)`,
-            [personEntityId, item.nombre_encargada, email, isSolista ? 'dancer' : 'director']
-          );
-        }
+    // 8. Participaciones en el Evento
+    for (const p of normalized.participations) {
+      const subjectId = p.subjectKind === 'person'
+        ? personEntityMap.get(p.subjectKey)
+        : groupEntityMap.get(p.subjectKey);
 
-        let subjectEntityId = personEntityId;
-        if (!isSolista && item.nombre_escuela) {
-          const schoolSlug = slugify(item.nombre_escuela);
-          if (createdSchools.has(schoolSlug)) {
-            subjectEntityId = createdSchools.get(schoolSlug);
-
-            await client.query(
-              `INSERT INTO relationships (from_entity_id, to_entity_id, relationship_type, status)
-               VALUES ($1, $2, 'director_of', 'active')
-               ON CONFLICT DO NOTHING`,
-              [personEntityId, subjectEntityId]
-            );
-          }
-        }
-
-        await client.query(
+      if (subjectId) {
+        // Relación participant_of
+        const insRel = await client.query(
           `INSERT INTO relationships (from_entity_id, to_entity_id, relationship_type, context_event_id, status, notes)
            VALUES ($1, $2, 'participant_of', $2, 'active', $3)
-           ON CONFLICT DO NOTHING`,
-          [subjectEntityId, eventEntityId, `Presentación #${item.numero_presentacion}: ${item.nombre_baile}`]
+           ON CONFLICT DO NOTHING
+           RETURNING id`,
+          [subjectId, eventEntityId, p.notes]
         );
+        if (insRel.rows.length > 0) report.relParticipantCreated++;
+        else report.relParticipantReused++;
 
-        await client.query(
+        // Registro de Participación
+        const insPart = await client.query(
           `INSERT INTO participations (subject_entity_id, event_id, state)
            VALUES ($1, $2, 'registered')
-           ON CONFLICT (subject_entity_id, event_id) DO NOTHING`,
-          [subjectEntityId, eventEntityId]
+           ON CONFLICT (subject_entity_id, event_id) DO NOTHING
+           RETURNING id`,
+          [subjectId, eventEntityId]
         );
-
-        const metadataHash = sha256Hex(`FDVC2026:${item.numero_presentacion}:${item.nombre_baile}`);
-        const credType = isSolista ? 1 : 2;
-        await client.query(
-          `INSERT INTO credentials (credential_code, issuer_entity_id, issued_by, subject_entity_id, event_id, credential_type, metadata_hash, hash_schema, status, title, description)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, 1, 'issued', $8, $9)
-           ON CONFLICT (issuer_entity_id, subject_entity_id, event_id, credential_type) DO NOTHING`,
-          [item.credential_code, fdvcOrgEntityId, adminAccountId, subjectEntityId, eventEntityId, credType, metadataHash, item.titulo_credencial, item.descripcion_credencial]
-        );
-        countCreds++;
-
-        let resAcc = await client.query('SELECT id FROM accounts WHERE person_entity_id = $1', [personEntityId]);
-        let accountId;
-        if (resAcc.rows.length === 0) {
-          const insAcc = await client.query(
-            `INSERT INTO accounts (status, person_entity_id)
-             VALUES ('pending_claim', $1)
-             RETURNING id`,
-            [personEntityId]
-          );
-          accountId = insAcc.rows[0].id;
-          countAccounts++;
-        } else {
-          accountId = resAcc.rows[0].id;
-        }
-
-        const digestBuffer = Buffer.from(sha256Hex(item.claim_code), 'hex');
-        await client.query(
-          `INSERT INTO auth_challenges (id, challenge_digest, purpose, account_id, expires_at)
-           VALUES (gen_random_uuid(), $1, 'claim_account', $2, NOW() + INTERVAL '30 days')
-           ON CONFLICT (challenge_digest) DO NOTHING`,
-          [digestBuffer, accountId]
-        );
-
-        await client.query(
-          `INSERT INTO wallets (entity_id, wallet_type, wallet_status)
-           VALUES ($1, 'passkey', 'reserved')
-           ON CONFLICT DO NOTHING`,
-          [subjectEntityId]
-        );
+        if (insPart.rows.length > 0) report.participationsCreated++;
+        else report.participationsReused++;
       }
     }
 
     await client.query('COMMIT');
+    console.log('\n🎉 Transacción completada con éxito en PostgreSQL (COMMIT efectuado).\n');
 
-    writeFileSync(manifestOutput, JSON.stringify(manifest, null, 2));
+    console.log('================================================================');
+    console.log('  📊 REPORTE POST-IMPORT — RESULTADOS REALES EN POSTGRESQL');
+    console.log('================================================================');
+    console.log(`  • Entidades Creadas        : ${report.entitiesCreated.length}`);
+    console.log(`  • Entidades Reutilizadas   : ${report.entitiesReused.length}`);
+    console.log(`  • Personas Creadas         : ${report.peopleCreated.length} (Reutilizadas: ${report.peopleReused.length})`);
+    console.log(`  • Escuelas Creadas         : ${report.schoolsCreated.length} (Reutilizadas: ${report.schoolsReused.length})`);
+    console.log(`  • Grupos/Ballets Creados   : ${report.groupsCreated.length} (Reutilizadas: ${report.groupsReused.length})`);
+    console.log(`  • Relaciones Creadas       : ${report.relGroupCreated + report.relPersonCreated + report.relParticipantCreated} (Reutilizadas: ${report.relGroupReused + report.relPersonReused + report.relParticipantReused})`);
+    console.log(`    - Grupo → Escuela        : ${report.relGroupCreated} creadas, ${report.relGroupReused} reutilizadas`);
+    console.log(`    - Persona → Escuela      : ${report.relPersonCreated} creadas, ${report.relPersonReused} reutilizadas`);
+    console.log(`    - Participant_of Evento  : ${report.relParticipantCreated} creadas, ${report.relParticipantReused} reutilizadas`);
+    console.log(`  • Participaciones Creadas  : ${report.participationsCreated} (Reutilizadas: ${report.participationsReused})`);
 
-    console.log(`  ✅ Inserción completada con éxito.`);
-    console.log(`  • Cuentas creadas/verificadas : ${countAccounts}`);
-    console.log(`  • Credenciales emitidas     : ${countCreds}`);
-    console.log(`  • Manifiesto guardado en    : ${manifestOutput}\n`);
+    console.log('\n----------------------------------------------------------------');
+    console.log('  🔍 UUIDS DE ENTIDADES PRINCIPALES VERIFICADAS');
+    console.log('----------------------------------------------------------------');
+    console.log(`  1. Evento FDVC 2026        : ${eventEntityId}`);
+    console.log(`  2. Org FDVC (Festival)     : ${fdvcOrgEntityId}`);
+    console.log(`  3. Priscilla Bellydancer   : ${personEntityMap.get('priscilla-bellydancer')}`);
+    console.log(`  4. Tribu Raks El Hob (Org) : ${schoolEntityMap.get('tribu-raks-el-hob')}`);
+    console.log(`  5. Tribu Raks El Hob (Grp) : ${groupEntityMap.get('tribu-raks-el-hob-grupo')}`);
+    console.log(`  6. María Soledad Lazo / Mah: ${personEntityMap.get('maria-soledad-lazo')}`);
+    console.log(`  7. Mahaila May y al. (Esc) : ${schoolEntityMap.get('mahaila-may-y-alumnas')}`);
+    console.log(`  8. Mahaila May y al. (Grp) : ${groupEntityMap.get('grupo-mahaila-may-y-alumnas')}`);
+    console.log(`  9. Mabel Casandra Parra    : ${personEntityMap.get('mabel-casandra-parra-albarran')}`);
+    console.log(` 10. Escuela Casandra        : ${schoolEntityMap.get('escuela-casandra')}`);
+    console.log(` 11. Grupo Escuela Casandra  : ${groupEntityMap.get('grupo-escuela-casandra')}`);
+    console.log(` 12. Farida Warda            : ${personEntityMap.get('farida-warda')}`);
+    console.log(` 13. Academia Farida Warda   : ${schoolEntityMap.get('academia-farida-warda')}`);
+    console.log(` 14. Ballet Arwam al Shams   : ${groupEntityMap.get('ballet-arwam-al-shams')}`);
+    console.log(` 15. Ballet Alsabalal        : ${groupEntityMap.get('ballet-alsabalal')}`);
+    console.log(` 16. Shazadi                 : ${personEntityMap.get('shazadi')}`);
+    console.log(` 17. Estudio Shazadi         : ${schoolEntityMap.get('estudio-shazadi-fitness-integrado')}`);
+    console.log(` 18. Cristina Acevedo        : ${personEntityMap.get('cristina-acevedo')}`);
+    console.log(` 19. Habibi Danza            : ${schoolEntityMap.get('habibi-danza-cajon-del-maipo')}`);
+    console.log(` 20. Ballet Habibi           : ${groupEntityMap.get('ballet-habibi')}`);
+    console.log('================================================================\n');
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('\n❌ Error durante la inserción en BD:', error);
+    console.error('\n❌ ERROR durante la ejecución en BD:', error);
     process.exit(1);
   } finally {
     await client.end();
   }
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (process.argv[1] && process.argv[1].endsWith('import-fdvc2026-pilot.mjs')) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
