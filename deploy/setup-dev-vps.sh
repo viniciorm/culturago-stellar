@@ -47,7 +47,8 @@ if [ ! -f /opt/culturago-dev/.env ]; then
 
   cat <<EOF > /opt/culturago-dev/.env
 NODE_ENV=production
-PORT=3081
+PORT=3080
+DEV_HOST_PORT=3081
 HOSTNAME=0.0.0.0
 NEXT_PUBLIC_ENVIRONMENT=development
 NEXT_PUBLIC_CULTURAGO_ENV=testnet
@@ -84,6 +85,16 @@ EOF
   echo "✓ /opt/culturago-dev/.env creado con CSPRNG (permisos 640, root:cultura)."
 else
   echo "✓ /opt/culturago-dev/.env ya existe (se preserva configuración y credenciales existentes)."
+  if grep -q "^PORT=3081" /opt/culturago-dev/.env; then
+    sed -i 's/^PORT=3081.*/PORT=3080/' /opt/culturago-dev/.env
+    echo "✓ Migrado PORT: 3081 -> 3080 (puerto interno de app) en /opt/culturago-dev/.env."
+  fi
+
+  if ! grep -q "^DEV_HOST_PORT=" /opt/culturago-dev/.env; then
+    echo "DEV_HOST_PORT=3081" >> /opt/culturago-dev/.env
+    echo "✓ Añadido DEV_HOST_PORT=3081 a /opt/culturago-dev/.env."
+  fi
+
   if grep -q "^NEXT_PUBLIC_CULTURAGO_ENV=development" /opt/culturago-dev/.env; then
     sed -i 's/^NEXT_PUBLIC_CULTURAGO_ENV=development.*/NEXT_PUBLIC_CULTURAGO_ENV=testnet/' /opt/culturago-dev/.env
     echo "✓ Migrado NEXT_PUBLIC_CULTURAGO_ENV: development -> testnet en /opt/culturago-dev/.env."

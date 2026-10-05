@@ -17,15 +17,21 @@ services:
     container_name: culturago-app-dev
     restart: unless-stopped
     ports:
-      - "127.0.0.1:3081:3081"
+      - "127.0.0.1:3081:3080"
     env_file:
       - /opt/culturago-dev/.env
     environment:
       - NODE_ENV=production
-      - PORT=3081
+      - PORT=3080
       - HOSTNAME=0.0.0.0
       - NEXT_PUBLIC_ENVIRONMENT=development
       - NEXT_PUBLIC_CULTURAGO_ENV=testnet
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3080/api/health').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1));\""]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
     networks:
       - culturago-dev
     depends_on:
