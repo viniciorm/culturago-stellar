@@ -148,8 +148,7 @@ done
 echo "✓ culturago-postgres-dev listo."
 
 echo "=== [6/8] Aplicando Migraciones 0001 -> 0014 en PostgreSQL DEV ==="
-# Ejecutar migraciones directamente dentro del contenedor o vía script node
-docker exec -i culturago-postgres-dev psql -U culturago_dev_app -d culturago_dev -c "
+docker exec -i culturago-postgres-dev psql -v ON_ERROR_STOP=1 -U culturago_dev_app -d culturago_dev -c "
 CREATE TABLE IF NOT EXISTS schema_migrations (
     filename VARCHAR(255) PRIMARY KEY,
     applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -158,27 +157,61 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 
 for mig in database/migrations/*.sql; do
   mig_name="$(basename "$mig")"
-  already_applied=$(docker exec -i culturago-postgres-dev psql -U culturago_dev_app -d culturago_dev -t -A -c "SELECT count(*) FROM schema_migrations WHERE filename = '$mig_name';")
+  already_applied=$(docker exec -i culturago-postgres-dev psql -v ON_ERROR_STOP=1 -U culturago_dev_app -d culturago_dev -t -A -c "SELECT count(*) FROM schema_migrations WHERE filename = '$mig_name';")
   if [ "$already_applied" = "0" ]; then
     echo "Aplicando migración: $mig_name"
-    docker exec -i culturago-postgres-dev psql -U culturago_dev_app -d culturago_dev < "$mig"
-    docker exec -i culturago-postgres-dev psql -U culturago_dev_app -d culturago_dev -c "INSERT INTO schema_migrations (filename) VALUES ('$mig_name');"
+    docker exec -i culturago-postgres-dev psql -v ON_ERROR_STOP=1 -U culturago_dev_app -d culturago_dev < "$mig"
+    docker exec -i culturago-postgres-dev psql -v ON_ERROR_STOP=1 -U culturago_dev_app -d culturago_dev -c "INSERT INTO schema_migrations (filename) VALUES ('$mig_name');"
   else
     echo "Migración ya aplicada: $mig_name"
   fi
 done
-echo "✓ Migraciones 0001 a 0014 aplicadas exitosamente en culturago_dev."
+
+# Verificación explícita e inequívoca de registro en schema_migrations (columna filename)
+echo "Verificando registro inequívoco de migraciones en schema_migrations..."
+TOTAL_MIG_FILES=0
+for mig in database/migrations/*.sql; do
+  mig_name="$(basename "$mig")"
+  TOTAL_MIG_FILES=$((TOTAL_MIG_FILES + 1))
+  is_applied=$(docker exec -i culturago-postgres-dev psql -v ON_ERROR_STOP=1 -U culturago_dev_app -d culturago_dev -t -A -c "SELECT count(*) FROM schema_migrations WHERE filename = '$mig_name';")
+  if [ "$is_applied" -ne 1 ]; then
+    echo "ERROR: La migración $mig_name no está registrada en schema_migrations (columna filename)."
+    exit 1
+  fi
+done
+
+APPLIED_COUNT=$(docker exec -i culturago-postgres-dev psql -v ON_ERROR_STOP=1 -U culturago_dev_app -d culturago_dev -t -A -c "SELECT count(*) FROM schema_migrations;")
+echo "✓ Todas las ${APPLIED_COUNT} migraciones (esperadas ${TOTAL_MIG_FILES}) están aplicadas y verificadas en schema_migrations (columna filename)."
 
 echo "=== [7/8] Aplicando Seed Mínimo Ficticio en DEV ==="
 if [ -f "database/seed-dev-minimal.sql" ]; then
-  docker exec -i culturago-postgres-dev psql -U culturago_dev_app -d culturago_dev < "database/seed-dev-minimal.sql"
-  echo "✓ Seed mínimo ficticio aplicado correctamente en culturago_dev."
+  # Fail-fast: ON_ERROR_STOP=1 aborta el script si cualquier statement falla
+  docker exec -i culturago-postgres-dev psql -v ON_ERROR_STOP=1 -U culturago_dev_app -d culturago_dev < "database/seed-dev-minimal.sql"
+
+  # Verificación inmediata de que las tablas no quedaron vacías tras ROLLBACK o fallo
+  ENTITIES_COUNT=$(docker exec -i culturago-postgres-dev psql -v ON_ERROR_STOP=1 -U culturago_dev_app -d culturago_dev -t -A -c "SELECT count(*) FROM entities;")
+  ORGS_COUNT=$(docker exec -i culturago-postgres-dev psql -v ON_ERROR_STOP=1 -U culturago_dev_app -d culturago_dev -t -A -c "SELECT count(*) FROM organizations;")
+  EVENTS_COUNT=$(docker exec -i culturago-postgres-dev psql -v ON_ERROR_STOP=1 -U culturago_dev_app -d culturago_dev -t -A -c "SELECT count(*) FROM events;")
+  PEOPLE_COUNT=$(docker exec -i culturago-postgres-dev psql -v ON_ERROR_STOP=1 -U culturago_dev_app -d culturago_dev -t -A -c "SELECT count(*) FROM people;")
+  PARTS_COUNT=$(docker exec -i culturago-postgres-dev psql -v ON_ERROR_STOP=1 -U culturago_dev_app -d culturago_dev -t -A -c "SELECT count(*) FROM participations;")
+  RELS_COUNT=$(docker exec -i culturago-postgres-dev psql -v ON_ERROR_STOP=1 -U culturago_dev_app -d culturago_dev -t -A -c "SELECT count(*) FROM relationships;")
+
+  if [ "$ENTITIES_COUNT" -eq 0 ] || [ "$ORGS_COUNT" -eq 0 ] || [ "$EVENTS_COUNT" -eq 0 ] || [ "$PEOPLE_COUNT" -eq 0 ] || [ "$PARTS_COUNT" -eq 0 ]; then
+    echo "ERROR: El seed no insertó los registros requeridos (entities=${ENTITIES_COUNT}, orgs=${ORGS_COUNT}, events=${EVENTS_COUNT}, people=${PEOPLE_COUNT}, participations=${PARTS_COUNT})."
+    exit 1
+  fi
+
+  echo "✓ Seed mínimo ficticio aplicado y verificado correctamente en culturago_dev (entities=${ENTITIES_COUNT}, orgs=${ORGS_COUNT}, events=${EVENTS_COUNT}, people=${PEOPLE_COUNT}, participations=${PARTS_COUNT}, rels=${RELS_COUNT})."
 fi
 
 echo "=== [8/8] Smoke Test Local DEV (:3081) ==="
 sleep 3
 HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3081 || echo "000")
 echo "HTTP Status en 127.0.0.1:3081 -> ${HTTP_CODE}"
+if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "307" ] && [ "$HTTP_CODE" != "308" ]; then
+  echo "ERROR: Smoke test falló con status HTTP ${HTTP_CODE}"
+  exit 1
+fi
 
 echo "=============================================================================="
 echo "  AMBIENTE DEV DESPLEGADO EXITOSAMENTE"

@@ -28,8 +28,8 @@ async function seed() {
     `, [orgId]);
 
     await client.query(`
-      INSERT INTO organizations (entity_id, legal_name, org_type, contact_email)
-      VALUES ($1, 'Academia Demo DEV SpA', 'academy', 'contacto@demo.dev.culturago.example')
+      INSERT INTO organizations (entity_id, organization_type, contact_name, contact_email, website)
+      VALUES ($1, 'academy', 'Contacto Demo DEV', 'contacto@demo.dev.culturago.example', 'https://demo.dev.culturago.example')
       ON CONFLICT (entity_id) DO NOTHING
     `, [orgId]);
 
@@ -56,8 +56,8 @@ async function seed() {
     `, [personId]);
 
     await client.query(`
-      INSERT INTO people (entity_id, first_name, last_name, email)
-      VALUES ($1, 'Artista', 'Demo DEV', 'artista@demo.dev.culturago.example')
+      INSERT INTO people (entity_id, legal_name, artistic_name, email, main_role)
+      VALUES ($1, 'Persona Ficticia DEV', 'Artista Demo DEV', 'artista@demo.dev.culturago.example', 'dancer')
       ON CONFLICT (entity_id) DO NOTHING
     `, [personId]);
 
@@ -69,13 +69,22 @@ async function seed() {
       ON CONFLICT (id) DO NOTHING
     `, [partId, personId, eventId]);
 
-    // 5. Relación Artista -> Escuela
-    const relId = '50000000-0000-4000-8000-000000000001';
+    // 5. Relaciones Mínimas
+    // 5a. Relación Artista -> Escuela (member_of)
+    const relMemberId = '50000000-0000-4000-8000-000000000001';
     await client.query(`
       INSERT INTO relationships (id, from_entity_id, to_entity_id, relationship_type, status)
       VALUES ($1, $2, $3, 'member_of', 'active')
       ON CONFLICT (id) DO NOTHING
-    `, [relId, personId, orgId]);
+    `, [relMemberId, personId, orgId]);
+
+    // 5b. Relación Organización -> Evento (organizer_of)
+    const relOrgId = '50000000-0000-4000-8000-000000000002';
+    await client.query(`
+      INSERT INTO relationships (id, from_entity_id, to_entity_id, relationship_type, status)
+      VALUES ($1, $2, $3, 'organizer_of', 'active')
+      ON CONFLICT (id) DO NOTHING
+    `, [relOrgId, orgId, eventId]);
 
     await client.query('COMMIT');
     console.log('✓ Seed mínimo para DEV completado exitosamente.');
