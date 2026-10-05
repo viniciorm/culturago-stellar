@@ -27,6 +27,22 @@ describe('public secret gate', () => {
     vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://example.com');
     expect(() => getPublicConfig()).not.toThrow();
   });
+
+  it('rejects NEXT_PUBLIC_CULTURAGO_ENV="development" with descriptive DomainError', () => {
+    vi.stubEnv('NEXT_PUBLIC_CULTURAGO_ENV', 'development');
+    expect(() => getPublicConfig()).toThrow(
+      /NEXT_PUBLIC_CULTURAGO_ENV must be one of demo\|testnet\|mainnet, got "development"/
+    );
+  });
+
+  it('accepts dev deployment with NEXT_PUBLIC_ENVIRONMENT="development" and NEXT_PUBLIC_CULTURAGO_ENV="testnet"', () => {
+    vi.stubEnv('NEXT_PUBLIC_ENVIRONMENT', 'development');
+    vi.stubEnv('NEXT_PUBLIC_CULTURAGO_ENV', 'testnet');
+    vi.stubEnv('NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE', 'Test SDF Network ; September 2015');
+    vi.stubEnv('NEXT_PUBLIC_STELLAR_RPC_URL', 'https://soroban-testnet.stellar.org');
+    const config = getPublicConfig();
+    expect(config.environment).toBe('testnet');
+  });
 });
 
 describe('stellar key role separation', () => {

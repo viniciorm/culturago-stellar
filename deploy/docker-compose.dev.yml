@@ -4,7 +4,7 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile
       args:
-        NEXT_PUBLIC_CULTURAGO_ENV: ${NEXT_PUBLIC_CULTURAGO_ENV:-development}
+        NEXT_PUBLIC_CULTURAGO_ENV: ${NEXT_PUBLIC_CULTURAGO_ENV:-testnet}
         NEXT_PUBLIC_ENVIRONMENT: ${NEXT_PUBLIC_ENVIRONMENT:-development}
         NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://dev.culturago.cl}
         NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE: ${NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE:-Test SDF Network ; September 2015}
@@ -25,6 +25,7 @@ services:
       - PORT=3081
       - HOSTNAME=0.0.0.0
       - NEXT_PUBLIC_ENVIRONMENT=development
+      - NEXT_PUBLIC_CULTURAGO_ENV=testnet
     networks:
       - culturago-dev
     depends_on:

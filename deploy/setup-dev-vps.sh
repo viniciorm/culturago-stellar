@@ -50,7 +50,7 @@ NODE_ENV=production
 PORT=3081
 HOSTNAME=0.0.0.0
 NEXT_PUBLIC_ENVIRONMENT=development
-NEXT_PUBLIC_CULTURAGO_ENV=development
+NEXT_PUBLIC_CULTURAGO_ENV=testnet
 NEXT_PUBLIC_APP_URL=https://dev.culturago.cl
 
 # PostgreSQL DEV (aislado en contenedor culturago-postgres-dev)
@@ -83,7 +83,20 @@ EOF
   fi
   echo "✓ /opt/culturago-dev/.env creado con CSPRNG (permisos 640, root:cultura)."
 else
-  echo "✓ /opt/culturago-dev/.env ya existe (se preserva configuración existente)."
+  echo "✓ /opt/culturago-dev/.env ya existe (se preserva configuración y credenciales existentes)."
+  if grep -q "^NEXT_PUBLIC_CULTURAGO_ENV=development" /opt/culturago-dev/.env; then
+    sed -i 's/^NEXT_PUBLIC_CULTURAGO_ENV=development.*/NEXT_PUBLIC_CULTURAGO_ENV=testnet/' /opt/culturago-dev/.env
+    echo "✓ Migrado NEXT_PUBLIC_CULTURAGO_ENV: development -> testnet en /opt/culturago-dev/.env."
+  elif ! grep -q "^NEXT_PUBLIC_CULTURAGO_ENV=" /opt/culturago-dev/.env; then
+    echo "NEXT_PUBLIC_CULTURAGO_ENV=testnet" >> /opt/culturago-dev/.env
+    echo "✓ Añadido NEXT_PUBLIC_CULTURAGO_ENV=testnet a /opt/culturago-dev/.env."
+  fi
+
+  if ! grep -q "^NEXT_PUBLIC_ENVIRONMENT=" /opt/culturago-dev/.env; then
+    echo "NEXT_PUBLIC_ENVIRONMENT=development" >> /opt/culturago-dev/.env
+    echo "✓ Añadido NEXT_PUBLIC_ENVIRONMENT=development a /opt/culturago-dev/.env."
+  fi
+
   chmod 640 /opt/culturago-dev/.env
   if getent group cultura >/dev/null 2>&1; then
     chown root:cultura /opt/culturago-dev/.env
