@@ -6,11 +6,13 @@
 export type HashSchemaId =
   | 'culturago.entity.v1'
   | 'culturago.credential.v1'
+  | 'culturago.credential.v2'
   | 'culturago.fingerprint.v1';
 
 export const HASH_SCHEMA_CODES: Readonly<Record<HashSchemaId, number>> = {
   'culturago.entity.v1': 1,
   'culturago.credential.v1': 2,
+  'culturago.credential.v2': 3,
   'culturago.fingerprint.v1': 0,
 };
 

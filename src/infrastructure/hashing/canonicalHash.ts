@@ -8,6 +8,7 @@ import { buildDigestInput, canonicalizeJson } from './canonicalize';
 const KNOWN_SCHEMAS: readonly HashSchemaId[] = [
   'culturago.entity.v1',
   'culturago.credential.v1',
+  'culturago.credential.v2',
   'culturago.fingerprint.v1',
 ];
 
