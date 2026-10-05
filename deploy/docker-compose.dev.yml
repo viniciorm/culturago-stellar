@@ -1,0 +1,60 @@
+services:
+  app-dev:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args:
+        NEXT_PUBLIC_CULTURAGO_ENV: ${NEXT_PUBLIC_CULTURAGO_ENV:-development}
+        NEXT_PUBLIC_ENVIRONMENT: ${NEXT_PUBLIC_ENVIRONMENT:-development}
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://dev.culturago.cl}
+        NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE: ${NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE:-Test SDF Network ; September 2015}
+        NEXT_PUBLIC_STELLAR_RPC_URL: ${NEXT_PUBLIC_STELLAR_RPC_URL:-https://soroban-testnet.stellar.org}
+        NEXT_PUBLIC_ENTITY_REGISTRY_CONTRACT_ID: ${NEXT_PUBLIC_ENTITY_REGISTRY_CONTRACT_ID:-}
+        NEXT_PUBLIC_CREDENTIAL_REGISTRY_CONTRACT_ID: ${NEXT_PUBLIC_CREDENTIAL_REGISTRY_CONTRACT_ID:-}
+        NEXT_PUBLIC_STELLAR_EXPLORER_BASE: ${NEXT_PUBLIC_STELLAR_EXPLORER_BASE:-https://stellar.expert/explorer/testnet}
+        NEXT_PUBLIC_SMART_WALLET_WASM_HASH: ${NEXT_PUBLIC_SMART_WALLET_WASM_HASH:-}
+        NEXT_PUBLIC_SMART_WALLET_ACCEPTED_WASM_HASHES: ${NEXT_PUBLIC_SMART_WALLET_ACCEPTED_WASM_HASHES:-}
+    container_name: culturago-app-dev
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3081:3081"
+    env_file:
+      - /opt/culturago-dev/.env
+    environment:
+      - NODE_ENV=production
+      - PORT=3081
+      - HOSTNAME=0.0.0.0
+      - NEXT_PUBLIC_ENVIRONMENT=development
+    networks:
+      - culturago-dev
+    depends_on:
+      postgres-dev:
+        condition: service_healthy
+
+  postgres-dev:
+    image: postgres:16-alpine
+    container_name: culturago-postgres-dev
+    restart: unless-stopped
+    env_file:
+      - /opt/culturago-dev/.env
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-culturago_dev_app}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-culturago_dev_pass_2026}
+      - POSTGRES_DB=${POSTGRES_DB:-culturago_dev}
+    volumes:
+      - pg_dev_data:/var/lib/postgresql/data
+    networks:
+      - culturago-dev
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-culturago_dev_app} -d ${POSTGRES_DB:-culturago_dev}"]
+      interval: 5s
+      timeout: 5s
+      start_period: 5s
+      retries: 5
+
+networks:
+  culturago-dev:
+    driver: bridge
+
+volumes:
+  pg_dev_data:
