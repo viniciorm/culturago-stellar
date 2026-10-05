@@ -33,8 +33,19 @@ free -h
 
 echo "=== [3/8] Preparando directorio y variables /opt/culturago-dev/.env ==="
 mkdir -p /opt/culturago-dev
+chmod 750 /opt/culturago-dev
+if getent group cultura >/dev/null 2>&1; then
+  chown root:cultura /opt/culturago-dev
+fi
+
 if [ ! -f /opt/culturago-dev/.env ]; then
-  cat <<'EOF' > /opt/culturago-dev/.env
+  if command -v openssl >/dev/null 2>&1; then
+    DEV_DB_PASS=$(openssl rand -hex 24)
+  else
+    DEV_DB_PASS=$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')
+  fi
+
+  cat <<EOF > /opt/culturago-dev/.env
 NODE_ENV=production
 PORT=3081
 HOSTNAME=0.0.0.0
@@ -44,10 +55,10 @@ NEXT_PUBLIC_APP_URL=https://dev.culturago.cl
 
 # PostgreSQL DEV (aislado en contenedor culturago-postgres-dev)
 POSTGRES_USER=culturago_dev_app
-POSTGRES_PASSWORD=culturago_dev_pass_2026
+POSTGRES_PASSWORD=${DEV_DB_PASS}
 POSTGRES_DB=culturago_dev
-DATABASE_URL=postgresql://culturago_dev_app:culturago_dev_pass_2026@culturago-postgres-dev:5432/culturago_dev
-DATABASE_MIGRATION_URL=postgresql://culturago_dev_app:culturago_dev_pass_2026@culturago-postgres-dev:5432/culturago_dev
+DATABASE_URL=postgresql://culturago_dev_app:${DEV_DB_PASS}@culturago-postgres-dev:5432/culturago_dev
+DATABASE_MIGRATION_URL=postgresql://culturago_dev_app:${DEV_DB_PASS}@culturago-postgres-dev:5432/culturago_dev
 
 # Guardrails de seguridad DEV
 EMAIL_ENABLED=false
@@ -63,10 +74,22 @@ NEXT_PUBLIC_STELLAR_EXPLORER_BASE="https://stellar.expert/explorer/testnet"
 WEBAUTHN_RP_ID=dev.culturago.cl
 WEBAUTHN_ORIGINS=https://dev.culturago.cl
 EOF
-  chmod 600 /opt/culturago-dev/.env
-  echo "✓ /opt/culturago-dev/.env creado con permisos 600."
+  unset DEV_DB_PASS
+  chmod 640 /opt/culturago-dev/.env
+  if getent group cultura >/dev/null 2>&1; then
+    chown root:cultura /opt/culturago-dev/.env
+  else
+    chown root:root /opt/culturago-dev/.env
+  fi
+  echo "✓ /opt/culturago-dev/.env creado con CSPRNG (permisos 640, root:cultura)."
 else
-  echo "✓ /opt/culturago-dev/.env ya existe."
+  echo "✓ /opt/culturago-dev/.env ya existe (se preserva configuración existente)."
+  chmod 640 /opt/culturago-dev/.env
+  if getent group cultura >/dev/null 2>&1; then
+    chown root:cultura /opt/culturago-dev/.env
+  else
+    chown root:root /opt/culturago-dev/.env
+  fi
 fi
 
 echo "=== [4/8] Configurando Nginx para dev.culturago.cl ==="

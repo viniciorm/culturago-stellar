@@ -39,7 +39,7 @@ services:
       - /opt/culturago-dev/.env
     environment:
       - POSTGRES_USER=${POSTGRES_USER:-culturago_dev_app}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-culturago_dev_pass_2026}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB:-culturago_dev}
     volumes:
       - pg_dev_data:/var/lib/postgresql/data
