@@ -137,7 +137,7 @@ describeIfPg('PassportService & PostgreSQLIndexer V1 verification regression (Po
     });
     expect(pdfResp.status).toBe(200);
     const pdfBytes = Buffer.from(await pdfResp.arrayBuffer()).toString('latin1');
-    expect(pdfBytes).toContain('Sin confirmacion en Stellar (registro local)');
+    expect(pdfBytes).toContain('Sin confirmacion en Stellar \\(registro local\\)');
     expect(pdfBytes).toContain('Registrada en Stellar: No');
   });
 
