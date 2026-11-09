@@ -1072,19 +1072,22 @@ export interface CredentialVerificationResult {
   matches: boolean;
   revoked: boolean;
   ledger: number | null;
-  status: 'issued' | 'revoked' | 'not_found';
+  status: 'issued' | 'revoked' | 'unverified' | 'not_found';
+  dbStatus?: 'draft' | 'issued' | 'revoked' | null;
+  metadataHash?: string | null;
+  hashSchema?: number | null;
   network: string;
   contractId: string | null;
 }
 
 function toVerificationStatus(
   dbStatus: 'draft' | 'issued' | 'revoked' | null,
-  chain: { exists: boolean; revoked: boolean }
-): 'issued' | 'revoked' | 'not_found' {
+  chain: { exists: boolean; matches: boolean; revoked: boolean }
+): 'issued' | 'revoked' | 'unverified' | 'not_found' {
   if (!chain.exists && !dbStatus) return 'not_found';
-  if (chain.revoked) return 'revoked';
-  if (dbStatus === 'revoked') return 'revoked';
-  if (dbStatus === 'issued') return 'issued';
+  if (chain.revoked || dbStatus === 'revoked') return 'revoked';
+  if (chain.exists && chain.matches && dbStatus === 'issued') return 'issued';
+  if (dbStatus) return 'unverified';
   return 'not_found';
 }
 
@@ -1096,10 +1099,14 @@ async function verifyCredentialById(credentialId: string): Promise<CredentialVer
   const result = await query<{
     id: string;
     status: 'draft' | 'issued' | 'revoked';
-    metadata_hash: string;
-    hash_schema: number;
+    metadata_hash: string | null;
+    hash_schema: number | null;
   }>(
-    'SELECT id, status, metadata_hash, hash_schema FROM credentials WHERE id = $1 LIMIT 1',
+    `SELECT id, status, metadata_hash, hash_schema
+     FROM credentials
+     WHERE (id::text = $1 OR credential_code = $1)
+       AND (schema_version IS NULL OR schema_version != 'culturago.credential.v2')
+     LIMIT 1`,
     [credentialId]
   );
 
@@ -1111,18 +1118,30 @@ async function verifyCredentialById(credentialId: string): Promise<CredentialVer
       revoked: false,
       ledger: null,
       status: 'not_found',
+      dbStatus: null,
+      metadataHash: null,
+      hashSchema: null,
       network: getPublicConfig().environment,
       contractId: getPublicConfig().credentialRegistryContractId,
     };
   }
 
   const row = result.rows[0];
-  const { gateway } = createStellarGateway();
-  const chain = await gateway.verifyCredential({
-    credentialId: row.id,
-    metadataHash: row.metadata_hash,
-    hashSchema: row.hash_schema,
-  });
+  let chain = {
+    exists: false,
+    matches: false,
+    revoked: false,
+    ledger: null as number | null,
+  };
+
+  if (row.metadata_hash && row.hash_schema) {
+    const { gateway } = createStellarGateway();
+    chain = await gateway.verifyCredential({
+      credentialId: row.id,
+      metadataHash: row.metadata_hash,
+      hashSchema: row.hash_schema,
+    });
+  }
 
   return {
     credentialId: row.id,
@@ -1131,6 +1150,9 @@ async function verifyCredentialById(credentialId: string): Promise<CredentialVer
     revoked: chain.revoked,
     ledger: chain.ledger,
     status: toVerificationStatus(row.status, chain),
+    dbStatus: row.status,
+    metadataHash: row.metadata_hash,
+    hashSchema: row.hash_schema,
     network: getPublicConfig().environment,
     contractId: getPublicConfig().credentialRegistryContractId,
   };

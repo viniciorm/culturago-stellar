@@ -544,7 +544,7 @@ export class CredentialV2Service {
       JOIN entities sub ON sub.id = c.subject_entity_id
       LEFT JOIN people p ON p.entity_id = sub.id
       JOIN events ev ON ev.entity_id = c.event_id
-      WHERE c.public_id = $1`,
+      WHERE c.public_id = $1 AND c.schema_version = 'culturago.credential.v2'`,
       [publicId]
     );
 
