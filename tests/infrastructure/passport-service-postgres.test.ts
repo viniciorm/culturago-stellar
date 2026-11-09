@@ -105,14 +105,15 @@ describeIfPg('PassportService & PostgreSQLIndexer V1 verification regression (Po
       status: 'unverified',
       verifiedOnChain: false,
       dbStatus: 'issued',
-      metadataHash,
-      hashSchema: 1,
-      revoked: false,
       onChain: {
         exists: false,
         matches: false,
         revoked: false,
         ledger: null,
+      },
+      canonical: {
+        digest: metadataHash,
+        schema: 1,
       },
     });
 
@@ -121,9 +122,10 @@ describeIfPg('PassportService & PostgreSQLIndexer V1 verification regression (Po
     });
     expect(jsonResp.status).toBe(200);
     const jsonBody = await jsonResp.json();
-    expect(jsonBody.credential.status).toBe('unverified');
-    expect(jsonBody.credential.verifiedOnChain).toBe(false);
-    expect(jsonBody.credential.onChain).toEqual({
+    expect(jsonBody.format).toBe('culturago.credential.v1');
+    expect(jsonBody.status).toBe('unverified');
+    expect(jsonBody.verifiedOnChain).toBe(false);
+    expect(jsonBody.onChain).toEqual({
       exists: false,
       matches: false,
       revoked: false,
