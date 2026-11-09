@@ -1,0 +1,41 @@
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - `__dirname` (vitest.config.mts:7:25). Use `import.meta.dirname` instead
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.10 C:/Users/marco/.gemini/antigravity/scratch/culturago-stellar
+
+ ❯ tests/infrastructure/credential-v2-migration.test.ts (22 tests | 22 skipped) 15ms
+ ❯ tests/infrastructure/credential-v2-service.test.ts (16 tests | 16 skipped) 16ms
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/infrastructure/credential-v2-migration.test.ts > Credential V2 Schema & Integrity (0014 Migration Isolated Tests)
+Error: Required isolated PostgreSQL database is unavailable
+ ❯ tests/infrastructure/credential-v2-migration.test.ts:32:13
+     30|       dbAvailable = true;
+     31|     } catch {
+     32|       throw new Error('Required isolated PostgreSQL database is unavai…
+       |             ^
+     33|     }
+     34|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/infrastructure/credential-v2-service.test.ts > CredentialV2Service End-to-End Suite
+Error: Required isolated PostgreSQL database is unavailable
+ ❯ tests/infrastructure/credential-v2-service.test.ts:39:13
+     37|       dbAvailable = true;
+     38|     } catch {
+     39|       throw new Error('Required isolated PostgreSQL database is unavai…
+       |             ^
+     40|     }
+     41|     service = new CredentialV2Service();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  38 skipped (38)
+   Start at  16:33:45
+   Duration  1.76s (transform 342ms, setup 0ms, import 902ms, tests 31ms, environment 0ms)
+

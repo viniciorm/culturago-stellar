@@ -9,8 +9,6 @@ import {
   Award,
   ExternalLink,
   Building,
-  QrCode,
-  FileText,
 } from 'lucide-react';
 import { PublicLayout } from '@/components/PublicLayout';
 import { getAllPreviewCases } from '@/fixtures/fdvc2026-previews';
@@ -55,7 +53,6 @@ export default function CredentialPreviewsIndexPage() {
             const detailUrl = `/dev/credential-previews/${c.id}`;
             const pdfDownloadUrl = `/dev/credential-previews/${c.id}/pdf`;
             const pdfViewUrl = `/dev/credential-previews/${c.id}/pdf?inline=true`;
-            const qrUrl = `/dev/credential-previews/${c.id}/qr`;
 
             const isGroup = c.mode === 'group';
             const isGuest = c.family === 'guest';

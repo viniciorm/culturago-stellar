@@ -29,8 +29,7 @@ describe('Credential V2 Schema & Integrity (0014 Migration Isolated Tests)', () 
       await client.connect();
       dbAvailable = true;
     } catch {
-      console.warn('Isolated test database not reachable at', testDbUrl);
-      return;
+      throw new Error('Required isolated PostgreSQL database is unavailable');
     }
 
     // Seed base entities, event, participations and relationships in test DB
@@ -100,7 +99,7 @@ describe('Credential V2 Schema & Integrity (0014 Migration Isolated Tests)', () 
   // ==========================================================================
   describe('Paso 4: V1 Legacy Compatibility', () => {
     it('successfully inserts legacy credential with credential_type 1..6 and NULL V2 fields', async () => {
-      if (!dbAvailable) return;
+
       const v1Id = 'd0000001-0000-4000-8000-000000000001';
       const hash = 'a'.repeat(64);
 
@@ -123,7 +122,7 @@ describe('Credential V2 Schema & Integrity (0014 Migration Isolated Tests)', () 
     });
 
     it('preserves legacy uniqueness constraint on (issuer, subject, event, credential_type)', async () => {
-      if (!dbAvailable) return;
+
       const v1DupId = 'd0000001-0000-4000-8000-000000000002';
       const hash = 'b'.repeat(64);
 
@@ -141,7 +140,7 @@ describe('Credential V2 Schema & Integrity (0014 Migration Isolated Tests)', () 
     });
 
     it('supports legacy queries by credential_code and subject_entity_id', async () => {
-      if (!dbAvailable) return;
+
       const queryRes = await client.query(`
         SELECT id, credential_code, credential_type, metadata_hash
         FROM credentials
@@ -157,7 +156,7 @@ describe('Credential V2 Schema & Integrity (0014 Migration Isolated Tests)', () 
   // ==========================================================================
   describe('Paso 5: V2 Credential Model & Constraints', () => {
     it('successfully inserts a Participant credential with solo mode, participation_id, and NULL credential_type', async () => {
-      if (!dbAvailable) return;
+
       const credId = 'd0000002-0000-4000-8000-000000000001';
       const digest = '1'.repeat(64);
 
@@ -180,7 +179,7 @@ describe('Credential V2 Schema & Integrity (0014 Migration Isolated Tests)', () 
     });
 
     it('successfully inserts a Guest credential with solo mode and participation_id', async () => {
-      if (!dbAvailable) return;
+
       const credId = 'd0000002-0000-4000-8000-000000000002';
       const digest = '2'.repeat(64);
 
@@ -201,7 +200,7 @@ describe('Credential V2 Schema & Integrity (0014 Migration Isolated Tests)', () 
     });
 
     it('successfully inserts a Staff credential with not_applicable mode, participation_id NULL, and multiple evidences', async () => {
-      if (!dbAvailable) return;
+
       const credId = 'd0000002-0000-4000-8000-000000000003';
       const digest = '3'.repeat(64);
 
@@ -233,7 +232,7 @@ describe('Credential V2 Schema & Integrity (0014 Migration Isolated Tests)', () 
 
     // Rejection tests:
     it('rejects participant without participation_id (chk_credentials_v2_family_mode)', async () => {
-      if (!dbAvailable) return;
+
       await expect(
         client.query(`
           INSERT INTO credentials (
@@ -248,7 +247,7 @@ describe('Credential V2 Schema & Integrity (0014 Migration Isolated Tests)', () 
     });
 
     it('rejects participant with mode not_applicable (chk_credentials_v2_family_mode)', async () => {
-      if (!dbAvailable) return;
+
       await expect(
         client.query(`
           INSERT INTO credentials (
@@ -263,7 +262,7 @@ describe('Credential V2 Schema & Integrity (0014 Migration Isolated Tests)', () 
     });
 
     it('rejects staff with mode solo (chk_credentials_v2_family_mode)', async () => {
-      if (!dbAvailable) return;
+
       await expect(
         client.query(`
           INSERT INTO credentials (
@@ -278,7 +277,7 @@ describe('Credential V2 Schema & Integrity (0014 Migration Isolated Tests)', () 
     });
 
     it('rejects V2 credential that specifies legacy credential_type (chk_credentials_version_coherence)', async () => {
-      if (!dbAvailable) return;
+
       await expect(
         client.query(`
           INSERT INTO credentials (
@@ -293,7 +292,7 @@ describe('Credential V2 Schema & Integrity (0014 Migration Isolated Tests)', () 
     });
 
     it('rejects invalid payload_digest format (chk_credentials_payload_digest)', async () => {
-      if (!dbAvailable) return;
+
       await expect(
         client.query(`
           INSERT INTO credentials (
@@ -308,7 +307,7 @@ describe('Credential V2 Schema & Integrity (0014 Migration Isolated Tests)', () 
     });
 
     it('rejects duplicate public_id (uq_credentials_public_id)', async () => {
-      if (!dbAvailable) return;
+
       await expect(
         client.query(`
           INSERT INTO credentials (
@@ -323,7 +322,7 @@ describe('Credential V2 Schema & Integrity (0014 Migration Isolated Tests)', () 
     });
 
     it('rejects duplicate non-revoked equivalent credential for same presentation (uq_credentials_participant_guest_non_revoked)', async () => {
-      if (!dbAvailable) return;
+
       // An active (issued) credential already exists for testIds.personParticipant on testIds.participationSolo
       await expect(
         client.query(`
@@ -339,7 +338,7 @@ describe('Credential V2 Schema & Integrity (0014 Migration Isolated Tests)', () 
     });
 
     it('rejects second non-revoked staff credential for same subject and event (uq_credentials_staff_non_revoked)', async () => {
-      if (!dbAvailable) return;
+
       // An active staff credential already exists for testIds.personStaff on testIds.event
       await expect(
         client.query(`
@@ -355,7 +354,7 @@ describe('Credential V2 Schema & Integrity (0014 Migration Isolated Tests)', () 
     });
 
     it('allows issuing a new equivalent credential once the previous one is revoked', async () => {
-      if (!dbAvailable) return;
+
       // 1. Create a credential that will be revoked
       const tempCredId = genRandomUUID();
       const tempPubId = 'test_pub_to_revoke_001';
@@ -478,7 +477,7 @@ describe('Credential V2 Schema & Integrity (0014 Migration Isolated Tests)', () 
     });
 
     it('rejects duplicated evidence item within the same credential (uq_credential_evidence_item)', async () => {
-      if (!dbAvailable) return;
+
       const staffCredId = 'd0000002-0000-4000-8000-000000000003';
 
       // testIds.relProducer was already added to staffCredId earlier.
@@ -492,7 +491,7 @@ describe('Credential V2 Schema & Integrity (0014 Migration Isolated Tests)', () 
     });
 
     it('confirms that credential_evidence allows the same evidence to support distinct credentials', async () => {
-      if (!dbAvailable) return;
+
       // Step 2 Clarification:
       // credential_evidence allows a source_id (e.g. a participation) to be referenced by distinct credentials
       // (as long as credential-level equivalence rules in uq_credentials_... are satisfied, e.g. for different credentials).

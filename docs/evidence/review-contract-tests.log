@@ -1,0 +1,70 @@
+   Compiling cultural-credential-registry v0.1.0 (C:\Users\marco\.gemini\antigravity\scratch\culturago-stellar\contracts\cultural-credential-registry)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.38s
+     Running unittests src\lib.rs (contracts\target\debug\deps\cultural_credential_registry-b49ecd75de07279e.exe)
+
+running 33 tests
+test adversarial::link_unlink_events_are_indexable ... ok
+test adversarial::link_without_role_cannot_issue ... ok
+test adversarial::issuance_extends_ttl_on_all_persistent_indexes ... ok
+test adversarial::issuer_and_revoker_roles_are_disjoint ... ok
+test adversarial::double_submit_is_idempotent ... ok
+test adversarial::link_to_other_issuer_does_not_transfer_scope ... ok
+test adversarial::budget_baseline_is_recorded ... ok
+test adversarial::business_key_conflict_with_alternative_credential_id ... ok
+test adversarial::role_without_link_cannot_issue ... ok
+test adversarial::reused_credential_id_with_different_business_key_fails ... ok
+test adversarial::unlink_revokes_access_immediately_and_is_idempotent ... ok
+test adversarial::revoke_is_isolated_per_credential ... ok
+test test::rejects_unknown_credential_type ... ok
+test test::rejects_unknown_hash_schema ... ok
+test test::admin_manages_roles_and_schema ... ok
+test adversarial::same_subject_across_two_events ... ok
+test adversarial::token_id_counter_never_goes_backwards ... ok
+test test::issue_with_different_payload_same_business_key_fails ... ok
+test test::issues_credential_with_unique_token_id ... ok
+test test::rejects_unlinked_operator_even_with_role ... ok
+test test::repeated_issue_with_same_payload_is_idempotent ... ok
+test test::revoking_unknown_credential_fails ... ok
+test test::revoke_preserves_record_and_is_idempotent_by_reason ... ok
+test test::revoke_requires_revoker_role_and_link ... ok
+test test::two_step_admin_transfer ... ok
+test test::unlinked_operator_cannot_issue_or_revoke ... ok
+test test::token_ids_are_monotonic ... ok
+test test::v2_rejects_wrong_issuer_scope_and_invalid_family_scope ... ok
+test test::v2_requires_signature_and_explicit_schema_enablement ... ok
+test test::v2_participations_do_not_collide_and_active_duplicate_is_rejected ... ok
+test test::verify_credential_matches_exactly ... ok
+test test::v2_reissue_preserves_revoked_history_and_prevents_id_reuse ... ok
+test test::v2_staff_has_one_scope_and_coexists_with_v1 ... ok
+
+test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.52s
+
+     Running unittests src\lib.rs (contracts\target\debug\deps\cultural_entity_registry-77bcb99e6f146a2b.exe)
+
+running 23 tests
+test adversarial::deactivate_unknown_entity_fails_cleanly ... ok
+test adversarial::failed_register_leaves_no_state_and_no_events ... ok
+test adversarial::admin_is_not_implicitly_registrar ... ok
+test adversarial::constructor_cannot_run_twice ... ok
+test adversarial::persistent_entries_are_extended_above_threshold ... ok
+test adversarial::register_requires_operator_auth ... ok
+test adversarial::version_unknown_entity_fails_cleanly ... ok
+test adversarial::budget_baseline_is_recorded ... ok
+test adversarial::admin_transfer_expires_after_live_until_ledger ... ok
+test test::admin_can_grant_and_revoke_registrar ... ok
+test adversarial::historical_versions_are_immutable_across_sequences ... ok
+test test::rejects_non_registrar ... ok
+test adversarial::register_and_version_events_have_distinct_topics ... ok
+test test::rejects_unknown_hash_schema ... ok
+test test::cannot_version_inactive_entity ... ok
+test test::deactivate_preserves_history_and_is_idempotent ... ok
+test test::repeated_register_with_different_payload_fails ... ok
+test test::repeated_register_with_same_payload_is_idempotent ... ok
+test test::registers_first_version_and_emits_event ... ok
+test test::two_step_admin_transfer ... ok
+test test::verify_entity_matches_exactly ... ok
+test test::version_conflict_is_rejected ... ok
+test test::versions_with_optimistic_control ... ok
+
+test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
+

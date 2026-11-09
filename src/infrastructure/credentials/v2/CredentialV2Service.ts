@@ -1,5 +1,6 @@
 import 'server-only';
 import { PoolClient } from 'pg';
+import { ActorContext, assertRole } from '../../auth/actorContext';
 import { query, translatePgError, withTransaction } from '../../database/pool';
 import { domainError } from '../../../domain/errors';
 import {
@@ -21,6 +22,8 @@ export interface EvidenceInputParam {
 }
 
 export interface IssueCredentialV2Params {
+  /** Trusted server session context, never deserialized from a form. */
+  actor: ActorContext;
   issuerEntityId: string;
   subjectEntityId: string;
   eventEntityId: string;
@@ -125,6 +128,7 @@ export class CredentialV2Service {
     params: IssueCredentialV2Params,
     existingClient?: PoolClient
   ): Promise<CredentialV2Record> {
+    this.assertOperator(params.actor, params.issuerEntityId);
     const execute = async (client: PoolClient): Promise<CredentialV2Record> => {
       // 1. Fetch and validate Issuer
       const issuerRes = await client.query<{
@@ -188,19 +192,26 @@ export class CredentialV2Service {
       for (const ev of params.evidences) {
         if (ev.sourceType === 'participation') {
           const partRes = await client.query(
-            `SELECT id FROM participations WHERE id = $1`,
-            [ev.sourceId]
+            `SELECT id FROM participations WHERE id = $1
+             AND subject_entity_id = $2 AND event_id = $3
+             AND state IN ('participation_confirmed', 'credential_issued') FOR SHARE`,
+            [ev.sourceId, params.subjectEntityId, params.eventEntityId]
           );
           if (partRes.rows.length === 0) {
-            throw domainError('INVALID_EVIDENCE', `Participation '${ev.sourceId}' does not exist in database`);
+            throw domainError('INVALID_EVIDENCE', `Participation '${ev.sourceId}' must belong to this subject/event and be confirmed`);
           }
         } else if (ev.sourceType === 'relationship') {
           const relRes = await client.query(
-            `SELECT id FROM relationships WHERE id = $1`,
-            [ev.sourceId]
+            `SELECT id FROM relationships WHERE id = $1
+             AND from_entity_id = $2 AND context_event_id = $3
+             AND to_entity_id IN ($3, $4) AND status = 'active'
+             AND relationship_type IN ('producer_of', 'organizer_of', 'provider_of',
+                 'technical_partner_of', 'official_photographer_of', 'official_videographer_of',
+                 'venue_of', 'media_partner_of', 'food_partner_of', 'sponsor_of') FOR SHARE`,
+            [ev.sourceId, params.subjectEntityId, params.eventEntityId, params.issuerEntityId]
           );
           if (relRes.rows.length === 0) {
-            throw domainError('INVALID_EVIDENCE', `Relationship '${ev.sourceId}' does not exist in database`);
+            throw domainError('INVALID_EVIDENCE', `Relationship '${ev.sourceId}' must be active, allowed, and linked to this subject/event`);
           }
         } else {
           throw domainError('INVALID_EVIDENCE', `Invalid evidence source_type '${ev.sourceType}'`);
@@ -613,7 +624,20 @@ export class CredentialV2Service {
    * STRICT IMMUTABILITY: `canonical_payload` and `payload_digest` are NOT modified.
    * Only `status` is transitioned to 'revoked' and `revoked_at` is populated.
    */
-  async revokeCredential(publicId: string): Promise<PublicCredentialView> {
+  private assertOperator(actor: ActorContext, issuerId: string): void {
+    if (!actor) throw domainError('UNAUTHORIZED', 'Authenticated operator context is required');
+    assertRole(actor, 'admin', 'organizer', 'operator');
+    if (!actor.issuerEntityIds.includes(issuerId)) {
+      throw domainError('UNAUTHORIZED', 'Operator is not linked to the credential issuer');
+    }
+  }
+
+  async revokeCredential(publicId: string, actor: ActorContext): Promise<PublicCredentialView> {
+    if (!actor) throw domainError('UNAUTHORIZED', 'Authenticated operator context is required');
+    const owner = await query<{ issuer_entity_id: string }>(
+      'SELECT issuer_entity_id FROM credentials WHERE public_id = $1', [publicId]);
+    if (!owner.rows[0]) throw domainError('NOT_FOUND', 'Credential not found');
+    this.assertOperator(actor, owner.rows[0].issuer_entity_id);
     const res = await query<{
       id: string;
       status: 'draft' | 'issued' | 'revoked';

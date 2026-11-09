@@ -6,7 +6,6 @@ import {
   CanonicalPayloadV2,
 } from '@/domain/credentials/v2';
 import { canonicalizeJson, buildDigestInput } from '@/infrastructure/hashing/canonicalize';
-import { createHash } from 'node:crypto';
 
 describe('Credential V2 Deterministic Golden Vectors (RFC 8785 JCS + SHA-256)', () => {
   // ==========================================================================

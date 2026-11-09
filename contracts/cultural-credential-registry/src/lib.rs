@@ -48,6 +48,7 @@ pub enum CredentialKey {
     IssuerOperator(BytesN<32>, Address),
     /// Hash de esquema admitido.
     AllowedSchema(u32),
+    V2Scope(BytesN<32>),
 }
 
 #[contracttype]
@@ -160,14 +161,98 @@ impl CulturalCredentialRegistry {
         metadata_hash: BytesN<32>,
         hash_schema: u32,
     ) -> Result<u64, ContractError> {
+        Self::issue_internal(
+            env,
+            operator,
+            credential_id,
+            issuer_id,
+            subject_id,
+            event_id,
+            credential_type,
+            metadata_hash,
+            hash_schema,
+            None,
+        )
+    }
+
+    /// V2: 101 participant, 102 guest, 103 staff. V1 ABI remains unchanged.
+    pub fn issue_credential_v2(
+        env: Env,
+        operator: Address,
+        credential_id: BytesN<32>,
+        issuer_id: BytesN<32>,
+        subject_id: BytesN<32>,
+        event_id: BytesN<32>,
+        credential_type: u32,
+        scope_id: BytesN<32>,
+        metadata_hash: BytesN<32>,
+    ) -> Result<u64, ContractError> {
+        Self::issue_internal(
+            env,
+            operator,
+            credential_id,
+            issuer_id,
+            subject_id,
+            event_id,
+            credential_type,
+            metadata_hash,
+            2,
+            Some(scope_id),
+        )
+    }
+
+    pub fn get_v2_scope(env: Env, credential_id: BytesN<32>) -> Option<BytesN<32>> {
+        let key = CredentialKey::V2Scope(credential_id);
+        let scope = env.storage().persistent().get(&key);
+        if scope.is_some() {
+            Self::extend_persistent(&env, &key);
+        }
+        scope
+    }
+}
+
+impl CulturalCredentialRegistry {
+    fn issue_internal(
+        env: Env,
+        operator: Address,
+        credential_id: BytesN<32>,
+        issuer_id: BytesN<32>,
+        subject_id: BytesN<32>,
+        event_id: BytesN<32>,
+        credential_type: u32,
+        metadata_hash: BytesN<32>,
+        hash_schema: u32,
+        scope: Option<BytesN<32>>,
+    ) -> Result<u64, ContractError> {
         operator.require_auth();
         Self::ensure_role(&env, &operator, ISSUER_ROLE)?;
         Self::ensure_linked(&env, &issuer_id, &operator)?;
         Self::ensure_schema(&env, hash_schema)?;
-        Self::ensure_known_type(credential_type)?;
+        if let Some(ref value) = scope {
+            if !(101..=103).contains(&credential_type) {
+                return Err(ContractError::UnknownCredentialType);
+            }
+            let zero = BytesN::from_array(&env, &[0u8; 32]);
+            if (credential_type == 103 && *value != zero)
+                || (credential_type != 103 && *value == zero)
+            {
+                return Err(ContractError::InvalidInput);
+            }
+        } else {
+            Self::ensure_known_type(credential_type)?;
+        }
 
-        let business_key =
-            Self::business_key(&env, &issuer_id, &subject_id, &event_id, credential_type);
+        let business_key = if let Some(ref scope_id) = scope {
+            let mut bytes = soroban_sdk::Bytes::from_slice(&env, b"culturago.registry.v2\0");
+            // Mirrors V2 PostgreSQL uniqueness: subject/event/family/participation.
+            bytes.append(&subject_id.clone().into());
+            bytes.append(&event_id.clone().into());
+            bytes.extend_from_array(&credential_type.to_be_bytes());
+            bytes.append(&scope_id.clone().into());
+            env.crypto().sha256(&bytes).into()
+        } else {
+            Self::business_key(&env, &issuer_id, &subject_id, &event_id, credential_type)
+        };
         let business_key_entry = CredentialKey::ByBusinessKey(business_key.clone());
 
         if let Some(existing_id) = env
@@ -182,13 +267,16 @@ impl CulturalCredentialRegistry {
                 .ok_or(ContractError::NotFound)?;
             Self::extend_persistent(&env, &business_key_entry);
             Self::extend_persistent(&env, &CredentialKey::ById(existing_id.clone()));
-            if existing.credential_id == credential_id
+            if existing.issuer_id == issuer_id
+                && existing.credential_id == credential_id
                 && existing.metadata_hash == metadata_hash
                 && existing.hash_schema == hash_schema
             {
                 return Ok(existing.token_id);
             }
-            return Err(ContractError::AlreadyExists);
+            if scope.is_none() || !existing.revoked {
+                return Err(ContractError::AlreadyExists);
+            }
         }
 
         if env
@@ -229,6 +317,11 @@ impl CulturalCredentialRegistry {
         let by_id = CredentialKey::ById(credential_id.clone());
         let by_token = CredentialKey::ByToken(next);
         env.storage().persistent().set(&by_id, &record);
+        if let Some(scope_id) = scope {
+            let key = CredentialKey::V2Scope(credential_id.clone());
+            env.storage().persistent().set(&key, &scope_id);
+            Self::extend_persistent(&env, &key);
+        }
         env.storage().persistent().set(&by_token, &credential_id);
         env.storage()
             .persistent()
@@ -257,7 +350,10 @@ impl CulturalCredentialRegistry {
 
         Ok(next)
     }
+}
 
+#[contractimpl]
+impl CulturalCredentialRegistry {
     /// Revoca preservando el registro. Idempotente con la misma razón; una
     /// razón distinta devuelve `AlreadyRevoked`. No afecta otras credenciales.
     pub fn revoke_credential(

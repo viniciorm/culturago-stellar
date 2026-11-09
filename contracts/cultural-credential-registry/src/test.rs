@@ -1,3 +1,4 @@
+// Criterio: lore/credenciales-v2-soroban.md — unicidad, historial y evidencia V2.
 #![cfg(test)]
 
 use super::*;
@@ -383,4 +384,275 @@ fn two_step_admin_transfer() {
     let another = Address::generate(&s.env);
     s.client.grant_issuer(&new_admin, &another);
     assert!(has_role(&s, &another, ISSUER_ROLE));
+}
+
+#[test]
+fn v2_participations_do_not_collide_and_active_duplicate_is_rejected() {
+    let s = setup();
+    s.client.allow_hash_schema(&2);
+    let a = id(&s.env, 21);
+    let b = id(&s.env, 22);
+    let subject = id(&s.env, 23);
+    let event = id(&s.env, 24);
+    let scope_a = id(&s.env, 25);
+    let scope_b = id(&s.env, 26);
+    let digest = id(&s.env, 27);
+    assert_eq!(
+        s.client.issue_credential_v2(
+            &s.issuer,
+            &a,
+            &s.issuer_id,
+            &subject,
+            &event,
+            &101,
+            &scope_a,
+            &digest
+        ),
+        1
+    );
+    assert_eq!(
+        s.client.issue_credential_v2(
+            &s.issuer,
+            &b,
+            &s.issuer_id,
+            &subject,
+            &event,
+            &101,
+            &scope_b,
+            &digest
+        ),
+        2
+    );
+    assert_eq!(s.client.get_v2_scope(&a), Some(scope_a.clone()));
+    assert!(s.client.verify_credential(&a, &digest, &2));
+    assert!(s.client.verify_credential(&b, &digest, &2));
+    assert_eq!(
+        s.client.try_issue_credential_v2(
+            &s.issuer,
+            &id(&s.env, 30),
+            &s.issuer_id,
+            &subject,
+            &event,
+            &101,
+            &scope_a,
+            &digest
+        ),
+        Err(Ok(ContractError::AlreadyExists))
+    );
+    assert_eq!(
+        s.client.issue_credential_v2(
+            &s.issuer,
+            &a,
+            &s.issuer_id,
+            &subject,
+            &event,
+            &101,
+            &scope_a,
+            &digest
+        ),
+        1
+    );
+}
+
+#[test]
+fn v2_reissue_preserves_revoked_history_and_prevents_id_reuse() {
+    let s = setup();
+    s.client.allow_hash_schema(&2);
+    let a = id(&s.env, 31);
+    let b = id(&s.env, 32);
+    let subject = id(&s.env, 33);
+    let event = id(&s.env, 34);
+    let scope = id(&s.env, 35);
+    let digest = id(&s.env, 36);
+    s.client.issue_credential_v2(
+        &s.issuer,
+        &a,
+        &s.issuer_id,
+        &subject,
+        &event,
+        &101,
+        &scope,
+        &digest,
+    );
+    s.client.revoke_credential(&s.revoker, &a, &None);
+    assert_eq!(
+        s.client.issue_credential_v2(
+            &s.issuer,
+            &b,
+            &s.issuer_id,
+            &subject,
+            &event,
+            &101,
+            &scope,
+            &digest
+        ),
+        2
+    );
+    assert!(!s.client.verify_credential(&a, &digest, &2));
+    assert!(s.client.get_credential(&a).unwrap().revoked);
+    assert!(s.client.verify_credential(&b, &digest, &2));
+    s.client.revoke_credential(&s.revoker, &b, &None);
+    assert_eq!(
+        s.client.try_issue_credential_v2(
+            &s.issuer,
+            &a,
+            &s.issuer_id,
+            &subject,
+            &event,
+            &101,
+            &scope,
+            &digest
+        ),
+        Err(Ok(ContractError::AlreadyExists))
+    );
+}
+
+#[test]
+fn v2_rejects_wrong_issuer_scope_and_invalid_family_scope() {
+    let s = setup();
+    s.client.allow_hash_schema(&2);
+    let a = id(&s.env, 41);
+    let subject = id(&s.env, 42);
+    let event = id(&s.env, 43);
+    let scope = id(&s.env, 44);
+    let digest = id(&s.env, 45);
+    assert_eq!(
+        s.client.try_issue_credential_v2(
+            &s.issuer,
+            &a,
+            &id(&s.env, 99),
+            &subject,
+            &event,
+            &101,
+            &scope,
+            &digest
+        ),
+        Err(Ok(ContractError::IssuerOperatorNotLinked))
+    );
+    assert_eq!(
+        s.client.try_issue_credential_v2(
+            &s.issuer,
+            &a,
+            &s.issuer_id,
+            &subject,
+            &event,
+            &1,
+            &scope,
+            &digest
+        ),
+        Err(Ok(ContractError::UnknownCredentialType))
+    );
+    assert_eq!(
+        s.client.try_issue_credential_v2(
+            &s.issuer,
+            &a,
+            &s.issuer_id,
+            &subject,
+            &event,
+            &103,
+            &scope,
+            &digest
+        ),
+        Err(Ok(ContractError::InvalidInput))
+    );
+    assert_eq!(
+        s.client.try_issue_credential_v2(
+            &s.issuer,
+            &a,
+            &s.issuer_id,
+            &subject,
+            &event,
+            &101,
+            &id(&s.env, 0),
+            &digest
+        ),
+        Err(Ok(ContractError::InvalidInput))
+    );
+}
+
+#[test]
+fn v2_requires_signature_and_explicit_schema_enablement() {
+    let s = setup();
+    let a = id(&s.env, 51);
+    let subject = id(&s.env, 52);
+    let event = id(&s.env, 53);
+    let scope = id(&s.env, 54);
+    let digest = id(&s.env, 55);
+    assert_eq!(
+        s.client.try_issue_credential_v2(
+            &s.issuer,
+            &a,
+            &s.issuer_id,
+            &subject,
+            &event,
+            &101,
+            &scope,
+            &digest
+        ),
+        Err(Ok(ContractError::UnsupportedHashSchema))
+    );
+    s.client.allow_hash_schema(&2);
+    s.env.set_auths(&[]);
+    assert!(s
+        .client
+        .try_issue_credential_v2(
+            &s.issuer,
+            &a,
+            &s.issuer_id,
+            &subject,
+            &event,
+            &101,
+            &scope,
+            &digest
+        )
+        .is_err());
+}
+
+#[test]
+fn v2_staff_has_one_scope_and_coexists_with_v1() {
+    let s = setup();
+    s.client.allow_hash_schema(&2);
+    let subject = id(&s.env, 62);
+    let event = id(&s.env, 63);
+    let digest = id(&s.env, 64);
+    let zero = id(&s.env, 0);
+    assert_eq!(
+        s.client.issue_credential_v2(
+            &s.issuer,
+            &id(&s.env, 61),
+            &s.issuer_id,
+            &subject,
+            &event,
+            &103,
+            &zero,
+            &digest
+        ),
+        1
+    );
+    assert_eq!(
+        s.client.issue_credential(
+            &s.issuer,
+            &id(&s.env, 65),
+            &s.issuer_id,
+            &subject,
+            &event,
+            &1,
+            &digest,
+            &1
+        ),
+        2
+    );
+    assert_eq!(
+        s.client.try_issue_credential_v2(
+            &s.issuer,
+            &id(&s.env, 66),
+            &s.issuer_id,
+            &subject,
+            &event,
+            &103,
+            &zero,
+            &digest
+        ),
+        Err(Ok(ContractError::AlreadyExists))
+    );
 }
