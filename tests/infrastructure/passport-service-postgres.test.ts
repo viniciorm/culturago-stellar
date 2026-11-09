@@ -21,11 +21,11 @@ describeIfPg('PassportService & PostgreSQLIndexer V1 verification regression (Po
 
   beforeAll(async () => {
     await query(
-      `INSERT INTO entities (id, kind, display_name, slug, country, city, status, is_public, active)
+      `INSERT INTO entities (id, kind, display_name, slug, country, city)
        VALUES
-         ($1, 'organization', 'Festival Emisor Regresión', $2, 'Chile', 'Santiago', 'registered', true, true),
-         ($3, 'person', 'Sujeto Regresión V1', $4, 'Chile', 'Santiago', 'registered', true, true),
-         ($5, 'event', 'Festival Regresión 2026', $6, 'Chile', 'Santiago', 'registered', true, true)`,
+         ($1, 'organization', 'Festival Emisor Regresión', $2, 'Chile', 'Santiago'),
+         ($3, 'person', 'Sujeto Regresión V1', $4, 'Chile', 'Santiago'),
+         ($5, 'event', 'Festival Regresión 2026', $6, 'Chile', 'Santiago')`,
       [
         issuerId,
         `org-reg-${issuerId.slice(0, 8)}`,
@@ -37,17 +37,17 @@ describeIfPg('PassportService & PostgreSQLIndexer V1 verification regression (Po
     );
 
     await query(
-      `INSERT INTO events (entity_id, name, year, edition, start_date, end_date, location, organizer_entity_id, description)
-       VALUES ($1, 'Festival Regresión 2026', 2026, 'I Edición', '2026-09-05', '2026-09-07', 'Santiago', $2, 'Evento de prueba')`,
+      `INSERT INTO events (entity_id, name, year, start_date, location, organizer_entity_id)
+       VALUES ($1, 'Festival Regresión 2026', 2026, '2026-09-05', 'Santiago', $2)`,
       [eventEntityId, issuerId]
     );
 
     await query(
       `INSERT INTO credentials (
          id, credential_code, issuer_entity_id, subject_entity_id, event_id,
-         credential_type, metadata_hash, hash_schema, status, title, description
+         credential_type, metadata_hash, hash_schema, status
        ) VALUES (
-         $1, $2, $3, $4, $5, 5, $6, 1, 'issued', 'Credencial Staff Regresión', 'Acreditación V1 local sin confirmación on-chain'
+         $1, $2, $3, $4, $5, 5, $6, 1, 'issued'
        )`,
       [credentialId, credentialCode, issuerId, subjectId, eventEntityId, metadataHash]
     );
