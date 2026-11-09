@@ -68,7 +68,7 @@ export function buildCredentialV2Pdf(
   blocks.push(
     { text: `EMITIDO POR: ${cred.issuer.displayName}`, size: 10, y: 465 },
     { text: `FECHA DE EMISION: ${cred.issuedAt.slice(0, 10)}`, size: 10, y: 445 },
-    { text: `ESTADO ACTUAL: ${isRevoked ? 'REVOCADA' : 'ACTIVA / VIGENTE'}`, size: 11, y: 415, bold: true }
+    { text: `ESTADO ACTUAL: ${isRevoked ? 'REVOCADA (REGISTRO LOCAL)' : cred.status === 'draft' ? 'BORRADOR' : 'EMITIDA (REGISTRO LOCAL)'}`, size: 11, y: 415, bold: true }
   );
 
   if (isRevoked && cred.revokedAt) {
@@ -82,9 +82,9 @@ export function buildCredentialV2Pdf(
     { text: `ID Publico: ${cred.publicId}`, size: 9, y: 330 },
     { text: `Esquema: ${cred.schemaVersion} (RFC 8785 JCS)`, size: 9, y: 315 },
     { text: `Digest SHA-256: ${cred.payloadDigest}`, size: 8, y: 300 },
-    { text: `URL de Verificacion: ${verificationUrl}`, size: 9, y: 280 },
+    { text: `URL de Consulta: ${verificationUrl}`, size: 9, y: 280 },
     { text: '--------------------------------------------------------', size: 10, y: 265 },
-    { text: 'Validez y autenticidad comprobable publicamente sin intermediarios.', size: 8, y: 245 }
+    { text: 'Registro local: este documento no confirma un anclaje en Stellar.', size: 8, y: 245 }
   );
 
   const textStreams = blocks.map((b) => {

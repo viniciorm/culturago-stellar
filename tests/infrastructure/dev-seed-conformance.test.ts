@@ -92,13 +92,10 @@ describe('DEV Seed & Migration Setup Conformance', () => {
 
   it('5. executes seed against live test DB if available and verifies idempotency', async () => {
     const client = new Client({ connectionString: testDbUrl });
-    let dbAvailable = false;
     try {
       await client.connect();
-      dbAvailable = true;
     } catch {
-      // Test DB not running locally; static assertions above guarantee conformance
-      return;
+      throw new Error('Required isolated PostgreSQL database is unavailable');
     }
 
     try {

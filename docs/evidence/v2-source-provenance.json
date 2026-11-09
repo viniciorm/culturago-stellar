@@ -1,0 +1,16 @@
+{
+  "baseCommit": "1e0c509557b0d7219050b2ab663b2ba106f76552",
+  "branch": "fix/v2-review-readiness",
+  "snapshotCapturedBeforeCommit": true,
+  "sourceSha256": {
+    "contracts/cultural-credential-registry/src/lib.rs": "0a37df87cfbb0711092e1989d783ef870ff11dfa3576a77a0e84f23627446352",
+    "src/infrastructure/credentials/v2/CredentialV2Service.ts": "7cb295efd9f8bb4905dc288e6a208270d3819da1a7ddf895ec7c0f78bcde27dd",
+    "src/domain/credentials/v2.ts": "f2f69ddd2363b545d6730f4bcc94d167860edb8187faca52a60cdf885f23ec29",
+    "scripts/testnet-v2-canary.mjs": "ef6ad46ef8e870f60e5135f2787a3a40e2d7f281729ac6b2b6b65e46fc354d06",
+    "scripts/verify-v2-canary.mjs": "c73142c96e51498ba938c53209b329204e34cff61fb3730849006c90d3bba76e",
+    "package.json": "d5ccf48ebc945262e0ecdab50fbef13aacfbf0346fb662504b6f58b95222c376",
+    "pnpm-lock.yaml": "56f34de890c9f1e0bb527137cf9804b8793d8c1febaeba9bae1b2b84c12bb145",
+    "rust-toolchain.toml": "b112738a7bd802f074392b1ef095b56ea23cd0aac3604ef643bfb22922e85779"
+  },
+  "wasmSha256": "263e95eec2f6eaacff362267bd2cdd4c1c55bc4584dac044c9049e33b1cb9f21"
+}

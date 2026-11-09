@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import pg from 'pg';
+import { createTestActor } from '@/infrastructure/auth/actorContext';
 import { computePayloadDigestV2 } from '@/domain/credentials/v2';
 import { CredentialV2Service } from '@/infrastructure/credentials/v2/CredentialV2Service';
 import { buildCredentialV2Pdf } from '@/infrastructure/credentials/v2/pdfCertificate';
@@ -27,14 +28,15 @@ describe('CredentialV2Service End-to-End Suite', () => {
     relStaff2: 'f0000002-0000-4000-8000-000000000002',
   };
 
+  const actor = createTestActor({ role: 'operator', issuerEntityIds: [testIds.issuerOrg] });
+
   beforeAll(async () => {
     client = new pg.Client({ connectionString: testDbUrl });
     try {
       await client.connect();
       dbAvailable = true;
     } catch {
-      console.warn('Isolated test database not reachable at', testDbUrl);
-      return;
+      throw new Error('Required isolated PostgreSQL database is unavailable');
     }
     service = new CredentialV2Service();
 
@@ -109,9 +111,9 @@ describe('CredentialV2Service End-to-End Suite', () => {
     await client.query(`
       INSERT INTO participations (id, subject_entity_id, event_id, state)
       VALUES
-        ($1, $2, $3, 'registered'),
-        ($4, $5, $3, 'registered'),
-        ($6, $7, $3, 'registered');
+        ($1, $2, $3, 'participation_confirmed'),
+        ($4, $5, $3, 'participation_confirmed'),
+        ($6, $7, $3, 'participation_confirmed');
     `, [
       testIds.participationSolo, testIds.personParticipantSolo, testIds.event,
       testIds.participationGroup, testIds.personParticipantGroup,
@@ -137,8 +139,9 @@ describe('CredentialV2Service End-to-End Suite', () => {
   });
 
   it('issues a valid Participant Solo Credential and verifies persistence & digest integrity', async () => {
-    if (!dbAvailable) return;
+
     const cred = await service.issueCredential({
+      actor,
       issuerEntityId: testIds.issuerOrg,
       subjectEntityId: testIds.personParticipantSolo,
       eventEntityId: testIds.event,
@@ -184,8 +187,9 @@ describe('CredentialV2Service End-to-End Suite', () => {
   });
 
   it('issues a valid Participant Group Credential', async () => {
-    if (!dbAvailable) return;
+
     const cred = await service.issueCredential({
+      actor,
       issuerEntityId: testIds.issuerOrg,
       subjectEntityId: testIds.personParticipantGroup,
       eventEntityId: testIds.event,
@@ -211,8 +215,9 @@ describe('CredentialV2Service End-to-End Suite', () => {
   });
 
   it('issues a valid Guest Solo Credential', async () => {
-    if (!dbAvailable) return;
+
     const cred = await service.issueCredential({
+      actor,
       issuerEntityId: testIds.issuerOrg,
       subjectEntityId: testIds.personGuest,
       eventEntityId: testIds.event,
@@ -238,8 +243,9 @@ describe('CredentialV2Service End-to-End Suite', () => {
   });
 
   it('issues a valid Staff Credential with multiple relationship evidences and null participationId', async () => {
-    if (!dbAvailable) return;
+
     const cred = await service.issueCredential({
+      actor,
       issuerEntityId: testIds.issuerOrg,
       subjectEntityId: testIds.personStaff,
       eventEntityId: testIds.event,
@@ -270,9 +276,10 @@ describe('CredentialV2Service End-to-End Suite', () => {
   });
 
   it('rejects duplicate active credential for same participant presentation (ALREADY_EXISTS)', async () => {
-    if (!dbAvailable) return;
+
     await expect(
       service.issueCredential({
+      actor,
         issuerEntityId: testIds.issuerOrg,
         subjectEntityId: testIds.personParticipantSolo,
         eventEntityId: testIds.event,
@@ -294,9 +301,10 @@ describe('CredentialV2Service End-to-End Suite', () => {
   });
 
   it('rejects duplicate active credential for same staff subject in event (ALREADY_EXISTS)', async () => {
-    if (!dbAvailable) return;
+
     await expect(
       service.issueCredential({
+      actor,
         issuerEntityId: testIds.issuerOrg,
         subjectEntityId: testIds.personStaff,
         eventEntityId: testIds.event,
@@ -317,9 +325,10 @@ describe('CredentialV2Service End-to-End Suite', () => {
   });
 
   it('rejects participant with invalid participationMode or missing participationId', async () => {
-    if (!dbAvailable) return;
+
     await expect(
       service.issueCredential({
+      actor,
         issuerEntityId: testIds.issuerOrg,
         subjectEntityId: testIds.personParticipantSolo,
         eventEntityId: testIds.event,
@@ -341,9 +350,10 @@ describe('CredentialV2Service End-to-End Suite', () => {
   });
 
   it('rejects evidence with non-existent sourceId in database', async () => {
-    if (!dbAvailable) return;
+
     await expect(
       service.issueCredential({
+      actor,
         issuerEntityId: testIds.issuerOrg,
         subjectEntityId: testIds.personParticipantSolo,
         eventEntityId: testIds.event,
@@ -361,12 +371,13 @@ describe('CredentialV2Service End-to-End Suite', () => {
           },
         ],
       })
-    ).rejects.toThrow(/does not exist in database/i);
+    ).rejects.toMatchObject({ code: 'INVALID_EVIDENCE' });
   });
 
   it('retrieves public credential by public_id with full populated view', async () => {
-    if (!dbAvailable) return;
+
     const cred = await service.issueCredential({
+      actor,
       issuerEntityId: testIds.issuerOrg,
       subjectEntityId: testIds.personParticipantSolo,
       eventEntityId: testIds.event,
@@ -401,13 +412,13 @@ describe('CredentialV2Service End-to-End Suite', () => {
   });
 
   it('returns null for non-existent public_id', async () => {
-    if (!dbAvailable) return;
+
     const res = await service.getCredentialByPublicId('cg2_non_existent_12345');
     expect(res).toBeNull();
   });
 
   it('revokes credential immutably and allows re-issuing an equivalent credential', async () => {
-    if (!dbAvailable) return;
+
     // 1. Fetch current active participant solo credential
     const listRes = await client.query<{ public_id: string; payload_digest: string; canonical_payload: any }>(
       `SELECT public_id, payload_digest, canonical_payload FROM credentials
@@ -418,7 +429,7 @@ describe('CredentialV2Service End-to-End Suite', () => {
     const originalCred = listRes.rows[0];
 
     // 2. Revoke it
-    const revoked = await service.revokeCredential(originalCred.public_id);
+    const revoked = await service.revokeCredential(originalCred.public_id, actor);
     expect(revoked.status).toBe('revoked');
     expect(revoked.revokedAt).not.toBeNull();
 
@@ -432,6 +443,7 @@ describe('CredentialV2Service End-to-End Suite', () => {
 
     // 4. Now that it is revoked, issuing a replacement credential for the same presentation MUST SUCCEED
     const replacement = await service.issueCredential({
+      actor,
       issuerEntityId: testIds.issuerOrg,
       subjectEntityId: testIds.personParticipantSolo,
       eventEntityId: testIds.event,
@@ -487,5 +499,58 @@ describe('CredentialV2Service End-to-End Suite', () => {
     expect(pdfString.includes('%%EOF')).toBe(true);
     expect(pdfString.includes('CULTURAGO')).toBe(true);
     expect(pdfString.includes('CERTIFICADO DE ACREDITACION CULTURAL')).toBe(true);
+    expect(pdfString).toContain('no confirma un anclaje en Stellar');
+    expect(pdfString).not.toContain('Validez y autenticidad comprobable');
   });
+  const securityParams = () => ({
+    actor, issuerEntityId: testIds.issuerOrg, subjectEntityId: testIds.personParticipantSolo,
+    eventEntityId: testIds.event, credentialFamily: 'participant' as const,
+    participationMode: 'solo' as const, participationId: testIds.participationSolo,
+    displayLabel: 'Test', displaySubtitle: 'Security', roles: ['dancer'],
+    evidences: [{ sourceType: 'participation' as const, sourceId: testIds.participationSolo, evidenceRole: 'dancer' }],
+  });
+
+  it('rejects an operator without issuer scope, including global admins', async () => {
+    await expect(service.issueCredential({ ...securityParams(), actor: createTestActor({ issuerEntityIds: [] }) }))
+      .rejects.toMatchObject({ code: 'UNAUTHORIZED' });
+    await expect(service.issueCredential({ ...securityParams(), actor: createTestActor({ role: 'visitor', issuerEntityIds: [testIds.issuerOrg] }) }))
+      .rejects.toMatchObject({ code: 'UNAUTHORIZED' });
+  });
+
+  it('rejects participation belonging to another subject or event', async () => {
+    await expect(service.issueCredential({ ...securityParams(), subjectEntityId: testIds.personGuest }))
+      .rejects.toMatchObject({ code: 'INVALID_EVIDENCE' });
+    const otherEvent = 'd0000002-0000-4000-8000-000000000099';
+    await client.query("INSERT INTO entities (id, kind, display_name, slug, country, city) VALUES ($1, 'event', 'Other test event', 'v2-other-security-event', 'Chile', 'Santiago') ON CONFLICT DO NOTHING", [otherEvent]);
+    await client.query("INSERT INTO events (entity_id, name, year, start_date) VALUES ($1, 'Other test event', 2026, '2026-11-09') ON CONFLICT DO NOTHING", [otherEvent]);
+    await expect(service.issueCredential({ ...securityParams(), eventEntityId: otherEvent })).rejects.toMatchObject({ code: 'INVALID_EVIDENCE' });
+    await client.query("UPDATE participations SET state = 'registered' WHERE id = $1", [testIds.participationSolo]);
+    try {
+      await expect(service.issueCredential(securityParams())).rejects.toMatchObject({ code: 'INVALID_EVIDENCE' });
+    } finally {
+      await client.query("UPDATE participations SET state = 'participation_confirmed' WHERE id = $1", [testIds.participationSolo]);
+    }
+  });
+
+  it('rejects inactive, unrelated or unsuitable staff relationships', async () => {
+    const params = { ...securityParams(), credentialFamily: 'staff' as const,
+      participationMode: 'not_applicable' as const, participationId: null,
+      subjectEntityId: testIds.personStaff,
+      evidences: [{ sourceType: 'relationship' as const, sourceId: testIds.relStaff1, evidenceRole: 'production' }] };
+    for (const [column, value] of [['status', 'ended'], ['from_entity_id', testIds.personGuest], ['context_event_id', null], ['relationship_type', 'member_of']] as [string, string | null][]) {
+      const old = await client.query('SELECT * FROM relationships WHERE id = $1', [testIds.relStaff1]);
+      await client.query(`UPDATE relationships SET ${column} = $1 WHERE id = $2`, [value, testIds.relStaff1]);
+      try { await expect(service.issueCredential(params)).rejects.toMatchObject({ code: 'INVALID_EVIDENCE' }); }
+      finally { await client.query(`UPDATE relationships SET ${column} = $1 WHERE id = $2`, [old.rows[0][column], testIds.relStaff1]); }
+    }
+  });
+
+  it('rejects revocation by an operator outside the issuer scope', async () => {
+    const row = await client.query("SELECT public_id FROM credentials WHERE issuer_entity_id = $1 AND status = 'issued' LIMIT 1", [testIds.issuerOrg]);
+    expect(row.rows).toHaveLength(1);
+    await expect(service.revokeCredential(row.rows[0].public_id, createTestActor({ issuerEntityIds: [] })))
+      .rejects.toMatchObject({ code: 'UNAUTHORIZED' });
+    expect((await service.getCredentialByPublicId(row.rows[0].public_id))?.status).toBe('issued');
+  });
+
 });

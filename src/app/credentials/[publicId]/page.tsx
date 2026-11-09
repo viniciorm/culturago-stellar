@@ -1,5 +1,4 @@
 import React from 'react';
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import {
   CheckCircle2,
@@ -13,8 +12,6 @@ import {
   Layers,
   Building,
   User,
-  Hash,
-  ExternalLink,
   ChevronDown,
 } from 'lucide-react';
 import { PublicLayout } from '@/components/PublicLayout';
@@ -67,7 +64,7 @@ export default async function CredentialV2PublicPage({ params }: PageProps) {
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <span className="text-xs uppercase font-semibold text-stone-600 tracking-wider">
-                Verificación Pública de Credencial
+                Consulta pública de credencial
               </span>
               <span className="text-xs font-mono text-stone-600 px-2 py-0.5 bg-stone-100 rounded-md">
                 v2 off-chain
@@ -90,7 +87,7 @@ export default async function CredentialV2PublicPage({ params }: PageProps) {
             ) : (
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-semibold text-sm">
                 <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                <span>Credencial Válida y Activa</span>
+                <span>{cred.status === 'draft' ? 'Borrador — sin confirmación Stellar' : 'Registro local — sin confirmación Stellar'}</span>
               </div>
             )}
           </div>
@@ -255,7 +252,7 @@ export default async function CredentialV2PublicPage({ params }: PageProps) {
                 />
                 <div className="text-xs space-y-1">
                   <div className="font-semibold text-stone-800">Código QR Oficial</div>
-                  <div className="text-stone-600">Escanea para validar autenticidad</div>
+                  <div className="text-stone-600">Escanea para consultar el registro local</div>
                   <div className="font-mono text-stone-600 text-[11px]">{cred.publicId}</div>
                 </div>
               </div>

@@ -1,0 +1,28 @@
+{
+  "verifiedAt": "2026-11-09T19:49:11.681Z",
+  "environment": "testnet",
+  "contractId": "CBJKJVMLTOMSSSEK6YIF6K4PO2LNABDZH3ZQZGD5D4TC62YRWEXX6YSZ",
+  "wasmSha256": "263e95eec2f6eaacff362267bd2cdd4c1c55bc4584dac044c9049e33b1cb9f21",
+  "deployedWasmMatches": true,
+  "method": "RPC confirmed transactions and read-only simulations; independent serializer/hash",
+  "results": [
+    {
+      "publicId": "cg2_canary0000000001",
+      "transaction": "dfecd5dd248d5eaaf63ad1e2afa0a5a59802d99841dc69180c59b7be727cfbdc",
+      "ledger": 5645791,
+      "digest": "2c848a4c9e3e6e8a7d59383b17041d5f69c733eb5e0bd44cfe551044043cb1fa",
+      "readbackMatch": true,
+      "scopeMatch": true,
+      "alteredDigestRejected": true
+    },
+    {
+      "publicId": "cg2_canary0000000002",
+      "transaction": "239394d94d7eb8599deb4148cf03cadf9d33f32a8e631b93f45c7be0b21f7c79",
+      "ledger": 5645800,
+      "digest": "9737c1b30267eb491cebf29687d78e3bf096ae405148ade040759a7f9144cb4a",
+      "readbackMatch": true,
+      "scopeMatch": true,
+      "alteredDigestRejected": true
+    }
+  ]
+}

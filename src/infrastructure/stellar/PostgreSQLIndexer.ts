@@ -68,17 +68,16 @@ export class PostgreSQLIndexer implements StellarIndexer {
         const d = row.data;
         await client.query(
           `INSERT INTO stellar_indexed_events (
-            source_event_id, network, contract_id, ledger, event_index,
+            source_event_id, network, contract_id, ledger,
             event_type, entity_id, credential_id, subject_id, issuer_id,
             event_entity_id, data
-          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
           ON CONFLICT (network, contract_id, ledger, source_event_id) DO NOTHING`,
           [
             row.id,
             network,
             contractId,
             row.ledger,
-            row.event_index,
             row.event_type,
             (d.entity_id as string | undefined) ?? null,
             (d.credential_id as string | undefined) ?? null,
@@ -118,12 +117,12 @@ export class PostgreSQLIndexer implements StellarIndexer {
     await query(
       `DELETE FROM stellar_indexed_events;
        INSERT INTO stellar_indexed_events (
-         source_event_id, network, contract_id, ledger, event_index,
+         source_event_id, network, contract_id, ledger,
          event_type, entity_id, credential_id, subject_id, issuer_id,
          event_entity_id, data
        )
        SELECT
-         e.id, e.network, e.contract_id, e.ledger, e.event_index,
+         e.id, e.network, e.contract_id, e.ledger,
          e.event_type,
          e.data->>'entity_id',
          e.data->>'credential_id',
