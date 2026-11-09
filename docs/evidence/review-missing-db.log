@@ -38,4 +38,3 @@ Error: Required isolated PostgreSQL database is unavailable
       Tests  38 skipped (38)
    Start at  16:33:45
    Duration  1.76s (transform 342ms, setup 0ms, import 902ms, tests 31ms, environment 0ms)
-

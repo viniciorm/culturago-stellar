@@ -8,7 +8,7 @@ Base inspeccionada: `develop` en `1e0c509557b0d7219050b2ab663b2ba106f76552`. Cor
 - Servicio: contexto de operador obligatorio para emisión y revocación; rol permitido y vínculo explícito con emisor, incluso para administradores. Las nuevas acciones de servidor obtienen el actor desde la sesión validada y no aceptan un actor proporcionado por el cliente. Esto es una entrada off-chain; aún no integra el flujo de firma/cola de la aplicación con Soroban V2.
 - Evidencias: participación del sujeto/evento en estado confirmado; relaciones activas, de tipos permitidos, del sujeto y contexto de evento correctos. Pruebas negativas cubren sujeto/evento/estado, tipo/contexto de relación y operador sin alcance.
 - Página y PDF V2: estado local o borrador explícito; se retiran afirmaciones de autenticidad o confirmación Stellar no demostradas.
-- Reproducibilidad: Rust 1.92.0 fijado; CI configura PostgreSQL y migraciones. Las suites V2 fallan cuando falta PostgreSQL. La ejecución local con puerto inaccesible produjo dos suites fallidas, como se esperaba (`review-missing-db.log`). No se afirma que CI remoto haya ejecutado estos cambios aún.
+- Reproducibilidad: Rust 1.92.0 fijado; CI configura PostgreSQL y migraciones. Las suites V2 fallan cuando falta PostgreSQL. La ejecución local con puerto inaccesible produjo dos suites fallidas, como se esperaba (`review-missing-db.log`). La CI remota ya ejecutó correctamente tipos, lint, migraciones PostgreSQL, pruebas de aplicación y Rust, y compilación WASM. Detectó además avisos críticos en Next.js 16.3.3: se actualiza a Next.js/eslint-config-next 16.4.1, se repiten pruebas/build y la CI final queda pendiente de su ejecución.
 
 ## Testnet real, datos sintéticos
 
@@ -38,3 +38,7 @@ Se ha probado compatibilidad aislada, no el producto completo. Siguen pendientes
 ## Fuentes Raven utilizadas
 
 Raven se consultó efectivamente mediante `stellarDocs.search_soroban_contract_docs` y la sección de pruebas de `skills.stellar-dev.smart-contracts`, el 9 de noviembre de 2026. Se usaron las guías oficiales de [autorización](https://developers.stellar.org/docs/learn/fundamentals/contract-development/authorization#when-to-require_auth) y [TTL](https://developers.stellar.org/docs/build/smart-contracts/example-contracts/storage#managing-contract-data-ttls-with-extend_ttl). Las pruebas de `develop` y Testnet se ejecutaron directamente; no se atribuyen al índice de repositorios de Raven.
+
+## Comprobación adicional de dependencias
+
+La ejecución local posterior a Next.js 16.4.1 aprobó 304 pruebas con 3 omisiones explícitas de casos que solo corresponden a ausencia de persistencia; las suites V2/PostgreSQL sí se ejecutaron. Build y tipos aprobaron. `pnpm audit --prod --audit-level=critical` terminó con éxito, sin avisos críticos; persisten 18 altos y 7 moderados en dependencias transitivas, por lo que no se declara una auditoría de seguridad completa ni ausencia de vulnerabilidades. La vista previa automática de Vercel no es el destino de entrega: el sitio del proyecto es culturago.cl. Estas correcciones aún no están desplegadas allí.

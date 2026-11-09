@@ -1,7 +1,9 @@
 {
-  "verifiedAt": "2026-11-09T19:32:47.865Z",
+  "verifiedAt": "2026-11-09T19:49:11.681Z",
   "environment": "testnet",
   "contractId": "CBJKJVMLTOMSSSEK6YIF6K4PO2LNABDZH3ZQZGD5D4TC62YRWEXX6YSZ",
+  "wasmSha256": "263e95eec2f6eaacff362267bd2cdd4c1c55bc4584dac044c9049e33b1cb9f21",
+  "deployedWasmMatches": true,
   "method": "RPC confirmed transactions and read-only simulations; independent serializer/hash",
   "results": [
     {

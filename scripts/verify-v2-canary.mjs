@@ -7,6 +7,9 @@ import { Contract, Networks, TransactionBuilder, nativeToScVal, scValToNative, r
 const evidence = JSON.parse(readFileSync(new URL('../docs/evidence/v2-canary.json', import.meta.url), 'utf8'));
 const server = new rpc.Server('https://soroban-testnet.stellar.org', { timeoutInSeconds: 30 });
 const contract = new Contract(evidence.contractId);
+const instance = await server.getLedgerEntries(contract.getFootprint());
+const wasmSha256 = instance.entries[0].val.contractData().val().instance().executable().wasmHash().toString('hex');
+assert.equal(wasmSha256, evidence.wasmSha256, 'Deployed WASM differs from the recorded build');
 // Separate serializer, deliberately independent of application imports.
 function canonical(value) {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
@@ -47,4 +50,4 @@ for (const cred of evidence.credentials) {
   results.push({ publicId: cred.publicId, transaction: cred.transactionHash, ledger: tx.ledger, digest, readbackMatch: true, scopeMatch: true, alteredDigestRejected: true });
   console.log(`Verified ${cred.publicId}: transaction, canonical digest, scope, read-back and mismatch rejection`);
 }
-writeFileSync(new URL('../docs/evidence/v2-canary-verification.json', import.meta.url), JSON.stringify({ verifiedAt: new Date().toISOString(), environment: 'testnet', contractId: evidence.contractId, method: 'RPC confirmed transactions and read-only simulations; independent serializer/hash', results }, null, 2) + '\n');
+writeFileSync(new URL('../docs/evidence/v2-canary-verification.json', import.meta.url), JSON.stringify({ verifiedAt: new Date().toISOString(), environment: 'testnet', contractId: evidence.contractId, wasmSha256, deployedWasmMatches: true, method: 'RPC confirmed transactions and read-only simulations; independent serializer/hash', results }, null, 2) + '\n');
