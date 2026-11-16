@@ -121,7 +121,7 @@ export async function listConfirmedParticipationsForOperator(): Promise<
      JOIN entities se ON se.id = p.subject_entity_id
      LEFT JOIN people pe ON pe.entity_id = se.id
      JOIN events ev ON ev.entity_id = p.event_id
-     JOIN entities iss ON iss.id = COALESCE(ev.organizer_entity_id, $1::uuid)
+     JOIN entities iss ON iss.id = ev.organizer_entity_id
      LEFT JOIN LATERAL (
        SELECT c.public_id
        FROM credentials c
@@ -132,10 +132,11 @@ export async function listConfirmedParticipationsForOperator(): Promise<
        LIMIT 1
      ) existing_cred ON true
      WHERE p.state = 'participation_confirmed'
-       AND iss.id = ANY($2::uuid[])
+       AND ev.organizer_entity_id IS NOT NULL
+       AND ev.organizer_entity_id = ANY($1::uuid[])
        AND se.active = true
      ORDER BY COALESCE(p.presentation_code, se.display_name) ASC, p.created_at DESC`,
-    [actor.issuerEntityIds[0], actor.issuerEntityIds]
+    [actor.issuerEntityIds]
   );
 
   return res.rows.map((r) => ({
@@ -216,7 +217,7 @@ export async function issueParticipantCredentialV2FromOrganizer(
     );
   }
 
-  if (part.organizer_entity_id && part.organizer_entity_id !== input.issuerEntityId) {
+  if (!part.organizer_entity_id || part.organizer_entity_id !== input.issuerEntityId) {
     throw domainError(
       'INVALID_EVIDENCE',
       `Event '${input.eventEntityId}' is not linked to issuer '${input.issuerEntityId}'`

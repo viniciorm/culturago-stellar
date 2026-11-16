@@ -83,6 +83,7 @@ describe('D1 Tranche 2 & Organizer UI: Session-Derived V2 Issuance, Rejections &
   const otherIssuerId = randomUUID();
   const eventId = randomUUID();
   const otherEventId = randomUUID();
+  const orphanEventId = randomUUID();
   const subject1Id = randomUUID();
   const subject2Id = randomUUID();
   const subjectUnconfirmedId = randomUUID();
@@ -90,6 +91,7 @@ describe('D1 Tranche 2 & Organizer UI: Session-Derived V2 Issuance, Rejections &
   const participationConfirmedId = randomUUID();
   const participationOtherSubjectId = randomUUID();
   const participationOtherEventId = randomUUID();
+  const participationOrphanEventId = randomUUID();
   const participationUnconfirmedId = randomUUID();
 
   const authorizedAccountId = randomUUID();
@@ -101,6 +103,7 @@ describe('D1 Tranche 2 & Organizer UI: Session-Derived V2 Issuance, Rejections &
   const otherIssuerSlug = `org-ajena-${otherIssuerId.slice(0, 8)}`;
   const eventSlug = `evt-d1-${eventId.slice(0, 8)}`;
   const otherEventSlug = `evt-ajeno-${otherEventId.slice(0, 8)}`;
+  const orphanEventSlug = `evt-huerfano-${orphanEventId.slice(0, 8)}`;
   const subject1Slug = `solista-d1-${subject1Id.slice(0, 8)}`;
   const subject2Slug = `solista-ajena-${subject2Id.slice(0, 8)}`;
   const subjectUnconfirmedSlug = `solista-reg-${subjectUnconfirmedId.slice(0, 8)}`;
@@ -129,7 +132,8 @@ describe('D1 Tranche 2 & Organizer UI: Session-Derived V2 Issuance, Rejections &
          ($7, 'event', 'Evento Ajeno Sintético 2026', $8, 'Chile', 'Valparaíso', 'verified', true, true),
          ($9, 'person', 'Elena Solista Sintética', $10, 'Chile', 'Santiago', 'verified', true, true),
          ($11, 'person', 'Paula Sujeto Ajeno', $12, 'Chile', 'Santiago', 'verified', true, true),
-         ($13, 'person', 'Lucía Participación No Confirmada', $14, 'Chile', 'Santiago', 'verified', true, true)`,
+         ($13, 'person', 'Lucía Participación No Confirmada', $14, 'Chile', 'Santiago', 'verified', true, true),
+         ($15, 'event', 'Evento Huérfano Sin Organizador 2026', $16, 'Chile', 'La Serena', 'verified', true, true)`,
       [
         issuerId,
         issuerSlug,
@@ -145,6 +149,8 @@ describe('D1 Tranche 2 & Organizer UI: Session-Derived V2 Issuance, Rejections &
         subject2Slug,
         subjectUnconfirmedId,
         subjectUnconfirmedSlug,
+        orphanEventId,
+        orphanEventSlug,
       ]
     );
 
@@ -161,8 +167,9 @@ describe('D1 Tranche 2 & Organizer UI: Session-Derived V2 Issuance, Rejections &
       `INSERT INTO events (entity_id, name, year, start_date, end_date, location, organizer_entity_id)
        VALUES
          ($1, 'Festival Sintético D1 2026', 2026, '2026-11-16', '2026-11-18', 'Santiago', $2),
-         ($3, 'Evento Ajeno Sintético 2026', 2026, '2026-12-01', '2026-12-02', 'Valparaíso', $4)`,
-      [eventId, issuerId, otherEventId, otherIssuerId]
+         ($3, 'Evento Ajeno Sintético 2026', 2026, '2026-12-01', '2026-12-02', 'Valparaíso', $4),
+         ($5, 'Evento Huérfano Sin Organizador 2026', 2026, '2026-12-10', '2026-12-11', 'La Serena', NULL)`,
+      [eventId, issuerId, otherEventId, otherIssuerId, orphanEventId]
     );
 
     // 2. Seed participations
@@ -172,7 +179,8 @@ describe('D1 Tranche 2 & Organizer UI: Session-Derived V2 Issuance, Rejections &
          ($1, $2, $3, 'participation_confirmed', 'D1-SINT-001'),
          ($4, $5, $3, 'participation_confirmed', 'D1-SINT-002'),
          ($6, $2, $7, 'participation_confirmed', 'D1-OTRO-001'),
-         ($8, $9, $3, 'registered', 'D1-UNCONF-001')`,
+         ($8, $9, $3, 'registered', 'D1-UNCONF-001'),
+         ($10, $2, $11, 'participation_confirmed', 'D1-ORPHAN-001')`,
       [
         participationConfirmedId,
         subject1Id,
@@ -183,6 +191,8 @@ describe('D1 Tranche 2 & Organizer UI: Session-Derived V2 Issuance, Rejections &
         otherEventId,
         participationUnconfirmedId,
         subjectUnconfirmedId,
+        participationOrphanEventId,
+        orphanEventId,
       ]
     );
 
@@ -253,11 +263,12 @@ describe('D1 Tranche 2 & Organizer UI: Session-Derived V2 Issuance, Rejections &
           participationConfirmedId,
           participationOtherSubjectId,
           participationOtherEventId,
+          participationOrphanEventId,
           participationUnconfirmedId,
         ],
       ]);
       await query(`DELETE FROM events WHERE entity_id = ANY($1::uuid[])`, [
-        [eventId, otherEventId],
+        [eventId, otherEventId, orphanEventId],
       ]);
       await query(`DELETE FROM people WHERE entity_id = ANY($1::uuid[])`, [
         [subject1Id, subject2Id, subjectUnconfirmedId],
@@ -268,6 +279,7 @@ describe('D1 Tranche 2 & Organizer UI: Session-Derived V2 Issuance, Rejections &
           otherIssuerId,
           eventId,
           otherEventId,
+          orphanEventId,
           subject1Id,
           subject2Id,
           subjectUnconfirmedId,
@@ -388,7 +400,17 @@ describe('D1 Tranche 2 & Organizer UI: Session-Derived V2 Issuance, Rejections &
       })
     ).rejects.toThrow(/not linked to issuer/i);
 
-    // 4. Unconfirmed participation ('registered' state)
+    // 4. Event without an assigned organizer (organizer_entity_id IS NULL) must be rejected
+    await expect(
+      issueParticipantCredentialV2FromOrganizer({
+        participationId: participationOrphanEventId,
+        issuerEntityId: issuerId,
+        subjectEntityId: subject1Id,
+        eventEntityId: orphanEventId,
+      })
+    ).rejects.toThrow(/not linked to issuer/i);
+
+    // 5. Unconfirmed participation ('registered' state)
     await expect(
       issueParticipantCredentialV2FromOrganizer({
         participationId: participationUnconfirmedId,
@@ -398,10 +420,13 @@ describe('D1 Tranche 2 & Organizer UI: Session-Derived V2 Issuance, Rejections &
       })
     ).rejects.toThrow(/must belong to this subject\/event and be confirmed/i);
 
-    // Confirm 0 credentials were persisted
+    // Confirm 0 credentials were persisted across all test events/issuers
     const countRes = await query<{ count: string }>(
-      `SELECT COUNT(*)::text AS count FROM credentials WHERE issuer_entity_id = $1`,
-      [issuerId]
+      `SELECT COUNT(*)::text AS count FROM credentials WHERE issuer_entity_id = ANY($1::uuid[]) OR event_id = ANY($2::uuid[])`,
+      [
+        [issuerId, otherIssuerId],
+        [eventId, otherEventId, orphanEventId],
+      ]
     );
     expect(Number(countRes.rows[0].count)).toBe(0);
   });
@@ -410,10 +435,12 @@ describe('D1 Tranche 2 & Organizer UI: Session-Derived V2 Issuance, Rejections &
     sessionCookieState.token = authorizedSessionToken;
 
     // 1. Verify listConfirmedParticipationsForOperator scopes strictly to the operator's linked issuer
+    // and excludes events without organizer_entity_id (orphanEventId) as well as other issuers' events
     const options = await listConfirmedParticipationsForOperator();
     const optionIds = options.map((o) => o.participationId);
     expect(optionIds).toContain(participationConfirmedId);
     expect(optionIds).not.toContain(participationOtherEventId); // belongs to otherIssuerId
+    expect(optionIds).not.toContain(participationOrphanEventId); // organizer_entity_id IS NULL
     expect(optionIds).not.toContain(participationUnconfirmedId); // 'registered' state
 
     // 2. Render /organizer page as the authenticated non-admin operator
