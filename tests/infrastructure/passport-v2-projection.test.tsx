@@ -9,9 +9,14 @@ import { getPublicCredentialsBySubjectId } from '@/app/actions';
 import { closePool, query } from '@/infrastructure/database/pool';
 import PersonPublicPassportPage from '@/app/p/[slug]/page';
 import CredentialV2PublicPage from '@/app/credentials/[publicId]/page';
+import {
+  assertIsolatedTestDatabase,
+  validateTestDatabaseUrl,
+} from '../fixtures/assertIsolatedTestDatabase';
 
 const testDbUrl =
   process.env.TEST_DATABASE_URL || 'postgresql://postgres:test@127.0.0.1:5433/culturago_test';
+validateTestDatabaseUrl(testDbUrl);
 process.env.DATABASE_URL = testDbUrl;
 
 const navMocks = vi.hoisted(() => ({
@@ -29,7 +34,9 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('qrcode', () => ({
   default: {
-    toDataURL: vi.fn().mockResolvedValue('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='),
+    toDataURL: vi.fn().mockResolvedValue(
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+    ),
   },
 }));
 
@@ -51,8 +58,11 @@ describe('Passport V2 Public Projection & V1 Coexistence (PostgreSQL + UI)', () 
   const privateEvidenceNote = 'Nota interna privada de auditoría — NO EXPONER EN LISTADO DE PERFIL';
 
   let v2Service: CredentialV2Service;
+  let subject1V2Id: string;
   let subject1V2PublicId: string;
+  let subject2V2Id: string;
   let subject2V2PublicId: string;
+  let dbGuardVerified = false;
 
   const operatorActor = createTestActor({
     role: 'operator',
@@ -60,46 +70,13 @@ describe('Passport V2 Public Projection & V1 Coexistence (PostgreSQL + UI)', () 
   });
 
   beforeAll(async () => {
+    // Guard: reject non-test databases BEFORE any write or delete
+    await assertIsolatedTestDatabase(testDbUrl, query);
+    dbGuardVerified = true;
+
     v2Service = new CredentialV2Service();
 
-    // Clean up any leftover synthetic rows from interrupted runs
-    await query(
-      `DELETE FROM credential_evidence WHERE credential_id IN (
-         SELECT c.id FROM credentials c
-         JOIN entities e ON e.id = c.issuer_entity_id
-         WHERE e.display_name = 'Agrupación Danza Viva Sintética'
-       )`
-    );
-    await query(
-      `DELETE FROM credentials WHERE issuer_entity_id IN (
-         SELECT id FROM entities WHERE display_name = 'Agrupación Danza Viva Sintética'
-       )`
-    );
-    await query(
-      `DELETE FROM participations WHERE event_id IN (
-         SELECT id FROM entities WHERE display_name = 'Encuentro Sintético Danza 2026'
-       )`
-    );
-    await query(
-      `DELETE FROM events WHERE entity_id IN (
-         SELECT id FROM entities WHERE display_name = 'Encuentro Sintético Danza 2026'
-       )`
-    );
-    await query(
-      `DELETE FROM people WHERE entity_id IN (
-         SELECT id FROM entities WHERE display_name IN ('Camila Danzante Sintética', 'Valeria Solista Sintética')
-       )`
-    );
-    await query(
-      `DELETE FROM entities WHERE display_name IN (
-         'Agrupación Danza Viva Sintética',
-         'Encuentro Sintético Danza 2026',
-         'Camila Danzante Sintética',
-         'Valeria Solista Sintética'
-       )`
-    );
-
-    // 1. Seed synthetic entities (issuer, event, subject 1, subject 2)
+    // 1. Seed synthetic entities scoped strictly to this run's UUIDs
     await query(
       `INSERT INTO entities (id, kind, display_name, slug, country, city, status, is_public, active)
        VALUES
@@ -164,6 +141,7 @@ describe('Passport V2 Public Projection & V1 Coexistence (PostgreSQL + UI)', () 
         },
       ],
     });
+    subject1V2Id = cred1.id;
     subject1V2PublicId = cred1.publicId;
 
     // 3. Issue V1 legacy credential for Subject 1 to verify V1 coexistence
@@ -199,26 +177,37 @@ describe('Passport V2 Public Projection & V1 Coexistence (PostgreSQL + UI)', () 
         },
       ],
     });
+    subject2V2Id = cred2.id;
     subject2V2PublicId = cred2.publicId;
   });
 
   afterAll(async () => {
-    await query(
-      `DELETE FROM credential_evidence WHERE credential_id IN (
-         SELECT id FROM credentials WHERE issuer_entity_id = $1
-       )`,
-      [issuerId]
-    );
-    await query(`DELETE FROM credentials WHERE issuer_entity_id = $1`, [issuerId]);
-    await query(`DELETE FROM participations WHERE event_id = $1`, [eventId]);
-    await query(`DELETE FROM events WHERE entity_id = $1`, [eventId]);
-    await query(`DELETE FROM people WHERE entity_id IN ($1, $2)`, [subject1Id, subject2Id]);
-    await query(`DELETE FROM entities WHERE id IN ($1, $2, $3, $4)`, [
-      issuerId,
-      eventId,
-      subject1Id,
-      subject2Id,
-    ]);
+    if (dbGuardVerified) {
+      const credentialIds = [subject1V2Id, subject2V2Id, v1CredentialId].filter(Boolean);
+      if (credentialIds.length > 0) {
+        await query(
+          `DELETE FROM credential_evidence WHERE credential_id = ANY($1::uuid[])`,
+          [credentialIds]
+        );
+        await query(
+          `DELETE FROM credentials WHERE id = ANY($1::uuid[])`,
+          [credentialIds]
+        );
+      }
+      await query(
+        `DELETE FROM participations WHERE id = ANY($1::uuid[])`,
+        [[participation1Id, participation2Id]]
+      );
+      await query(`DELETE FROM events WHERE entity_id = $1`, [eventId]);
+      await query(
+        `DELETE FROM people WHERE entity_id = ANY($1::uuid[])`,
+        [[subject1Id, subject2Id]]
+      );
+      await query(
+        `DELETE FROM entities WHERE id = ANY($1::uuid[])`,
+        [[issuerId, eventId, subject1Id, subject2Id]]
+      );
+    }
     await closePool();
   });
 
@@ -226,6 +215,28 @@ describe('Passport V2 Public Projection & V1 Coexistence (PostgreSQL + UI)', () 
     cleanup();
     navMocks.push.mockReset();
     navMocks.slug = subject1Slug;
+  });
+
+  it('rejects non-test databases or remote hosts before any write or delete', async () => {
+    expect(() =>
+      validateTestDatabaseUrl('postgresql://postgres:secret@127.0.0.1:5432/culturago')
+    ).toThrow(/must explicitly end with '_test'/i);
+    expect(() =>
+      validateTestDatabaseUrl('postgresql://postgres:secret@127.0.0.1:5432/culturago_prod')
+    ).toThrow(/must explicitly end with '_test'/i);
+    expect(() =>
+      validateTestDatabaseUrl('postgresql://postgres:secret@127.0.0.1:5432/fdvc2026_test')
+    ).toThrow(/never reference production\/festival data/i);
+    expect(() =>
+      validateTestDatabaseUrl('postgresql://postgres:secret@db.culturago.cl:5432/culturago_test')
+    ).toThrow(/refusing non-local host/i);
+
+    await expect(
+      assertIsolatedTestDatabase(
+        'postgresql://postgres:test@127.0.0.1:5433/culturago_test',
+        async () => ({ rows: [{ db_name: 'culturago_production' } as never] })
+      )
+    ).rejects.toThrow(/does not match isolated test database/i);
   });
 
   it('projects V2 and V1 credentials for the subject with minimal public fields and excludes other subjects', async () => {
@@ -306,7 +317,7 @@ describe('Passport V2 Public Projection & V1 Coexistence (PostgreSQL + UI)', () 
     fireEvent.click(v1Link!);
     expect(navMocks.push).toHaveBeenCalledWith(`/credencial/${v1CredentialCode}`);
 
-    // Also verify the destination /credentials/[publicId] page renders the V2 credential properly with QR & PDF links
+    // Verify the destination /credentials/[publicId] page renders the V2 credential and exposes PDF/QR links
     cleanup();
     const destinationJsx = await CredentialV2PublicPage({
       params: Promise.resolve({ publicId: subject1V2PublicId }),
