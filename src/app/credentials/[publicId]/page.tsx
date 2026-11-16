@@ -292,7 +292,11 @@ export default async function CredentialV2PublicPage({ params }: PageProps) {
               </div>
               <div>
                 <span className="text-stone-600 font-medium">Fecha de Emisión:</span>
-                <div className="font-mono text-stone-800 mt-0.5">{cred.issuedAt}</div>
+                <div className="font-mono text-stone-800 mt-0.5">
+                  {(cred.issuedAt as unknown) instanceof Date
+                    ? ((cred.issuedAt as unknown) as Date).toISOString()
+                    : String(cred.issuedAt ?? '')}
+                </div>
               </div>
             </div>
 

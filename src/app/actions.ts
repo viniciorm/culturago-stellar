@@ -135,17 +135,24 @@ export async function getPublicEntities(): Promise<Entity[]> {
 
 interface PublicCredentialRow {
   id: string;
-  credential_code: string;
+  credential_code: string | null;
+  public_id?: string | null;
+  schema_version?: string | null;
+  credential_family?: 'participant' | 'guest' | 'staff' | null;
+  participation_mode?: 'solo' | 'group' | 'not_applicable' | null;
+  display_label?: string | null;
+  display_subtitle?: string | null;
   issuer_entity_id: string;
   subject_entity_id: string;
   event_id: string;
-  credential_type: number;
-  title: string;
+  credential_type: number | null;
+  title: string | null;
   description: string | null;
-  metadata_hash: string;
-  hash_schema: number;
+  metadata_hash: string | null;
+  hash_schema: number | null;
   status: 'draft' | 'issued' | 'revoked';
-  issued_intent_at: string | Date;
+  issued_intent_at: string | Date | null;
+  issued_at?: string | Date | null;
   issued_ledger: number | null;
   revoked_ledger: number | null;
   revoked_reason_hash: string | null;
@@ -163,23 +170,47 @@ interface PublicCredentialRow {
 }
 
 function mapRowToPopulatedCredential(row: PublicCredentialRow): PopulatedCredential {
-  const issuedAt = toDateString(row.issued_intent_at) ?? new Date().toISOString();
+  const isV2 = row.schema_version === 'culturago.credential.v2';
+  const issuedAt =
+    toDateString(row.issued_at ?? row.issued_intent_at) ?? new Date().toISOString();
   const createdAt = toDateString(row.created_at) ?? new Date().toISOString();
   const updatedAt = toDateString(row.updated_at) ?? new Date().toISOString();
+  const stellarStatus = isV2 ? 'not_registered' : deriveStellarStatus(row.stellar_phase);
+  const publicId = row.public_id ?? row.credential_code ?? '';
+  const credentialCode = isV2 ? publicId : (row.credential_code ?? publicId);
+  const displayLabel = isV2 ? (row.display_label ?? '') : (row.title ?? '');
+  const displaySubtitle = isV2 ? (row.display_subtitle ?? null) : (row.description ?? null);
 
   const credential: Credential = {
     id: row.id,
-    credential_code: row.credential_code,
+    credential_code: credentialCode,
+    public_id: publicId || null,
+    schema_version: row.schema_version ?? null,
+    credential_family: row.credential_family ?? null,
+    participation_mode: row.participation_mode ?? null,
+    display_label: displayLabel || null,
+    display_subtitle: displaySubtitle,
+    public_status_label:
+      stellarStatus === 'registered'
+        ? 'Confirmada en Stellar'
+        : 'Registro local — sin confirmación Stellar',
+    href: isV2
+      ? `/credentials/${encodeURIComponent(publicId)}`
+      : `/credencial/${encodeURIComponent(credentialCode)}`,
     issuer_entity_id: row.issuer_entity_id,
     subject_entity_id: row.subject_entity_id,
     event_id: row.event_id,
-    credential_type: numberToCredentialType[row.credential_type] ?? String(row.credential_type),
-    title: row.title,
-    description: row.description,
+    credential_type: isV2
+      ? (row.credential_family ?? 'participant')
+      : row.credential_type != null
+        ? (numberToCredentialType[row.credential_type] ?? String(row.credential_type))
+        : '',
+    title: displayLabel,
+    description: displaySubtitle,
     status: row.status,
-    metadata_hash: row.metadata_hash,
-    stellar_status: deriveStellarStatus(row.stellar_phase),
-    stellar_tx: row.stellar_tx_hash,
+    metadata_hash: isV2 ? null : row.metadata_hash,
+    stellar_status: stellarStatus,
+    stellar_tx: isV2 ? null : row.stellar_tx_hash,
     issued_at: issuedAt,
     revoked_at: toDateString(row.revoked_at),
     created_at: createdAt,
@@ -234,8 +265,6 @@ function mapRowToPopulatedCredential(row: PublicCredentialRow): PopulatedCredent
 
   return {
     ...credential,
-    title: row.title,
-    description: row.description,
     issuerEntity,
     subjectEntity,
     event,
@@ -499,9 +528,8 @@ export async function getPublicRelationships(): Promise<PopulatedRelationship[]>
       r.status::text,
       r.start_date,
       r.end_date,
-      r.notes,
       r.created_at,
-      r.updated_at,
+      r.created_at AS updated_at,
       fe.display_name AS from_display_name,
       fe.kind::text AS from_kind,
       te.display_name AS to_display_name,
@@ -1199,6 +1227,12 @@ export async function getPublicCredentialsBySubjectId(
     SELECT
       c.id,
       c.credential_code,
+      c.public_id,
+      c.schema_version,
+      c.credential_family,
+      c.participation_mode,
+      c.display_label,
+      c.display_subtitle,
       c.issuer_entity_id,
       c.subject_entity_id,
       c.event_id,
@@ -1207,6 +1241,7 @@ export async function getPublicCredentialsBySubjectId(
       c.hash_schema,
       c.status,
       c.issued_intent_at,
+      c.issued_at,
       c.issued_ledger,
       c.revoked_ledger,
       c.revoked_reason_hash,
@@ -1218,7 +1253,7 @@ export async function getPublicCredentialsBySubjectId(
       ie.display_name AS issuer_display_name,
       se.display_name AS subject_display_name,
       e.name AS event_name,
-      e.slug AS event_slug,
+      ee.slug AS event_slug,
       e.year AS event_year,
       e.start_date AS event_start_date,
       so.phase AS stellar_phase,
@@ -1227,10 +1262,12 @@ export async function getPublicCredentialsBySubjectId(
     JOIN entities ie ON ie.id = c.issuer_entity_id
     JOIN entities se ON se.id = c.subject_entity_id
     JOIN events e ON e.entity_id = c.event_id
+    JOIN entities ee ON ee.id = c.event_id
     LEFT JOIN LATERAL (
       SELECT phase, tx_hash
       FROM stellar_operations
-      WHERE subject_key = culturago_canonical_hash('culturago.credential.v1', to_json(c.id)::text)
+      WHERE (c.schema_version IS NULL OR c.schema_version != 'culturago.credential.v2')
+        AND subject_key = culturago_canonical_hash('culturago.credential.v1', to_json(c.id)::text)
         AND operation_type = 'issue_credential'
       ORDER BY
         CASE phase WHEN 'confirmed' THEN 0 ELSE 1 END,
@@ -1241,7 +1278,7 @@ export async function getPublicCredentialsBySubjectId(
       AND c.status = 'issued'
       AND ie.active = true AND ie.is_public = true
       AND se.active = true AND se.is_public = true
-    ORDER BY c.issued_intent_at DESC
+    ORDER BY COALESCE(c.issued_at, c.issued_intent_at) DESC, c.created_at DESC
   `, [subjectEntityId]);
 
   return result.rows.map(mapRowToPopulatedCredential);
