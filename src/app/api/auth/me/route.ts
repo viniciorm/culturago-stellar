@@ -51,6 +51,14 @@ export async function GET() {
       }
     }
 
+    if (actor.role === 'organizer' || actor.role === 'operator') {
+      return NextResponse.json({
+        authenticated: true,
+        role: actor.role,
+        redirectTo: '/organizer',
+      });
+    }
+
     return NextResponse.json({
       authenticated: true,
       role: actor.role,

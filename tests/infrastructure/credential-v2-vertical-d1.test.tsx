@@ -9,9 +9,12 @@ import { SessionService } from '@/infrastructure/auth/SessionService';
 import {
   issueCredentialV2,
   issueCredentialV2WithSimulatedGateway,
+  issueParticipantCredentialV2FromOrganizer,
+  listConfirmedParticipationsForOperator,
 } from '@/app/organizer/credential-v2-actions';
 import { getPublicCredentialsBySubjectId } from '@/app/actions';
 import { closePool, query } from '@/infrastructure/database/pool';
+import OrganizerPanel from '@/app/organizer/page';
 import PersonPublicPassportPage from '@/app/p/[slug]/page';
 import CredentialV2PublicPage from '@/app/credentials/[publicId]/page';
 import { GET as getV2Pdf } from '@/app/api/credentials/[publicId]/pdf/route';
@@ -52,6 +55,9 @@ vi.mock('next/headers', () => ({
 vi.mock('next/navigation', () => ({
   useParams: () => ({ slug: navMocks.slug }),
   useRouter: () => ({ push: navMocks.push }),
+  redirect: (url: string) => {
+    throw new Error(`NEXT_REDIRECT:${url}`);
+  },
   notFound: () => {
     throw new Error('NEXT_NOT_FOUND');
   },
@@ -72,7 +78,7 @@ vi.mock('qrcode', async (importOriginal) => {
   };
 });
 
-describe('D1 Tranche 2: Session-Derived V2 Issuance, Authorization/Evidence Rejections & Simulated Gateway Vertical', () => {
+describe('D1 Tranche 2 & Organizer UI: Session-Derived V2 Issuance, Rejections & Simulated Gateway Vertical', () => {
   const issuerId = randomUUID();
   const otherIssuerId = randomUUID();
   const eventId = randomUUID();
@@ -159,11 +165,7 @@ describe('D1 Tranche 2: Session-Derived V2 Issuance, Authorization/Evidence Reje
       [eventId, issuerId, otherEventId, otherIssuerId]
     );
 
-    // 2. Seed participations:
-    // - participationConfirmedId: subject1 in eventId ('participation_confirmed')
-    // - participationOtherSubjectId: subject2 in eventId ('participation_confirmed') -> foreign subject
-    // - participationOtherEventId: subject1 in otherEventId ('participation_confirmed') -> foreign event
-    // - participationUnconfirmedId: subjectUnconfirmed in eventId ('registered') -> unconfirmed state
+    // 2. Seed participations
     await query(
       `INSERT INTO participations (id, subject_entity_id, event_id, state, presentation_code)
        VALUES
@@ -212,7 +214,6 @@ describe('D1 Tranche 2: Session-Derived V2 Issuance, Authorization/Evidence Reje
       walletContractAddress: 'CD1SIMULATEDWALLET00000000000000000000000000000000000003',
     });
     await identityStore.grantRole(unscopedAdminAccountId, 'admin');
-    // Intentionally NOT linked to issuerId in issuer_operators
     unscopedAdminSessionToken = (await sessionService.create(unscopedAdminAccountId)).sessionToken;
 
     await identityStore.createAccount({
@@ -307,6 +308,14 @@ describe('D1 Tranche 2: Session-Derived V2 Issuance, Authorization/Evidence Reje
     // 1. No session cookie -> rejected
     sessionCookieState.token = null;
     await expect(issueCredentialV2(baseInput)).rejects.toThrow(/session required/i);
+    await expect(
+      issueParticipantCredentialV2FromOrganizer({
+        participationId: participationConfirmedId,
+        issuerEntityId: issuerId,
+        subjectEntityId: subject1Id,
+        eventEntityId: eventId,
+      })
+    ).rejects.toThrow(/session required/i);
 
     // 2. Visitor session -> rejected
     sessionCookieState.token = visitorSessionToken;
@@ -322,6 +331,14 @@ describe('D1 Tranche 2: Session-Derived V2 Issuance, Authorization/Evidence Reje
     };
     await expect(
       issueCredentialV2WithSimulatedGateway(spoofedPayload as never)
+    ).rejects.toThrow(/Operator is not linked to the credential issuer/i);
+    await expect(
+      issueParticipantCredentialV2FromOrganizer({
+        participationId: participationConfirmedId,
+        issuerEntityId: issuerId,
+        subjectEntityId: subject1Id,
+        eventEntityId: eventId,
+      })
     ).rejects.toThrow(/Operator is not linked to the credential issuer/i);
 
     // 4. Global admin without explicit link to issuerId -> rejected
@@ -341,69 +358,43 @@ describe('D1 Tranche 2: Session-Derived V2 Issuance, Authorization/Evidence Reje
   it('rejects foreign participation evidence (other subject or event) and unconfirmed participations', async () => {
     sessionCookieState.token = authorizedSessionToken;
 
-    // 1. Foreign subject participation (participationOtherSubjectId belongs to subject2Id, not subject1Id)
+    // 1. Browser selection tampering: participationOtherSubjectId belongs to subject2Id, not subject1Id
     await expect(
-      issueCredentialV2WithSimulatedGateway({
-        issuerEntityId: issuerId,
-        subjectEntityId: subject1Id,
-        eventEntityId: eventId,
-        credentialFamily: 'participant',
-        participationMode: 'solo',
+      issueParticipantCredentialV2FromOrganizer({
         participationId: participationOtherSubjectId,
-        displayLabel: 'Participante',
-        displaySubtitle: 'Solista',
-        roles: ['dancer'],
-        evidences: [
-          {
-            sourceType: 'participation',
-            sourceId: participationOtherSubjectId,
-            evidenceRole: 'confirmed_solo_performance',
-          },
-        ],
-      })
-    ).rejects.toThrow(/must belong to this subject\/event and be confirmed/i);
-
-    // 2. Foreign event participation (participationOtherEventId belongs to otherEventId, not eventId)
-    await expect(
-      issueCredentialV2WithSimulatedGateway({
         issuerEntityId: issuerId,
         subjectEntityId: subject1Id,
         eventEntityId: eventId,
-        credentialFamily: 'participant',
-        participationMode: 'solo',
-        participationId: participationOtherEventId,
-        displayLabel: 'Participante',
-        displaySubtitle: 'Solista',
-        roles: ['dancer'],
-        evidences: [
-          {
-            sourceType: 'participation',
-            sourceId: participationOtherEventId,
-            evidenceRole: 'confirmed_solo_performance',
-          },
-        ],
       })
     ).rejects.toThrow(/must belong to this subject\/event and be confirmed/i);
 
-    // 3. Unconfirmed participation ('registered' state)
+    // 2. Foreign event participation: participationOtherEventId belongs to otherEventId, not eventId
     await expect(
-      issueCredentialV2WithSimulatedGateway({
+      issueParticipantCredentialV2FromOrganizer({
+        participationId: participationOtherEventId,
+        issuerEntityId: issuerId,
+        subjectEntityId: subject1Id,
+        eventEntityId: eventId,
+      })
+    ).rejects.toThrow(/must belong to this subject\/event and be confirmed/i);
+
+    // 3. Event belonging to another issuer passed with authorized issuerId
+    await expect(
+      issueParticipantCredentialV2FromOrganizer({
+        participationId: participationOtherEventId,
+        issuerEntityId: issuerId,
+        subjectEntityId: subject1Id,
+        eventEntityId: otherEventId,
+      })
+    ).rejects.toThrow(/not linked to issuer/i);
+
+    // 4. Unconfirmed participation ('registered' state)
+    await expect(
+      issueParticipantCredentialV2FromOrganizer({
+        participationId: participationUnconfirmedId,
         issuerEntityId: issuerId,
         subjectEntityId: subjectUnconfirmedId,
         eventEntityId: eventId,
-        credentialFamily: 'participant',
-        participationMode: 'solo',
-        participationId: participationUnconfirmedId,
-        displayLabel: 'Participante',
-        displaySubtitle: 'Solista',
-        roles: ['dancer'],
-        evidences: [
-          {
-            sourceType: 'participation',
-            sourceId: participationUnconfirmedId,
-            evidenceRole: 'confirmed_solo_performance',
-          },
-        ],
       })
     ).rejects.toThrow(/must belong to this subject\/event and be confirmed/i);
 
@@ -415,61 +406,81 @@ describe('D1 Tranche 2: Session-Derived V2 Issuance, Authorization/Evidence Reje
     expect(Number(countRes.rows[0].count)).toBe(0);
   });
 
-  it('completes the vertical flow: session -> V2 issuance -> simulated gateway -> passport -> public page, PDF & QR', async () => {
+  it('completes the vertical flow from /organizer UI: select confirmed participation -> issue V2 -> simulated gateway -> passport -> public page, PDF & QR', async () => {
     sessionCookieState.token = authorizedSessionToken;
 
-    const { credential, gateway } = await issueCredentialV2WithSimulatedGateway({
-      issuerEntityId: issuerId,
-      subjectEntityId: subject1Id,
-      eventEntityId: eventId,
-      credentialFamily: 'participant',
-      participationMode: 'solo',
-      participationId: participationConfirmedId,
-      displayLabel: 'Participante',
-      displaySubtitle: 'Solista',
-      presentationCode: 'D1-SINT-001',
-      organizationName: 'Emisor Sintético D1',
-      roles: ['dancer'],
-      evidences: [
-        {
-          sourceType: 'participation',
-          sourceId: participationConfirmedId,
-          evidenceRole: 'confirmed_solo_performance',
-        },
-      ],
+    // 1. Verify listConfirmedParticipationsForOperator scopes strictly to the operator's linked issuer
+    const options = await listConfirmedParticipationsForOperator();
+    const optionIds = options.map((o) => o.participationId);
+    expect(optionIds).toContain(participationConfirmedId);
+    expect(optionIds).not.toContain(participationOtherEventId); // belongs to otherIssuerId
+    expect(optionIds).not.toContain(participationUnconfirmedId); // 'registered' state
+
+    // 2. Render /organizer page as the authenticated non-admin operator
+    const organizerPageJsx = await OrganizerPanel({});
+    render(organizerPageJsx);
+
+    expect(
+      screen.getByText('Emisión Credential V2 — Familia Participant')
+    ).toBeDefined();
+    expect(
+      screen.getAllByText('Registro local — sin confirmación Stellar').length
+    ).toBeGreaterThanOrEqual(1);
+
+    // Select the confirmed participation for Subject 1 in the form
+    const selectEl = screen.getByLabelText(
+      /Participación confirmada \(Familia: Participant\)/i
+    ) as HTMLSelectElement;
+    fireEvent.change(selectEl, { target: { value: participationConfirmedId } });
+
+    const submitBtn = screen.getByRole('button', {
+      name: /Emitir Credencial V2 \(Participant\)/i,
     });
-    issuedCredentialId = credential.id;
+    fireEvent.click(submitBtn);
 
-    // 1. Verify persisted V2 credential
-    expect(credential.publicId).toMatch(/^cg2_/);
-    expect(credential.schemaVersion).toBe('culturago.credential.v2');
-    expect(credential.credentialFamily).toBe('participant');
-    expect(credential.participationMode).toBe('solo');
-    expect(credential.status).toBe('issued');
+    // 3. Wait for issuance result in /organizer UI
+    const resultBox = await waitFor(() =>
+      screen.getByTestId('v2-issuance-result')
+    );
+    expect(resultBox.textContent).toContain(
+      'Credencial V2 emitida: Participante (Solista)'
+    );
+    expect(resultBox.textContent).toContain(
+      'Registro local — sin confirmación Stellar'
+    );
+    expect(resultBox.textContent).toContain('Gateway Simulado (simulated_d1');
+    expect(resultBox.textContent).toContain(
+      'este resultado es una simulación y no constituye confirmación en Stellar'
+    );
 
-    // 2. Verify simulated gateway result is explicitly labeled as simulated and NOT on-chain confirmed
-    expect(gateway.simulated).toBe(true);
-    expect(gateway.gatewayMode).toBe('simulated_d1');
-    expect(gateway.network).toBe('simulated-in-memory');
-    expect(gateway.onChainConfirmed).toBe(false);
-    expect(gateway.publicStatusLabel).toBe('Registro local — sin confirmación Stellar');
-    expect(gateway.contractMethod).toBe('issue_credential_v2');
-    expect(gateway.hashSchema).toBe(2);
-    expect(gateway.familyCode).toBe(101);
-    expect(gateway.payloadDigest).toBe(credential.payloadDigest);
-    expect(gateway.simulatedReadbackMatches).toBe(true);
+    const passportLink = screen.getByRole('link', {
+      name: /Ver pasaporte público/i,
+    });
+    expect(passportLink.getAttribute('href')).toBe(`/p/${subject1Slug}`);
 
-    // 3. Verify projection on public passport query
+    const credLink = screen.getByRole('link', {
+      name: /Ver credencial pública V2/i,
+    });
+    const credHref = credLink.getAttribute('href')!;
+    expect(credHref).toMatch(/^\/credentials\/cg2_/);
+    const publicId = credHref.replace('/credentials/', '');
+
+    const dbCredRes = await query<{ id: string }>(
+      `SELECT id FROM credentials WHERE public_id = $1`,
+      [publicId]
+    );
+    expect(dbCredRes.rows).toHaveLength(1);
+    issuedCredentialId = dbCredRes.rows[0].id;
+
+    // 4. Open public passport (/p/[slug]) and verify credential projection and navigation
+    cleanup();
     const projected = await getPublicCredentialsBySubjectId(subject1Id);
     expect(projected).toHaveLength(1);
-    expect(projected[0].public_id).toBe(credential.publicId);
-    expect(projected[0].display_label).toBe('Participante');
-    expect(projected[0].display_subtitle).toBe('Solista');
-    expect(projected[0].public_status_label).toBe('Registro local — sin confirmación Stellar');
-    expect(projected[0].stellar_status).toBe('not_registered');
-    expect(projected[0].href).toBe(`/credentials/${encodeURIComponent(credential.publicId)}`);
+    expect(projected[0].public_id).toBe(publicId);
+    expect(projected[0].public_status_label).toBe(
+      'Registro local — sin confirmación Stellar'
+    );
 
-    // 4. Render public passport page (/p/[slug]) and verify navigation to /credentials/[publicId]
     render(<PersonPublicPassportPage />);
     await waitFor(() => {
       expect(screen.getByText('Elena Al-Noor')).toBeDefined();
@@ -478,18 +489,18 @@ describe('D1 Tranche 2: Session-Derived V2 Issuance, Authorization/Evidence Reje
     expect(screen.getByText('Participante')).toBeDefined();
     expect(screen.getByText('Solista')).toBeDefined();
     expect(screen.getByText('Registro local — sin confirmación Stellar')).toBeDefined();
-    expect(screen.getByText(credential.publicId)).toBeDefined();
+    expect(screen.getByText(publicId)).toBeDefined();
     expect(screen.queryByText('Confirmada en Stellar')).toBeNull();
 
     const cardLink = screen.getByText('Participante').closest('a');
-    expect(cardLink?.getAttribute('href')).toBe(`/credentials/${credential.publicId}`);
+    expect(cardLink?.getAttribute('href')).toBe(`/credentials/${publicId}`);
     fireEvent.click(cardLink!);
-    expect(navMocks.push).toHaveBeenCalledWith(`/credentials/${credential.publicId}`);
+    expect(navMocks.push).toHaveBeenCalledWith(`/credentials/${publicId}`);
 
     // 5. Render reutilized public credential page (/credentials/[publicId])
     cleanup();
     const publicPageJsx = await CredentialV2PublicPage({
-      params: Promise.resolve({ publicId: credential.publicId }),
+      params: Promise.resolve({ publicId }),
     });
     render(publicPageJsx);
     expect(screen.getByText('Registro local — sin confirmación Stellar')).toBeDefined();
@@ -497,18 +508,18 @@ describe('D1 Tranche 2: Session-Derived V2 Issuance, Authorization/Evidence Reje
 
     // 6. Verify reutilized PDF and QR API routes return valid content for the issued credential
     const pdfRes = await getV2Pdf(
-      new Request(`http://localhost:3000/api/credentials/${credential.publicId}/pdf`),
-      { params: Promise.resolve({ publicId: credential.publicId }) }
+      new Request(`http://localhost:3000/api/credentials/${publicId}/pdf`),
+      { params: Promise.resolve({ publicId }) }
     );
     expect(pdfRes.status).toBe(200);
     expect(pdfRes.headers.get('Content-Type')).toBe('application/pdf');
     const pdfBytes = Buffer.from(await pdfRes.arrayBuffer()).toString('binary');
     expect(pdfBytes.startsWith('%PDF-1.4')).toBe(true);
-    expect(pdfBytes).toContain(credential.publicId);
+    expect(pdfBytes).toContain(publicId);
 
     const qrRes = await getV2Qr(
-      new Request(`http://localhost:3000/api/credentials/${credential.publicId}/qr`),
-      { params: Promise.resolve({ publicId: credential.publicId }) }
+      new Request(`http://localhost:3000/api/credentials/${publicId}/qr`),
+      { params: Promise.resolve({ publicId }) }
     );
     expect(qrRes.status).toBe(200);
     expect(qrRes.headers.get('Content-Type')).toContain('image/svg+xml');

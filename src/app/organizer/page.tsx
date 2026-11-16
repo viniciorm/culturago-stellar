@@ -4,11 +4,13 @@ import { getActorFromSession } from '@/infrastructure/auth/getActorFromSession';
 import { assertRole } from '@/infrastructure/auth/actorContext';
 import { listEntities, listCredentials } from '@/app/dashboard/credenciales/actions';
 import { checkIn } from './actions';
+import { listConfirmedParticipationsForOperator } from './credential-v2-actions';
 import IssueCredentialForm from './IssueCredentialForm';
+import IssueCredentialV2Form from './IssueCredentialV2Form';
 import RevokeCredentialForm from './RevokeCredentialForm';
 
 interface PageProps {
-  searchParams?: { ok?: string; error?: string };
+  searchParams?: Promise<{ ok?: string; error?: string }> | { ok?: string; error?: string };
 }
 
 export default async function OrganizerPanel({ searchParams }: PageProps) {
@@ -20,12 +22,16 @@ export default async function OrganizerPanel({ searchParams }: PageProps) {
 
   const config = getPublicConfig();
   const persistence = isPersistenceConfigured();
+  const resolvedParams = searchParams ? await Promise.resolve(searchParams) : undefined;
 
-  const message = searchParams?.ok ? `Acción completada: ${searchParams.ok}` : null;
-  const error = searchParams?.error ? searchParams.error : null;
+  const message = resolvedParams?.ok ? `Acción completada: ${resolvedParams.ok}` : null;
+  const error = resolvedParams?.error ? resolvedParams.error : null;
 
-  const entities = persistence ? await listEntities() : [];
-  const credentials = persistence ? await listCredentials() : [];
+  const confirmedParticipations = persistence
+    ? await listConfirmedParticipationsForOperator()
+    : [];
+  const entities = persistence && actor.role === 'admin' ? await listEntities() : [];
+  const credentials = persistence && actor.role === 'admin' ? await listCredentials() : [];
 
   const people = entities.filter((e) => e.type === 'person');
   const organizations = entities.filter((e) => e.type === 'organization');
@@ -34,9 +40,9 @@ export default async function OrganizerPanel({ searchParams }: PageProps) {
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 p-8">
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-2xl font-bold mb-4">Panel del organizador</h1>
-        <p className="text-slate-400 mb-6">
-          Red: {config.environment} · Contrato credenciales: {config.credentialRegistryContractId ?? 'no configurado'}
+        <h1 className="text-2xl font-bold mb-2">Panel del organizador</h1>
+        <p className="text-slate-400 mb-6 text-sm">
+          Red: {config.environment} · Operador: <code className="font-mono">{actor.role}</code> · Contrato credenciales: {config.credentialRegistryContractId ?? 'no configurado'}
         </p>
 
         {!persistence && (
@@ -57,6 +63,19 @@ export default async function OrganizerPanel({ searchParams }: PageProps) {
             {error}
           </div>
         )}
+
+        <section className="mb-6 bg-slate-900 border border-slate-800 rounded-lg p-6">
+          <h2 className="font-semibold text-lg mb-1">
+            Emisión Credential V2 — Familia Participant
+          </h2>
+          <p className="text-sm text-slate-400 mb-4">
+            Seleccioná una participación confirmada vinculada a tu organización emisora. El servidor valida tu sesión de operador, el emisor, el sujeto, el evento y la evidencia antes de emitir.
+          </p>
+          <IssueCredentialV2Form
+            participations={confirmedParticipations}
+            disabled={!persistence}
+          />
+        </section>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-slate-900 rounded-lg p-6">
@@ -82,8 +101,8 @@ export default async function OrganizerPanel({ searchParams }: PageProps) {
           </div>
 
           <div className="bg-slate-900 rounded-lg p-6">
-            <h2 className="font-semibold mb-2">Emitir credencial</h2>
-            <p className="text-sm text-slate-400">Prepara y registra la emisión de una credencial.</p>
+            <h2 className="font-semibold mb-2">Emitir credencial (V1 Legacy)</h2>
+            <p className="text-sm text-slate-400">Prepara y registra la emisión de una credencial V1.</p>
             <IssueCredentialForm
               environment={config.environment}
               walletAddress={actor.walletAddress ?? ''}
