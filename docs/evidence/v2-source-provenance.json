@@ -4,8 +4,7 @@
   "snapshotCapturedBeforeCommit": true,
   "sourceSha256": {
     "contracts/cultural-credential-registry/src/lib.rs": "0a37df87cfbb0711092e1989d783ef870ff11dfa3576a77a0e84f23627446352",
-    "src/infrastructure/credentials/v2/CredentialV2Service.ts": "51f638477f184d0b8fd81929f12a92901fc8cd1085fba0b9d3dc0c6868a0648b",
-    "src/infrastructure/credentials/v2/pdfCertificate.ts": "4680bc1f8bcf5eb1eebfb46374da99d01e16242e3d77b2b029ce3bfbb2ee7e7c",
+    "src/infrastructure/credentials/v2/CredentialV2Service.ts": "7cb295efd9f8bb4905dc288e6a208270d3819da1a7ddf895ec7c0f78bcde27dd",
     "src/domain/credentials/v2.ts": "f2f69ddd2363b545d6730f4bcc94d167860edb8187faca52a60cdf885f23ec29",
     "scripts/testnet-v2-canary.mjs": "ef6ad46ef8e870f60e5135f2787a3a40e2d7f281729ac6b2b6b65e46fc354d06",
     "scripts/verify-v2-canary.mjs": "c73142c96e51498ba938c53209b329204e34cff61fb3730849006c90d3bba76e",
@@ -13,8 +12,19 @@
     "pnpm-lock.yaml": "56f34de890c9f1e0bb527137cf9804b8793d8c1febaeba9bae1b2b84c12bb145",
     "rust-toolchain.toml": "b112738a7bd802f074392b1ef095b56ea23cd0aac3604ef643bfb22922e85779"
   },
-  "preAwardSnapshotSha256": {
-    "src/infrastructure/credentials/v2/CredentialV2Service.ts": "7cb295efd9f8bb4905dc288e6a208270d3819da1a7ddf895ec7c0f78bcde27dd"
-  },
-  "wasmSha256": "263e95eec2f6eaacff362267bd2cdd4c1c55bc4584dac044c9049e33b1cb9f21"
+  "wasmSha256": "263e95eec2f6eaacff362267bd2cdd4c1c55bc4584dac044c9049e33b1cb9f21",
+  "week1D1Current": {
+    "baseCommit": "e1888f39aca361f2be102a71a0257a428e8c7faa",
+    "branch": "feat/week-1-v2-issuance-passport",
+    "sourceSha256": {
+      "src/infrastructure/credentials/v2/CredentialV2Service.ts": "51f638477f184d0b8fd81929f12a92901fc8cd1085fba0b9d3dc0c6868a0648b",
+      "src/infrastructure/credentials/v2/pdfCertificate.ts": "4680bc1f8bcf5eb1eebfb46374da99d01e16242e3d77b2b029ce3bfbb2ee7e7c",
+      "src/infrastructure/credentials/v2/SimulatedCredentialV2Gateway.ts": "eae0247a95cd65545368f40d8d10e34896b4852d2bf7e1ca8e4945d473ec4ef8",
+      "src/app/organizer/credential-v2-actions.ts": "91f4fd6caaf86c3fff19b8b270feb72c93f1757c084013ab91846ba64dc519a7",
+      "src/app/organizer/IssueCredentialV2Form.tsx": "bd0321ef62eb30d1985677eb65dc8716937c33e8f027ba31252a03f707ee0573",
+      "src/app/p/[slug]/page.tsx": "73f5c916f8bac4b8ba62ccba749eab12ae88961a924203b545576dc0229e4849",
+      "src/app/credentials/[publicId]/page.tsx": "bd8d27fa38bdf26bd9bfcf7c52db268aee0695cead25388126ff3453f389028d",
+      "src/app/api/credentials/[publicId]/pdf/route.ts": "f16f67e6112ddc585545880f9982ce2f62eb4d29d7fbed3c583bad8339a1949a"
+    }
+  }
 }

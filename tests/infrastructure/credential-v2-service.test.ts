@@ -506,63 +506,147 @@ describe('CredentialV2Service End-to-End Suite', () => {
     expect(pdfString).not.toContain('Validez y autenticidad comprobable');
   });
 
-  it('normalizes event start_date and end_date to YYYY-MM-DD deterministically across timezones', async () => {
+  it('normalizes event start_date and end_date to YYYY-MM-DD deterministically across Node and PostgreSQL timezones', async () => {
     expect(normalizeCalendarDateV2('2026-11-16')).toBe('2026-11-16');
     expect(normalizeCalendarDateV2('2026-11-16T00:00:00.000Z')).toBe('2026-11-16');
     expect(normalizeCalendarDateV2(new Date(2026, 10, 16, 0, 0, 0, 0))).toBe('2026-11-16');
     expect(normalizeCalendarDateV2(new Date('2026-11-16T00:00:00.000Z'))).toBe('2026-11-16');
     expect(normalizeCalendarDateV2(null)).toBeNull();
 
-    // Verify PostgreSQL emission across extreme session timezones produces identical YYYY-MM-DD and digest
+    // Verify the real issuance path across distinct Node process timezones (process.env.TZ)
+    // and PostgreSQL session timezones, keeping all other relevant fields fixed to compare digests.
     const timezones = ['UTC', 'America/Santiago', 'Pacific/Kiritimati', 'Pacific/Midway', 'Asia/Tokyo'];
     const digests: string[] = [];
+    const observedNodeOffsets: number[] = [];
+    const originalTz = process.env.TZ;
 
-    for (const tz of timezones) {
-      await client.query('BEGIN');
-      try {
-        await client.query(`SET LOCAL TIME ZONE '${tz}'`);
-        await client.query(
-          `UPDATE events SET start_date = '2026-09-05', end_date = '2026-09-07' WHERE entity_id = $1`,
-          [testIds.event]
-        );
-        await client.query(`DELETE FROM credential_evidence WHERE credential_id IN (SELECT id FROM credentials WHERE participation_id = $1)`, [testIds.participationSolo]);
-        await client.query(`DELETE FROM credentials WHERE participation_id = $1`, [testIds.participationSolo]);
+    try {
+      for (const tz of timezones) {
+        process.env.TZ = tz;
+        observedNodeOffsets.push(new Date(2026, 8, 5, 0, 0, 0, 0).getTimezoneOffset());
 
-        const issued = await service.issueCredential(
-          {
-            actor,
-            publicId: 'cg2_tz_stability_check01',
-            issuedAt: '2026-11-18T12:00:00.000Z',
-            issuerEntityId: testIds.issuerOrg,
-            subjectEntityId: testIds.personParticipantSolo,
-            eventEntityId: testIds.event,
-            credentialFamily: 'participant',
-            participationMode: 'solo',
-            participationId: testIds.participationSolo,
-            displayLabel: 'Participante',
-            displaySubtitle: 'Solista',
-            roles: ['dancer'],
-            evidences: [
-              {
-                sourceType: 'participation',
-                sourceId: testIds.participationSolo,
-                evidenceRole: 'dancer',
-              },
-            ],
-          },
-          client as any
-        );
+        // Local-midnight Date instances created under this Node TZ must also normalize to the exact calendar day
+        expect(normalizeCalendarDateV2(new Date(2026, 8, 5, 0, 0, 0, 0))).toBe('2026-09-05');
+        expect(normalizeCalendarDateV2(new Date(2026, 8, 7, 0, 0, 0, 0))).toBe('2026-09-07');
 
-        expect(issued.canonicalPayload.event.start_date).toBe('2026-09-05');
-        expect(issued.canonicalPayload.event.end_date).toBe('2026-09-07');
-        expect(issued.canonicalPayload.event.start_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-        expect(issued.canonicalPayload.event.end_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-        digests.push(issued.payloadDigest);
-      } finally {
-        await client.query('ROLLBACK');
+        await client.query('BEGIN');
+        try {
+          await client.query(`SET LOCAL TIME ZONE '${tz}'`);
+          await client.query(
+            `UPDATE events SET start_date = '2026-09-05', end_date = '2026-09-07' WHERE entity_id = $1`,
+            [testIds.event]
+          );
+          await client.query(
+            `DELETE FROM credential_evidence WHERE credential_id IN (SELECT id FROM credentials WHERE participation_id = $1)`,
+            [testIds.participationSolo]
+          );
+          await client.query(`DELETE FROM credentials WHERE participation_id = $1`, [
+            testIds.participationSolo,
+          ]);
+
+          const issued = await service.issueCredential(
+            {
+              actor,
+              publicId: 'cg2_tz_stability_check01',
+              issuedAt: '2026-11-18T12:00:00.000Z',
+              issuerEntityId: testIds.issuerOrg,
+              subjectEntityId: testIds.personParticipantSolo,
+              eventEntityId: testIds.event,
+              credentialFamily: 'participant',
+              participationMode: 'solo',
+              participationId: testIds.participationSolo,
+              displayLabel: 'Participante',
+              displaySubtitle: 'Solista',
+              roles: ['dancer'],
+              evidences: [
+                {
+                  sourceType: 'participation',
+                  sourceId: testIds.participationSolo,
+                  evidenceRole: 'dancer',
+                },
+              ],
+            },
+            client as any
+          );
+
+          expect(issued.canonicalPayload.event.start_date).toBe('2026-09-05');
+          expect(issued.canonicalPayload.event.end_date).toBe('2026-09-07');
+          expect(issued.canonicalPayload.event.start_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+          expect(issued.canonicalPayload.event.end_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+          digests.push(issued.payloadDigest);
+
+          // Also exercise service.issueCredential when the driver returns local-midnight Date instances
+          // under the active Node process.env.TZ (default pg DATE parser behavior without ::text cast).
+          await client.query(
+            `DELETE FROM credential_evidence WHERE credential_id IN (SELECT id FROM credentials WHERE participation_id = $1)`,
+            [testIds.participationSolo]
+          );
+          await client.query(`DELETE FROM credentials WHERE participation_id = $1`, [
+            testIds.participationSolo,
+          ]);
+          const dateDriverClient = new Proxy(client, {
+            get(target, prop, receiver) {
+              if (prop === 'query') {
+                return async (sql: string, values?: unknown[]) => {
+                  const res = await target.query(sql, values as any);
+                  if (typeof sql === 'string' && sql.includes('JOIN events ev ON ev.entity_id = e.id')) {
+                    return {
+                      ...res,
+                      rows: res.rows.map((r: any) => ({
+                        ...r,
+                        start_date: new Date(2026, 8, 5, 0, 0, 0, 0),
+                        end_date: new Date(2026, 8, 7, 0, 0, 0, 0),
+                      })),
+                    };
+                  }
+                  return res;
+                };
+              }
+              return Reflect.get(target, prop, receiver);
+            },
+          });
+
+          const issuedFromDateObjects = await service.issueCredential(
+            {
+              actor,
+              publicId: 'cg2_tz_stability_check01',
+              issuedAt: '2026-11-18T12:00:00.000Z',
+              issuerEntityId: testIds.issuerOrg,
+              subjectEntityId: testIds.personParticipantSolo,
+              eventEntityId: testIds.event,
+              credentialFamily: 'participant',
+              participationMode: 'solo',
+              participationId: testIds.participationSolo,
+              displayLabel: 'Participante',
+              displaySubtitle: 'Solista',
+              roles: ['dancer'],
+              evidences: [
+                {
+                  sourceType: 'participation',
+                  sourceId: testIds.participationSolo,
+                  evidenceRole: 'dancer',
+                },
+              ],
+            },
+            dateDriverClient as any
+          );
+          expect(issuedFromDateObjects.payloadDigest).toBe(issued.payloadDigest);
+          digests.push(issuedFromDateObjects.payloadDigest);
+        } finally {
+          await client.query('ROLLBACK');
+        }
+      }
+    } finally {
+      if (originalTz === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTz;
       }
     }
 
+    // Confirm the Node process genuinely operated under 5 distinct timezone offsets
+    expect(new Set(observedNodeOffsets).size).toBe(5);
+    // Confirm the resulting payload digest is 100% identical across all 5 timezones
     expect(new Set(digests).size).toBe(1);
   });
   const securityParams = () => ({

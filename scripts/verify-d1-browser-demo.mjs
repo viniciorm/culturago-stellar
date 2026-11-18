@@ -38,11 +38,11 @@ async function waitForServer(url, timeoutMs = 45000) {
 }
 
 async function main() {
-  // 1. Seed isolated test database (preserving historical D1-SINT-001 credential intact)
+  // 1. Seed isolated test database (preserving historical D1-SINT-001 and D1-SINT-002 credentials intact)
   const fixtures = await seedD1SyntheticDemo(DB_URL, {
-    preserveIssuedOnParticipation2: false,
+    preserveIssuedOnParticipation2: true,
   });
-  console.log(`[1/6] Isolated test DB seeded (${fixtures.claimCode}); historical D1-SINT-001 preserved`);
+  console.log(`[1/6] Isolated test DB seeded (${fixtures.claimCode}); historical D1-SINT-001 & D1-SINT-002 preserved`);
 
   // 2. Start production server on PORT connected to isolated test DB
   const nextBin = 'node_modules/next/dist/bin/next';
@@ -154,8 +154,9 @@ async function main() {
     assert(passportContent.includes('Solista'));
     assert(passportContent.includes('Registro local — sin confirmación Stellar'));
     assert(passportContent.includes('cg2_HSHtLAutuMlHh4Cr'), 'Historical credential cg2_HSHtLAutuMlHh4Cr must remain visible');
+    assert(passportContent.includes('cg2_28sPqyDWcYAETPcq'), 'Historical credential cg2_28sPqyDWcYAETPcq must remain visible');
     assert(!passportContent.includes('Confirmada en Stellar'));
-    console.log(`[5/6] Verified new (${publicId}) & historical (cg2_HSHtLAutuMlHh4Cr) V2 credentials on /p/${fixtures.subjectSlug}`);
+    console.log(`[5/6] Verified new (${publicId}) & historical (cg2_HSHtLAutuMlHh4Cr, cg2_28sPqyDWcYAETPcq) V2 credentials on /p/${fixtures.subjectSlug}`);
 
     // Step 4: Abrir la nueva credencial pública desde la tarjeta del pasaporte
     await page.getByText(publicId).click();
@@ -166,8 +167,8 @@ async function main() {
     assert(credPageText.includes('Bailarina / Intérprete'));
     assert(credPageText.includes('Código QR de consulta'));
     assert(!credPageText.includes('Código QR Oficial'));
-    assert(credPageText.includes('"start_date": "2026-11-20"'));
-    assert(credPageText.includes('"end_date": "2026-11-21"'));
+    assert(credPageText.includes('"start_date": "2026-11-25"'));
+    assert(credPageText.includes('"end_date": "2026-11-26"'));
 
     // Step 5: Descargar PDF y verificar contenido real
     const pdfHref = await page

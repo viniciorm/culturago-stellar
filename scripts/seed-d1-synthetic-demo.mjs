@@ -65,7 +65,7 @@ function validateTestDatabaseUrl(connectionString) {
 
 export async function seedD1SyntheticDemo(
   connectionString,
-  options = { preserveIssuedOnParticipation2: false }
+  options = { preserveIssuedOnParticipation2: true }
 ) {
   const expectedDbName = validateTestDatabaseUrl(connectionString);
   const client = new Client({ connectionString });
