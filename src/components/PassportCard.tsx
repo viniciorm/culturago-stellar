@@ -1,5 +1,5 @@
 import React from 'react';
-import { User, Award } from 'lucide-react';
+import { User } from 'lucide-react';
 import type { Entity, Person } from '@/domain/types/entities';
 import { VerificationBadge, StellarStatusBadge } from './ui/Badge';
 
@@ -36,14 +36,14 @@ export const PassportCard: React.FC<PassportCardProps> = ({
       <div className="flex items-center justify-between border-b border-[#C5A880]/30 pb-4 mb-5">
         <div className="flex flex-col">
           <span className="text-[10px] font-bold uppercase tracking-widest text-[#C5A880]">
-            REPÚBLICA DE CHILE
+            CULTURAGO
           </span>
           <span className="font-serif text-xs font-semibold text-[#5C061E]">
             PASAPORTE CULTURAL DIGITAL
           </span>
         </div>
         <div className="w-8 h-8 rounded-full border border-[#C5A880]/40 flex items-center justify-center text-[#5C061E] bg-[#C5A880]/10 font-bold text-xs">
-          FDVC
+          CG
         </div>
       </div>
 
@@ -66,11 +66,6 @@ export const PassportCard: React.FC<PassportCardProps> = ({
               </span>
             </div>
           )}
-          
-          {/* Micro overlay to feel official */}
-          <div className="absolute bottom-1 right-1 px-1 bg-[#FCFBF7]/85 border border-[#C5A880]/50 rounded text-[7px] font-bold text-[#5C061E] uppercase tracking-wider">
-            FDVC 2026
-          </div>
         </div>
 
         {/* Passport Fields */}
@@ -114,7 +109,7 @@ export const PassportCard: React.FC<PassportCardProps> = ({
             </div>
             <div>
               <span className="text-[9px] font-bold uppercase tracking-wider text-stone-400 block">
-                Nacionalidad
+                País
               </span>
               <span className="text-xs font-semibold text-stone-600 block">
                 {entity.country || 'Chile'}
@@ -133,29 +128,16 @@ export const PassportCard: React.FC<PassportCardProps> = ({
         </div>
       </div>
 
-      {/* Footer details & stamp */}
+      {/* Footer details */}
       <div className="border-t border-[#C5A880]/30 pt-4 mt-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-left">
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center gap-1.5">
-            <span className="text-[9px] font-bold text-stone-400 uppercase">Verificación:</span>
+            <span className="text-[9px] font-bold text-stone-400 uppercase">Estado:</span>
             <VerificationBadge />
           </div>
           <div className="flex items-center gap-1.5">
             <span className="text-[9px] font-bold text-stone-400 uppercase">Stellar:</span>
             <StellarStatusBadge status={entity.stellar_status} />
-          </div>
-        </div>
-
-        {/* Official stamp */}
-        <div className="flex items-center gap-2 border border-dashed border-[#C5A880] rounded-lg px-2.5 py-1.5 self-end sm:self-auto bg-[#FCFBF7]">
-          <Award className="w-4 h-4 text-[#C5A880]" />
-          <div className="flex flex-col">
-            <span className="text-[7px] font-bold text-[#5C061E] uppercase tracking-wider">
-              Acreditación FDVC
-            </span>
-            <span className="text-[6px] font-bold text-stone-400 uppercase">
-              Validez: Sep 2026
-            </span>
           </div>
         </div>
       </div>

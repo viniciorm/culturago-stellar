@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import pg from 'pg';
 import { createTestActor } from '@/infrastructure/auth/actorContext';
 import { computePayloadDigestV2 } from '@/domain/credentials/v2';
-import { CredentialV2Service } from '@/infrastructure/credentials/v2/CredentialV2Service';
+import { CredentialV2Service, normalizeCalendarDateV2 } from '@/infrastructure/credentials/v2/CredentialV2Service';
 import { buildCredentialV2Pdf } from '@/infrastructure/credentials/v2/pdfCertificate';
 
 const testDbUrl = process.env.TEST_DATABASE_URL || 'postgresql://postgres:test@127.0.0.1:5433/culturago_test';
@@ -468,39 +468,102 @@ describe('CredentialV2Service End-to-End Suite', () => {
     expect(replacement.publicId).not.toBe(originalCred.public_id);
   });
 
-  it('generates a valid, readable PDF certificate buffer', async () => {
-    const publicView = dbAvailable ? await service.getCredentialByPublicId(testIds.participationSolo) : null;
-    const dummyView = publicView || {
+  it('generates a valid PDF certificate preserving tildes/ñ, Spanish role, title and timezone', async () => {
+    const dummyView = {
       id: 'd0000000-0000-0000-0000-000000000001',
       publicId: 'cg2_dummy_test_id',
       status: 'issued' as const,
       schemaVersion: 'culturago.credential.v2' as const,
       credentialFamily: 'participant' as const,
       participationMode: 'solo' as const,
-      displayLabel: 'Certificado de Participación',
-      displaySubtitle: 'FDVC 2026 — Gala Final',
+      displayLabel: 'Participante',
+      displaySubtitle: 'Solista',
       presentationCode: 'FDVC2026-001',
-      organizationName: 'Academia Test',
+      organizationName: 'Compañía de Danza Árabe Ñuñoa',
       roles: ['dancer'],
       issuedAt: '2026-10-04T12:00:00Z',
       payloadDigest: 'a'.repeat(64),
       canonicalPayload: {} as any,
-      issuer: { id: '1', displayName: 'Danza Viva', kind: 'organization' },
-      subject: { id: '2', displayName: 'Camila Perez', kind: 'person', artisticName: 'Kamila Nur' },
+      issuer: { id: '1', displayName: 'Agrupación Danza Viva', kind: 'organization' },
+      subject: { id: '2', displayName: 'Camila Pérez Peña', kind: 'person', artisticName: 'Kamila Nur' },
       event: { id: '3', name: 'FDVC 2026', year: 2026, location: 'Santiago' },
       evidences: [],
     };
 
     const pdfBuffer = buildCredentialV2Pdf(dummyView, 'https://culturago.cl/credentials/cg2_dummy_test_id');
     expect(Buffer.isBuffer(pdfBuffer)).toBe(true);
-    const pdfString = pdfBuffer.toString('utf-8');
+    const pdfString = pdfBuffer.toString('binary');
 
     expect(pdfString.startsWith('%PDF-1.4')).toBe(true);
     expect(pdfString.includes('%%EOF')).toBe(true);
-    expect(pdfString.includes('CULTURAGO')).toBe(true);
-    expect(pdfString.includes('CERTIFICADO DE ACREDITACION CULTURAL')).toBe(true);
+    expect(pdfString.includes('/Encoding /WinAnsiEncoding')).toBe(true);
+    expect(pdfString.includes('CULTURAGO \\227 Constancia de participaci\\363n cultural')).toBe(true);
+    expect(pdfString.includes('ROL\\(ES\\): Bailarina / Int\\351rprete')).toBe(true);
+    expect(pdfString.includes('Camila P\\351rez Pe\\361a')).toBe(true);
+    expect(pdfString.includes('Compa\\361\\355a de Danza \\301rabe \\321u\\361oa')).toBe(true);
+    expect(pdfString.includes('FECHA DE EMISI\\323N: 2026-10-04 12:00:00 \\(UTC\\)')).toBe(true);
     expect(pdfString).toContain('no confirma un anclaje en Stellar');
     expect(pdfString).not.toContain('Validez y autenticidad comprobable');
+  });
+
+  it('normalizes event start_date and end_date to YYYY-MM-DD deterministically across timezones', async () => {
+    expect(normalizeCalendarDateV2('2026-11-16')).toBe('2026-11-16');
+    expect(normalizeCalendarDateV2('2026-11-16T00:00:00.000Z')).toBe('2026-11-16');
+    expect(normalizeCalendarDateV2(new Date(2026, 10, 16, 0, 0, 0, 0))).toBe('2026-11-16');
+    expect(normalizeCalendarDateV2(new Date('2026-11-16T00:00:00.000Z'))).toBe('2026-11-16');
+    expect(normalizeCalendarDateV2(null)).toBeNull();
+
+    // Verify PostgreSQL emission across extreme session timezones produces identical YYYY-MM-DD and digest
+    const timezones = ['UTC', 'America/Santiago', 'Pacific/Kiritimati', 'Pacific/Midway', 'Asia/Tokyo'];
+    const digests: string[] = [];
+
+    for (const tz of timezones) {
+      await client.query('BEGIN');
+      try {
+        await client.query(`SET LOCAL TIME ZONE '${tz}'`);
+        await client.query(
+          `UPDATE events SET start_date = '2026-09-05', end_date = '2026-09-07' WHERE entity_id = $1`,
+          [testIds.event]
+        );
+        await client.query(`DELETE FROM credential_evidence WHERE credential_id IN (SELECT id FROM credentials WHERE participation_id = $1)`, [testIds.participationSolo]);
+        await client.query(`DELETE FROM credentials WHERE participation_id = $1`, [testIds.participationSolo]);
+
+        const issued = await service.issueCredential(
+          {
+            actor,
+            publicId: 'cg2_tz_stability_check01',
+            issuedAt: '2026-11-18T12:00:00.000Z',
+            issuerEntityId: testIds.issuerOrg,
+            subjectEntityId: testIds.personParticipantSolo,
+            eventEntityId: testIds.event,
+            credentialFamily: 'participant',
+            participationMode: 'solo',
+            participationId: testIds.participationSolo,
+            displayLabel: 'Participante',
+            displaySubtitle: 'Solista',
+            roles: ['dancer'],
+            evidences: [
+              {
+                sourceType: 'participation',
+                sourceId: testIds.participationSolo,
+                evidenceRole: 'dancer',
+              },
+            ],
+          },
+          client as any
+        );
+
+        expect(issued.canonicalPayload.event.start_date).toBe('2026-09-05');
+        expect(issued.canonicalPayload.event.end_date).toBe('2026-09-07');
+        expect(issued.canonicalPayload.event.start_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+        expect(issued.canonicalPayload.event.end_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+        digests.push(issued.payloadDigest);
+      } finally {
+        await client.query('ROLLBACK');
+      }
+    }
+
+    expect(new Set(digests).size).toBe(1);
   });
   const securityParams = () => ({
     actor, issuerEntityId: testIds.issuerOrg, subjectEntityId: testIds.personParticipantSolo,

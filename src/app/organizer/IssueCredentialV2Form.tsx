@@ -13,9 +13,10 @@ interface Props {
 }
 
 export default function IssueCredentialV2Form({ participations, disabled }: Props) {
+  const availableParticipations = participations.filter((p) => !p.existingV2PublicId);
   const [isPending, startTransition] = useTransition();
   const [selectedParticipationId, setSelectedParticipationId] = useState<string>(
-    participations[0]?.participationId ?? ''
+    availableParticipations[0]?.participationId ?? participations[0]?.participationId ?? ''
   );
   const [participationMode, setParticipationMode] = useState<'solo' | 'group'>('solo');
   const [result, setResult] = useState<IssueParticipantV2OrganizerResult | null>(null);
@@ -55,7 +56,7 @@ export default function IssueCredentialV2Form({ participations, disabled }: Prop
 
   return (
     <div className="space-y-4">
-      <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded bg-amber-900/40 border border-amber-700/80 text-amber-200 text-xs font-medium">
+      <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded bg-slate-800 border border-slate-600 text-slate-200 text-xs font-medium">
         <span>Registro local — sin confirmación Stellar</span>
       </div>
 
@@ -84,11 +85,19 @@ export default function IssueCredentialV2Form({ participations, disabled }: Prop
                 const artistic = p.subjectArtisticName
                   ? ` ("${p.subjectArtisticName}")`
                   : '';
+                const issuedSuffix = p.existingV2PublicId
+                  ? ` — [Emitida: ${p.existingV2PublicId}]`
+                  : '';
                 return (
-                  <option key={p.participationId} value={p.participationId}>
+                  <option
+                    key={p.participationId}
+                    value={p.participationId}
+                    disabled={Boolean(p.existingV2PublicId)}
+                  >
                     {labelCode}
                     {p.subjectDisplayName}
                     {artistic} — {p.eventName} (Emisor: {p.issuerDisplayName})
+                    {issuedSuffix}
                   </option>
                 );
               })
@@ -145,7 +154,7 @@ export default function IssueCredentialV2Form({ participations, disabled }: Prop
             <span className="font-semibold text-emerald-300">
               Credencial V2 emitida: {result.credential.displayLabel} ({result.credential.displaySubtitle})
             </span>
-            <span className="px-2 py-0.5 rounded bg-amber-900/50 border border-amber-700 text-amber-200 font-medium">
+            <span className="px-2 py-0.5 rounded bg-slate-800 border border-slate-600 text-slate-200 font-medium">
               {result.publicStatusLabel}
             </span>
           </div>

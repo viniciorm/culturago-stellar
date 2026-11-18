@@ -1,7 +1,7 @@
 import React from 'react';
 import { notFound } from 'next/navigation';
 import {
-  CheckCircle2,
+  Clock,
   XCircle,
   Download,
   QrCode,
@@ -16,6 +16,21 @@ import {
 } from 'lucide-react';
 import { PublicLayout } from '@/components/PublicLayout';
 import { CredentialV2Service } from '@/infrastructure/credentials/v2/CredentialV2Service';
+
+const ROLE_LABELS_ES: Record<string, string> = {
+  dancer: 'Bailarina / Intérprete',
+  teacher: 'Profesora',
+  director: 'Directora',
+  group_leader: 'Líder de grupo',
+  photographer: 'Fotógrafo Oficial',
+  cameraman: 'Camarógrafo Oficial',
+  production: 'Producción',
+  organizer: 'Organización',
+};
+
+function formatRoleLabelEs(role: string): string {
+  return ROLE_LABELS_ES[role] ?? role;
+}
 
 interface PageProps {
   params: Promise<{ publicId: string }>;
@@ -85,8 +100,8 @@ export default async function CredentialV2PublicPage({ params }: PageProps) {
                 <span>Credencial Revocada</span>
               </div>
             ) : (
-              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-semibold text-sm">
-                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-stone-100 border border-stone-300 text-stone-700 font-medium text-sm">
+                <Clock className="w-5 h-5 text-stone-500" />
                 <span>{cred.status === 'draft' ? 'Borrador — sin confirmación Stellar' : 'Registro local — sin confirmación Stellar'}</span>
               </div>
             )}
@@ -116,7 +131,7 @@ export default async function CredentialV2PublicPage({ params }: PageProps) {
                       key={r}
                       className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#5C061E]/5 text-[#5C061E] border border-[#5C061E]/15"
                     >
-                      {r}
+                      {formatRoleLabelEs(r)}
                     </span>
                   ))}
                   {cred.participationMode && (
@@ -251,7 +266,7 @@ export default async function CredentialV2PublicPage({ params }: PageProps) {
                   className="w-20 h-20 bg-white rounded-lg p-1 border border-stone-200 shadow-2xs"
                 />
                 <div className="text-xs space-y-1">
-                  <div className="font-semibold text-stone-800">Código QR Oficial</div>
+                  <div className="font-semibold text-stone-800">Código QR de consulta</div>
                   <div className="text-stone-600">Escanea para consultar el registro local</div>
                   <div className="font-mono text-stone-600 text-[11px]">{cred.publicId}</div>
                 </div>
@@ -291,7 +306,7 @@ export default async function CredentialV2PublicPage({ params }: PageProps) {
                 </div>
               </div>
               <div>
-                <span className="text-stone-600 font-medium">Fecha de Emisión:</span>
+                <span className="text-stone-600 font-medium">Fecha de Emisión (UTC):</span>
                 <div className="font-mono text-stone-800 mt-0.5">
                   {(cred.issuedAt as unknown) instanceof Date
                     ? ((cred.issuedAt as unknown) as Date).toISOString()

@@ -1,13 +1,9 @@
 #!/usr/bin/env node
 /**
  * Seeds deterministic synthetic data into the isolated test PostgreSQL database
- * (`culturago_test` on 127.0.0.1 / localhost) for the D1 browser demonstration:
- *   1. Iniciar sesión (/login con passkey o sesión de operador sintético)
- *   2. Emitir Credencial V2 (/organizer -> familia participant)
- *   3. Abrir pasaporte (/p/camila-danzante-sintetica)
- *   4. Abrir credencial (/credentials/[publicId])
- *   5. Descargar PDF (/api/credentials/[publicId]/pdf)
- *   6. Comprobar QR (/api/credentials/[publicId]/qr)
+ * (`culturago_test` on 127.0.0.1 / localhost) for the D1 browser demonstration,
+ * strictly preserving any historical credentials already issued for D1-SINT-001
+ * (`d1000004-0000-4000-8000-000000000004`, e.g. `cg2_HSHtLAutuMlHh4Cr`).
  *
  * Refuses to run against any non-test or remote database.
  */
@@ -32,6 +28,16 @@ export const D1_DEMO_FIXTURES = {
   operatorAccountId: 'd1000005-0000-4000-8000-000000000005',
   claimId: 'd1000006-0000-4000-8000-000000000006',
   claimCode: 'D1-SINTETICO-2026',
+  event2Id: 'd1000007-0000-4000-8000-000000000007',
+  event2Slug: 'gala-sintetica-primavera-d1-2026',
+  event2Name: 'Gala Sintética Primavera D1 2026',
+  participation2Id: 'd1000008-0000-4000-8000-000000000008',
+  presentation2Code: 'D1-SINT-002',
+  event3Id: 'd1000009-0000-4000-8000-000000000009',
+  event3Slug: 'encuentro-sintetico-danza-arabe-nunoa-2026',
+  event3Name: 'Encuentro Sintético Danza Árabe Ñuñoa 2026',
+  participation3Id: 'd100000a-0000-4000-8000-000000000010',
+  presentation3Code: 'D1-SINT-003',
 };
 
 function validateTestDatabaseUrl(connectionString) {
@@ -57,7 +63,10 @@ function validateTestDatabaseUrl(connectionString) {
   return dbName;
 }
 
-export async function seedD1SyntheticDemo(connectionString) {
+export async function seedD1SyntheticDemo(
+  connectionString,
+  options = { preserveIssuedOnParticipation2: false }
+) {
   const expectedDbName = validateTestDatabaseUrl(connectionString);
   const client = new Client({ connectionString });
   await client.connect();
@@ -77,17 +86,23 @@ export async function seedD1SyntheticDemo(connectionString) {
 
     await client.query('BEGIN');
 
-    // Clean only the deterministic UUIDs of this synthetic demo fixture
+    // NEVER delete or modify historical credentials on participationId (D1-SINT-001)!
+    // Only reset credentials on participation2Id/participation3Id when requested.
+    const resettableParticipationIds = options.preserveIssuedOnParticipation2
+      ? [D1_DEMO_FIXTURES.participation3Id]
+      : [D1_DEMO_FIXTURES.participation2Id, D1_DEMO_FIXTURES.participation3Id];
+
     await client.query(
       `DELETE FROM credential_evidence WHERE credential_id IN (
-         SELECT id FROM credentials WHERE participation_id = $1 OR issuer_entity_id = $2
+         SELECT id FROM credentials WHERE participation_id = ANY($1::uuid[])
        )`,
-      [D1_DEMO_FIXTURES.participationId, D1_DEMO_FIXTURES.issuerId]
+      [resettableParticipationIds]
     );
     await client.query(
-      `DELETE FROM credentials WHERE participation_id = $1 OR issuer_entity_id = $2`,
-      [D1_DEMO_FIXTURES.participationId, D1_DEMO_FIXTURES.issuerId]
+      `DELETE FROM credentials WHERE participation_id = ANY($1::uuid[])`,
+      [resettableParticipationIds]
     );
+
     await client.query(`DELETE FROM sessions WHERE account_id = $1`, [
       D1_DEMO_FIXTURES.operatorAccountId,
     ]);
@@ -108,9 +123,6 @@ export async function seedD1SyntheticDemo(connectionString) {
     await client.query(`DELETE FROM accounts WHERE id = $1`, [
       D1_DEMO_FIXTURES.operatorAccountId,
     ]);
-    await client.query(`DELETE FROM participations WHERE id = $1`, [
-      D1_DEMO_FIXTURES.participationId,
-    ]);
 
     // Upsert synthetic entities
     await client.query(
@@ -118,7 +130,9 @@ export async function seedD1SyntheticDemo(connectionString) {
        VALUES
          ($1, 'organization', $2, $3, 'Chile', 'Santiago', 'verified', true, true),
          ($4, 'event', $5, $6, 'Chile', 'Santiago', 'verified', true, true),
-         ($7, 'person', $8, $9, 'Chile', 'Santiago', 'verified', true, true)
+         ($7, 'person', $8, $9, 'Chile', 'Santiago', 'verified', true, true),
+         ($10, 'event', $11, $12, 'Chile', 'Santiago', 'verified', true, true),
+         ($13, 'event', $14, $15, 'Chile', 'Ñuñoa, Santiago', 'verified', true, true)
        ON CONFLICT (id) DO UPDATE SET
          display_name = EXCLUDED.display_name,
          slug = EXCLUDED.slug,
@@ -135,6 +149,12 @@ export async function seedD1SyntheticDemo(connectionString) {
         D1_DEMO_FIXTURES.subjectId,
         D1_DEMO_FIXTURES.subjectDisplayName,
         D1_DEMO_FIXTURES.subjectSlug,
+        D1_DEMO_FIXTURES.event2Id,
+        D1_DEMO_FIXTURES.event2Name,
+        D1_DEMO_FIXTURES.event2Slug,
+        D1_DEMO_FIXTURES.event3Id,
+        D1_DEMO_FIXTURES.event3Name,
+        D1_DEMO_FIXTURES.event3Slug,
       ]
     );
 
@@ -160,7 +180,10 @@ export async function seedD1SyntheticDemo(connectionString) {
 
     await client.query(
       `INSERT INTO events (entity_id, name, year, start_date, end_date, location, organizer_entity_id)
-       VALUES ($1, $2, 2026, '2026-11-16', '2026-11-18', 'Santiago', $3)
+       VALUES
+         ($1, $2, 2026, '2026-11-16', '2026-11-18', 'Santiago', $3),
+         ($4, $5, 2026, '2026-11-20', '2026-11-21', 'Santiago', $3),
+         ($6, $7, 2026, '2026-11-25', '2026-11-26', 'Ñuñoa, Santiago', $3)
        ON CONFLICT (entity_id) DO UPDATE SET
          name = EXCLUDED.name,
          year = EXCLUDED.year,
@@ -172,17 +195,33 @@ export async function seedD1SyntheticDemo(connectionString) {
         D1_DEMO_FIXTURES.eventId,
         D1_DEMO_FIXTURES.eventName,
         D1_DEMO_FIXTURES.issuerId,
+        D1_DEMO_FIXTURES.event2Id,
+        D1_DEMO_FIXTURES.event2Name,
+        D1_DEMO_FIXTURES.event3Id,
+        D1_DEMO_FIXTURES.event3Name,
       ]
     );
 
     await client.query(
       `INSERT INTO participations (id, subject_entity_id, event_id, state, presentation_code)
-       VALUES ($1, $2, $3, 'participation_confirmed', $4)`,
+       VALUES
+         ($1, $2, $3, 'participation_confirmed', $4),
+         ($5, $2, $6, 'participation_confirmed', $7),
+         ($8, $2, $9, 'participation_confirmed', $10)
+       ON CONFLICT (id) DO UPDATE SET
+         state = 'participation_confirmed',
+         presentation_code = EXCLUDED.presentation_code`,
       [
         D1_DEMO_FIXTURES.participationId,
         D1_DEMO_FIXTURES.subjectId,
         D1_DEMO_FIXTURES.eventId,
         D1_DEMO_FIXTURES.presentationCode,
+        D1_DEMO_FIXTURES.participation2Id,
+        D1_DEMO_FIXTURES.event2Id,
+        D1_DEMO_FIXTURES.presentation2Code,
+        D1_DEMO_FIXTURES.participation3Id,
+        D1_DEMO_FIXTURES.event3Id,
+        D1_DEMO_FIXTURES.presentation3Code,
       ]
     );
 
@@ -237,13 +276,16 @@ if (isDirectRun) {
     process.env.DATABASE_URL ||
     'postgresql://postgres:test@127.0.0.1:5433/culturago_test';
 
-  seedD1SyntheticDemo(dbUrl)
+  const preserveNew = process.argv.includes('--preserve-issued');
+  seedD1SyntheticDemo(dbUrl, { preserveIssuedOnParticipation2: preserveNew })
     .then((f) => {
-      console.log('D1 Synthetic Demo Seed complete (isolated test DB):');
+      console.log('D1 Synthetic Demo Seed complete (isolated test DB, historical credentials preserved):');
       console.log(`  Issuer:        ${f.issuerName} (${f.issuerId})`);
       console.log(`  Subject:       ${f.subjectDisplayName} / "${f.subjectArtisticName}" (/p/${f.subjectSlug})`);
-      console.log(`  Participation: [${f.presentationCode}] (${f.participationId})`);
-      console.log(`  Claim Code:    ${f.claimCode} (use on /login -> "Registrar primer passkey")`);
+      console.log(`  Historical:    [${f.presentationCode}] (${f.participationId}) — preserved intact`);
+      console.log(`  Demo Slot 2:   [${f.presentation2Code}] (${f.participation2Id}) — ${f.event2Name}`);
+      console.log(`  Demo Slot 3:   [${f.presentation3Code}] (${f.participation3Id}) — ${f.event3Name}`);
+      console.log(`  Claim Code:    ${f.claimCode} (use on /login -> "Registrar passkey")`);
     })
     .catch((err) => {
       console.error('Failed to seed D1 synthetic demo:', err.message);

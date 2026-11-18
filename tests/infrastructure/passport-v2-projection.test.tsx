@@ -287,10 +287,20 @@ describe('Passport V2 Public Projection & V1 Coexistence (PostgreSQL + UI)', () 
       expect(screen.getByText('Kamila Nur')).toBeDefined();
     });
 
-    // Criterion 1 & 2: V2 label, subtitle, and local unconfirmed status are rendered
+    // Public text hygiene: unsupported legacy claims must be absent
+    expect(screen.getByText('Pasaporte Cultural')).toBeDefined();
+    expect(screen.getByText('Código QR de consulta')).toBeDefined();
+    expect(screen.queryByText('Pasaporte Cultural Oficial')).toBeNull();
+    expect(screen.queryByText(/REPÚBLICA DE CHILE/i)).toBeNull();
+    expect(screen.queryByText(/Verificado FDVC/i)).toBeNull();
+    expect(screen.queryByText(/Validez:\s*Sep\s*2026/i)).toBeNull();
+
+    // Criterion 1 & 2: V2 label, subtitle, and neutral local unconfirmed status are rendered
     expect(screen.getByText('Participante')).toBeDefined();
     expect(screen.getByText('Solista')).toBeDefined();
-    expect(screen.getAllByText('Registro local — sin confirmación Stellar').length).toBeGreaterThanOrEqual(1);
+    const statusBadges = screen.getAllByText('Registro local — sin confirmación Stellar');
+    expect(statusBadges.length).toBeGreaterThanOrEqual(1);
+    expect(statusBadges[0].className).toContain('bg-stone-100');
     expect(screen.getByText(subject1V2PublicId)).toBeDefined();
 
     // Internal status 'issued' must not be presented as blockchain confirmation
@@ -324,7 +334,14 @@ describe('Passport V2 Public Projection & V1 Coexistence (PostgreSQL + UI)', () 
     });
     render(destinationJsx);
 
-    expect(screen.getByText('Registro local — sin confirmación Stellar')).toBeDefined();
+    const credStatusBadge = screen.getByText('Registro local — sin confirmación Stellar');
+    expect(credStatusBadge).toBeDefined();
+    expect(credStatusBadge.closest('div')?.className).toContain('bg-stone-100');
+    expect(credStatusBadge.closest('div')?.className).not.toContain('bg-emerald-50');
+    expect(screen.getByText('Código QR de consulta')).toBeDefined();
+    expect(screen.queryByText('Código QR Oficial')).toBeNull();
+    expect(screen.getByText('Bailarina / Intérprete')).toBeDefined();
+
     const pdfAnchor = screen.getByText('Descargar Certificado (PDF)').closest('a');
     expect(pdfAnchor?.getAttribute('href')).toBe(`/api/credentials/${subject1V2PublicId}/pdf`);
     const qrAnchor = screen.getByText('Ver Código QR').closest('a');

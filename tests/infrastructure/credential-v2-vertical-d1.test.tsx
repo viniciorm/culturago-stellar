@@ -492,12 +492,14 @@ describe('D1 Tranche 2 & Organizer UI: Session-Derived V2 Issuance, Rejections &
     expect(credHref).toMatch(/^\/credentials\/cg2_/);
     const publicId = credHref.replace('/credentials/', '');
 
-    const dbCredRes = await query<{ id: string }>(
-      `SELECT id FROM credentials WHERE public_id = $1`,
-      [publicId]
-    );
+    const dbCredRes = await query<{
+      id: string;
+      canonical_payload: { event?: { start_date?: string; end_date?: string } };
+    }>(`SELECT id, canonical_payload FROM credentials WHERE public_id = $1`, [publicId]);
     expect(dbCredRes.rows).toHaveLength(1);
     issuedCredentialId = dbCredRes.rows[0].id;
+    expect(dbCredRes.rows[0].canonical_payload.event?.start_date).toBe('2026-11-16');
+    expect(dbCredRes.rows[0].canonical_payload.event?.end_date).toBe('2026-11-18');
 
     // 4. Open public passport (/p/[slug]) and verify credential projection and navigation
     cleanup();
@@ -543,6 +545,9 @@ describe('D1 Tranche 2 & Organizer UI: Session-Derived V2 Issuance, Rejections &
     const pdfBytes = Buffer.from(await pdfRes.arrayBuffer()).toString('binary');
     expect(pdfBytes.startsWith('%PDF-1.4')).toBe(true);
     expect(pdfBytes).toContain(publicId);
+    expect(pdfBytes).toContain('Constancia de participaci\\363n cultural');
+    expect(pdfBytes).toContain('Bailarina / Int\\351rprete');
+    expect(pdfBytes).toContain('\\(UTC\\)');
 
     const qrRes = await getV2Qr(
       new Request(`http://localhost:3000/api/credentials/${publicId}/qr`),

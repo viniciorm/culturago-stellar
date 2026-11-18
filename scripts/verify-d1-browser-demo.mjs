@@ -3,10 +3,10 @@
  * Executes the complete D1 browser demonstration in Chromium (Playwright)
  * against the isolated test PostgreSQL database (`culturago_test` on 127.0.0.1:5433):
  *   1. Iniciar sesión en /login (registro y autenticación WebAuthn passkey con código sintético)
- *   2. Emitir Credencial V2 en /organizer (seleccionando participación confirmada, familia participant)
- *   3. Abrir pasaporte público (/p/camila-danzante-sintetica) desde el enlace del resultado
- *   4. Abrir credencial pública (/credentials/[publicId]) desde la tarjeta del pasaporte
- *   5. Descargar PDF (/api/credentials/[publicId]/pdf) y verificar su contenido real
+ *   2. Emitir nueva Credencial V2 en /organizer (preservando la credencial histórica anterior)
+ *   3. Abrir pasaporte público (/p/camila-danzante-sintetica) y verificar coexistencia con histórica y textos públicos limpios
+ *   4. Abrir la nueva credencial pública (/credentials/[publicId]) y verificar fechas YYYY-MM-DD, rol en español y QR de consulta
+ *   5. Descargar PDF (/api/credentials/[publicId]/pdf) y verificar "Constancia de participación cultural", tildes/ñ, rol en español y zona horaria (UTC)
  *   6. Comprobar que el QR (/api/credentials/[publicId]/qr) codifica exactamente la URL de la credencial
  *
  * Usage: node scripts/verify-d1-browser-demo.mjs
@@ -38,9 +38,11 @@ async function waitForServer(url, timeoutMs = 45000) {
 }
 
 async function main() {
-  // 1. Seed isolated test database (guard runs before any write/delete)
-  const fixtures = await seedD1SyntheticDemo(DB_URL);
-  console.log(`[1/6] Isolated test DB seeded (${fixtures.claimCode})`);
+  // 1. Seed isolated test database (preserving historical D1-SINT-001 credential intact)
+  const fixtures = await seedD1SyntheticDemo(DB_URL, {
+    preserveIssuedOnParticipation2: false,
+  });
+  console.log(`[1/6] Isolated test DB seeded (${fixtures.claimCode}); historical D1-SINT-001 preserved`);
 
   // 2. Start production server on PORT connected to isolated test DB
   const nextBin = 'node_modules/next/dist/bin/next';
@@ -107,7 +109,7 @@ async function main() {
     await page.waitForURL('**/organizer', { timeout: 15000 });
     console.log(`[3/6] Logged in via /login WebAuthn Passkey and redirected to /organizer`);
 
-    // Step 2: Emitir Credencial V2 en /organizer
+    // Step 2: Emitir nueva Credencial V2 en /organizer (para D1-SINT-002)
     const v2Heading = page.getByRole('heading', {
       name: 'Emisión Credential V2 — Familia Participant',
     });
@@ -134,7 +136,7 @@ async function main() {
       .getAttribute('href');
     assert(credHref && credHref.startsWith('/credentials/cg2_'));
     const publicId = credHref.replace('/credentials/', '');
-    console.log(`[4/6] Issued V2 credential from /organizer: ${publicId}`);
+    console.log(`[4/6] Issued new V2 credential from /organizer: ${publicId}`);
 
     // Step 3: Abrir pasaporte público desde el enlace del resultado
     await page.getByRole('link', { name: 'Ver pasaporte público' }).click();
@@ -142,18 +144,30 @@ async function main() {
     await page.getByText('Kamila Nur').waitFor({ state: 'visible' });
     await page.getByText(publicId).waitFor({ state: 'visible' });
     const passportContent = await page.textContent('main');
+    assert(passportContent.includes('Pasaporte Cultural'));
+    assert(passportContent.includes('Código QR de consulta'));
+    assert(!passportContent.includes('Pasaporte Cultural Oficial'));
+    assert(!passportContent.includes('REPÚBLICA DE CHILE'));
+    assert(!passportContent.includes('Verificado FDVC'));
+    assert(!passportContent.includes('Validez: Sep 2026'));
     assert(passportContent.includes('Participante'));
     assert(passportContent.includes('Solista'));
     assert(passportContent.includes('Registro local — sin confirmación Stellar'));
+    assert(passportContent.includes('cg2_HSHtLAutuMlHh4Cr'), 'Historical credential cg2_HSHtLAutuMlHh4Cr must remain visible');
     assert(!passportContent.includes('Confirmada en Stellar'));
-    console.log(`[5/6] Verified V2 credential on public passport /p/${fixtures.subjectSlug}`);
+    console.log(`[5/6] Verified new (${publicId}) & historical (cg2_HSHtLAutuMlHh4Cr) V2 credentials on /p/${fixtures.subjectSlug}`);
 
-    // Step 4: Abrir credencial pública desde la tarjeta del pasaporte
+    // Step 4: Abrir la nueva credencial pública desde la tarjeta del pasaporte
     await page.getByText(publicId).click();
     await page.waitForURL(`**/credentials/${publicId}`, { timeout: 15000 });
     const credPageText = await page.textContent('main');
     assert(credPageText.includes('Registro local — sin confirmación Stellar'));
     assert(credPageText.includes('Camila Danzante Sintética ("Kamila Nur")'));
+    assert(credPageText.includes('Bailarina / Intérprete'));
+    assert(credPageText.includes('Código QR de consulta'));
+    assert(!credPageText.includes('Código QR Oficial'));
+    assert(credPageText.includes('"start_date": "2026-11-20"'));
+    assert(credPageText.includes('"end_date": "2026-11-21"'));
 
     // Step 5: Descargar PDF y verificar contenido real
     const pdfHref = await page
@@ -166,8 +180,12 @@ async function main() {
     assert.equal(pdfRes.headers.get('content-type'), 'application/pdf');
     const pdfBinary = Buffer.from(await pdfRes.arrayBuffer()).toString('binary');
     assert(pdfBinary.startsWith('%PDF-1.4'));
+    assert(pdfBinary.includes('/Encoding /WinAnsiEncoding'));
+    assert(pdfBinary.includes('Constancia de participaci\\363n cultural'));
+    assert(pdfBinary.includes('Bailarina / Int\\351rprete'));
+    assert(pdfBinary.includes('\\(UTC\\)'));
     assert(pdfBinary.includes(publicId));
-    assert(pdfBinary.includes('Camila Danzante'));
+    assert(pdfBinary.includes('Camila Danzante Sint\\351tica'));
     assert(pdfBinary.includes(`${BASE_URL}/credentials/${publicId}`));
 
     // Step 6: Comprobar que el QR dirige a la URL correcta
@@ -193,13 +211,16 @@ async function main() {
       `QR SVG must encode exact URL ${expectedVerifyUrl}`
     );
     console.log(
-      `[6/6] Verified PDF download (%PDF-1.4, ${pdfBinary.length} bytes) & QR SVG encodes ${expectedVerifyUrl}`
+      `[6/6] Verified PDF (%PDF-1.4, Constancia de participación cultural, tildes/ñ, rol ES, UTC) & QR SVG encodes ${expectedVerifyUrl}`
     );
   } finally {
     if (browser) await browser.close();
     serverProc.kill();
-    // Re-seed clean state so Marcos can immediately run the manual browser test from /login
-    await seedD1SyntheticDemo(DB_URL);
+    // Preserve BOTH the historical D1-SINT-001 credential AND the newly issued D1-SINT-002 credential,
+    // while refreshing the operator claim code (D1-SINTETICO-2026) and D1-SINT-003 for manual testing!
+    await seedD1SyntheticDemo(DB_URL, {
+      preserveIssuedOnParticipation2: true,
+    });
   }
 }
 

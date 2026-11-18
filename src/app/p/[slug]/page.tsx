@@ -110,7 +110,7 @@ export default function PersonPublicPassportPage() {
         {/* Left Column: Visual Passport Card */}
         <div className="md:col-span-2 space-y-6">
           <h2 className="font-serif text-2xl font-bold text-[#1C1A17] border-b border-stone-200 pb-2">
-            Pasaporte Cultural Oficial
+            Pasaporte Cultural
           </h2>
 
           <PassportCard
@@ -145,11 +145,11 @@ export default function PersonPublicPassportPage() {
         <div className="space-y-8">
           <div>
             <h2 className="font-serif text-xl font-bold text-[#1C1A17] border-b border-stone-200 pb-2 mb-4">
-              Verificación QR
+              Código QR de consulta
             </h2>
             <QRCodeBlock
               value={passportUrl}
-              label="Escanea para verificar la validez de este pasaporte en vivo."
+              label="Escanea para consultar este pasaporte cultural."
             />
           </div>
 
@@ -160,7 +160,7 @@ export default function PersonPublicPassportPage() {
 
             {credentials.length === 0 ? (
               <div className="text-xs text-stone-400 italic py-4">
-                No hay credenciales verificadas vigentes para esta persona.
+                No hay credenciales registradas vigentes para esta persona.
               </div>
             ) : (
               <div className="space-y-4">
@@ -199,7 +199,7 @@ export default function PersonPublicPassportPage() {
                             {displaySubtitle}
                           </p>
                         )}
-                        <span className="text-[10px] font-medium text-amber-800 bg-amber-50 border border-amber-200/80 rounded px-1.5 py-0.5 inline-block">
+                        <span className="text-[10px] font-medium text-stone-700 bg-stone-100 border border-stone-200 rounded px-1.5 py-0.5 inline-block">
                           {publicStatusLabel}
                         </span>
                         <span className="text-[9px] font-mono text-stone-400 block">
