@@ -118,6 +118,42 @@ export interface PublicCredentialView {
   }[];
 }
 
+/**
+ * Deterministically normalizes a calendar date (DATE column without time) to
+ * `YYYY-MM-DD`, preventing server timezone shifts or localized
+ * `Date.prototype.toString()` strings.
+ */
+export function normalizeCalendarDateV2(val: unknown): string | null {
+  if (val == null || val === '') return null;
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    const match = /^(\d{4}-\d{2}-\d{2})/.exec(trimmed);
+    if (match) return match[1];
+    throw domainError(
+      'INVALID_CREDENTIAL',
+      `Invalid calendar date format '${trimmed}'; expected YYYY-MM-DD`
+    );
+  }
+  if (val instanceof Date) {
+    if (Number.isNaN(val.getTime())) {
+      throw domainError('INVALID_CREDENTIAL', 'Invalid Date instance for calendar date');
+    }
+    const isLocalMidnight =
+      val.getHours() === 0 &&
+      val.getMinutes() === 0 &&
+      val.getSeconds() === 0 &&
+      val.getMilliseconds() === 0;
+    const year = isLocalMidnight ? val.getFullYear() : val.getUTCFullYear();
+    const month = (isLocalMidnight ? val.getMonth() : val.getUTCMonth()) + 1;
+    const day = isLocalMidnight ? val.getDate() : val.getUTCDate();
+    return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  }
+  throw domainError(
+    'INVALID_CREDENTIAL',
+    `Unsupported calendar date value type '${typeof val}'`
+  );
+}
+
 export class CredentialV2Service {
   /**
    * Issues a new Credential V2 transactionally.
@@ -169,11 +205,11 @@ export class CredentialV2Service {
         id: string;
         name: string;
         year: number;
-        start_date: string;
-        end_date: string | null;
+        start_date: string | Date;
+        end_date: string | Date | null;
         location: string | null;
       }>(
-        `SELECT e.id, ev.name, ev.year, ev.start_date, ev.end_date, ev.location
+        `SELECT e.id, ev.name, ev.year, ev.start_date::text AS start_date, ev.end_date::text AS end_date, ev.location
          FROM entities e
          JOIN events ev ON ev.entity_id = e.id
          WHERE e.id = $1`,
@@ -269,12 +305,9 @@ export class CredentialV2Service {
       const publicId = params.publicId || generatePublicIdV2();
       const issuedAt = params.issuedAt || new Date().toISOString();
 
-      // Normalize dates for canonical payload
-      const formatDate = (val: string | null | undefined): string | null => {
-        if (!val) return null;
-        if (typeof val === 'string' && val.length >= 10) return val.slice(0, 10);
-        return String(val);
-      };
+      // Normalize calendar dates deterministically (YYYY-MM-DD, timezone-independent)
+      const normalizedStartDate = normalizeCalendarDateV2(event.start_date);
+      const normalizedEndDate = normalizeCalendarDateV2(event.end_date);
 
       // 7. Build Canonical Payload V2
       const canonicalPayload = buildCanonicalPayloadV2({
@@ -298,8 +331,8 @@ export class CredentialV2Service {
           id: event.id,
           name: event.name,
           ...(event.year != null ? { year: event.year } : {}),
-          ...(event.start_date ? { start_date: formatDate(event.start_date) } : {}),
-          ...(event.end_date ? { end_date: formatDate(event.end_date) } : {}),
+          ...(normalizedStartDate ? { start_date: normalizedStartDate } : {}),
+          ...(normalizedEndDate ? { end_date: normalizedEndDate } : {}),
           ...(event.location ? { location: event.location } : {}),
         },
         displayLabel: params.displayLabel,

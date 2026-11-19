@@ -20,7 +20,16 @@ export async function GET(
   const base = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'https://culturago.cl';
   const verifyUrl = `${base}/credentials/${encodeURIComponent(publicId)}`;
 
-  const pdfBuffer = buildCredentialV2Pdf(credential, verifyUrl);
+  const toIsoString = (val: unknown): string =>
+    val instanceof Date ? val.toISOString() : String(val ?? '');
+
+  const normalizedCredential = {
+    ...credential,
+    issuedAt: toIsoString(credential.issuedAt),
+    revokedAt: credential.revokedAt != null ? toIsoString(credential.revokedAt) : null,
+  };
+
+  const pdfBuffer = buildCredentialV2Pdf(normalizedCredential, verifyUrl);
 
   return new NextResponse(new Uint8Array(pdfBuffer), {
     headers: {
