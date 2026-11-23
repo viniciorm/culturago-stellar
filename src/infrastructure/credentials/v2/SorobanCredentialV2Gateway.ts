@@ -122,6 +122,7 @@ export class SorobanCredentialV2Gateway {
         payloadDigest: credential.payloadDigest,
         participationId: credential.participationId,
         familyCode: ids.familyCode,
+        actorAddress: this.deps.operatorAddress,
       });
 
       readbackDigest = verification.readbackDigest;

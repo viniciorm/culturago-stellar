@@ -128,6 +128,7 @@ export interface StellarGateway {
     payloadDigest: string;
     participationId?: string | null;
     familyCode?: V2ContractFamilyCode;
+    actorAddress?: string;
   }): Promise<ChainVerificationV2>;
   /**
    * Reconciler: poll + readback for an existing operation that is

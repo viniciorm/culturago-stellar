@@ -356,10 +356,21 @@ export class SorobanStellarGateway implements StellarGateway {
     payloadDigest: string;
     participationId?: string | null;
     familyCode?: V2ContractFamilyCode;
+    actorAddress?: string;
   }): Promise<ChainVerificationV2> {
     assertHex32(query.payloadDigest, 'payloadDigest');
     const credentialIdHex = computeV2CredentialIdHex(query.publicId);
-    const actorAddress = this.config.feePayerAddress ?? query.publicId;
+    const signerPublicKey =
+      (this.signer as { publicKey?: string; address?: string } | null)?.publicKey ??
+      (this.signer as { publicKey?: string; address?: string } | null)?.address ??
+      null;
+    const actorAddress =
+      query.actorAddress?.trim() ||
+      this.config.feePayerAddress ||
+      signerPublicKey ||
+      process.env.STELLAR_TESTNET_OPERATOR_ADDRESS?.trim() ||
+      process.env.STELLAR_TESTNET_ADMIN_ADDRESS?.trim() ||
+      query.publicId;
 
     const raw = await this.transport.readback({
       contractId: this.config.credentialRegistryContractId,
