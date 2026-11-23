@@ -298,19 +298,22 @@ export class SdkSorobanTransport implements SorobanTransport {
   }
 
   private mapSimulationError(error: string): string {
-    // Contract errors carry their numeric code; map known domain codes.
+    // Contract errors carry their numeric code; match exact numeric boundary so #10 does not match #1.
     const known: Record<string, string> = {
-      '#1': 'UNAUTHORIZED',
-      '#2': 'INVALID_INPUT',
-      '#3': 'ALREADY_EXISTS',
-      '#4': 'NOT_FOUND',
-      '#5': 'INACTIVE',
-      '#6': 'VERSION_CONFLICT',
-      '#7': 'ISSUER_OPERATOR_NOT_LINKED',
-      '#8': 'UNKNOWN_CREDENTIAL_TYPE',
+      '1': 'UNAUTHORIZED',
+      '2': 'INVALID_INPUT',
+      '3': 'ALREADY_EXISTS',
+      '4': 'NOT_FOUND',
+      '5': 'INACTIVE',
+      '6': 'VERSION_CONFLICT',
+      '7': 'ISSUER_OPERATOR_NOT_LINKED',
+      '8': 'UNKNOWN_CREDENTIAL_TYPE',
+      '9': 'ISSUER_OPERATOR_NOT_LINKED',
+      '10': 'UNKNOWN_CREDENTIAL_TYPE',
     };
-    for (const [marker, code] of Object.entries(known)) {
-      if (error.includes(marker)) return code;
+    const match = error.match(/#(\d+)\b/);
+    if (match && known[match[1]]) {
+      return known[match[1]];
     }
     return 'CONTRACT_ERROR';
   }

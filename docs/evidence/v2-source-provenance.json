@@ -26,5 +26,29 @@
       "src/app/credentials/[publicId]/page.tsx": "bd8d27fa38bdf26bd9bfcf7c52db268aee0695cead25388126ff3453f389028d",
       "src/app/api/credentials/[publicId]/pdf/route.ts": "f16f67e6112ddc585545880f9982ce2f62eb4d29d7fbed3c583bad8339a1949a"
     }
+  },
+  "week2D2Current": {
+    "baseCommit": "5ba9432ab5f553adeec5eda12f2d05f0fcc3b7cf",
+    "branch": "feat/week-2-v2-stellar-anchoring",
+    "sourceSha256": {
+      "src/domain/credentials/v2.ts": "92e0ff94bd8cd567ad87f8f203c14fb7c298907a938e99671ff55d1fbd668542",
+      "src/ports/StellarGateway.ts": "2862b8c79c023e079f066091f95adadc223ca75acd3ba3c045a4e5257502157b",
+      "src/ports/OperationStore.ts": "ccd04f1df1b903dbe3fd2072afa06b14740c01f9ea589cc11584ecacf8c8c476",
+      "src/infrastructure/stellar/SorobanStellarGateway.ts": "1ffaebd8b41cb0934cee2485f9171717b93a2ce7d54db0b7b070316d8e25a928",
+      "src/infrastructure/stellar/SdkSorobanTransport.ts": "35b10036d28a6dc9d8329e5b3426853581546953e9ee8c58b322767e48f5717d",
+      "src/infrastructure/stellar/InMemoryChainTransport.ts": "7f89a83cc384d37847cb6358198a6eb0a8bae2167fffd3af548e8855b05b8618",
+      "src/infrastructure/stellar/networkConfig.ts": "51c789c2866414b4b25efa489b83ad1a9a4a7b9eac41a407b71ec16787df6132",
+      "src/infrastructure/credentials/v2/CredentialV2Service.ts": "83afdfaf96451a51c2d69364520e06a78ff1c9bb8eb128f81e4fcc5d03264514",
+      "src/infrastructure/credentials/v2/SorobanCredentialV2Gateway.ts": "f7e5963641b43a4d1272f7b5021e5b6995782de01ef4ad072618e53a57c725dc",
+      "src/infrastructure/credentials/v2/SimulatedCredentialV2Gateway.ts": "18473fc26e0cc597c98de33d6dd66f0d72c2db57a1d0d4916414d11f2fc73c07",
+      "src/infrastructure/credentials/v2/pdfCertificate.ts": "855f641f765029a2eb56dfee57b54ef482aa5d75093cb05fe68dc84a821d13ee",
+      "src/app/actions.ts": "2ac3bae6ea0106bf57135c24dfbe307820dd4a084eecfff449dbbaf72fa92b31",
+      "src/app/organizer/credential-v2-actions.ts": "7c89f8337ba967e142c295e9b8221c64805f3cf5f18de48bd60421a549476fd2",
+      "src/app/organizer/IssueCredentialV2Form.tsx": "7f6672f1e1045f39855ee5e0dc17c2808f38dceb4f73a7bb82ff0bcb3afeffa2",
+      "src/app/credentials/[publicId]/page.tsx": "f1e7c85f55ca401a054920d838fc550bdc72e4c506d9dc813f5f41824ee5f344",
+      "scripts/deploy-testnet-v2-operational.mjs": "f7ba0464eb0d1b49fa4d8a8d8a8517d8f2522c36f60b4e431dc4d5c6f6afa578",
+      "scripts/verify-d2-testnet-anchoring.mjs": "13f4a4ea86d416f4b5a24281fb71d66f9a23ff0f9c2be5360002e70707e5b1a0",
+      "tests/infrastructure/credential-v2-vertical-d2.test.tsx": "c35499959a8cdb02075e4d17098ac1173928879b0006d7575413c833e4ac7ee8"
+    }
   }
 }

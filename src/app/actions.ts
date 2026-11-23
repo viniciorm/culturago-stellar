@@ -175,7 +175,16 @@ function mapRowToPopulatedCredential(row: PublicCredentialRow): PopulatedCredent
     toDateString(row.issued_at ?? row.issued_intent_at) ?? new Date().toISOString();
   const createdAt = toDateString(row.created_at) ?? new Date().toISOString();
   const updatedAt = toDateString(row.updated_at) ?? new Date().toISOString();
-  const stellarStatus = isV2 ? 'not_registered' : deriveStellarStatus(row.stellar_phase);
+  const isV2Confirmed =
+    isV2 &&
+    row.status === 'issued' &&
+    row.stellar_phase === 'confirmed' &&
+    row.issued_ledger != null;
+  const stellarStatus = isV2
+    ? isV2Confirmed
+      ? 'registered'
+      : 'not_registered'
+    : deriveStellarStatus(row.stellar_phase);
   const publicId = row.public_id ?? row.credential_code ?? '';
   const credentialCode = isV2 ? publicId : (row.credential_code ?? publicId);
   const displayLabel = isV2 ? (row.display_label ?? '') : (row.title ?? '');
@@ -210,7 +219,7 @@ function mapRowToPopulatedCredential(row: PublicCredentialRow): PopulatedCredent
     status: row.status,
     metadata_hash: isV2 ? null : row.metadata_hash,
     stellar_status: stellarStatus,
-    stellar_tx: isV2 ? null : row.stellar_tx_hash,
+    stellar_tx: isV2 ? (isV2Confirmed ? row.stellar_tx_hash : null) : row.stellar_tx_hash,
     issued_at: issuedAt,
     revoked_at: toDateString(row.revoked_at),
     created_at: createdAt,
@@ -1266,9 +1275,18 @@ export async function getPublicCredentialsBySubjectId(
     LEFT JOIN LATERAL (
       SELECT phase, tx_hash
       FROM stellar_operations
-      WHERE (c.schema_version IS NULL OR c.schema_version != 'culturago.credential.v2')
-        AND subject_key = culturago_canonical_hash('culturago.credential.v1', to_json(c.id)::text)
-        AND operation_type = 'issue_credential'
+      WHERE (
+        (
+          (c.schema_version IS NULL OR c.schema_version != 'culturago.credential.v2')
+          AND subject_key = culturago_canonical_hash('culturago.credential.v1', to_json(c.id)::text)
+          AND operation_type = 'issue_credential'
+        )
+        OR (
+          c.schema_version = 'culturago.credential.v2'
+          AND c.public_id IS NOT NULL
+          AND idempotency_key = 'issue_v2:' || c.public_id
+        )
+      )
       ORDER BY
         CASE phase WHEN 'confirmed' THEN 0 ELSE 1 END,
         created_at DESC

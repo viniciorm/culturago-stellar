@@ -1,6 +1,11 @@
 import { createHash } from 'crypto';
 import { domainError } from '../../domain/errors';
 import {
+  computeV2BusinessKeyHex,
+  ZERO_BYTES32_HEX,
+  type V2ContractFamilyCode,
+} from '../../domain/credentials/v2';
+import {
   ContractArgValue,
   ContractCallSpec,
   SimulationOutcome,
@@ -63,6 +68,7 @@ export class InMemoryChainTransport implements SorobanTransport {
   private entities = new Map<string, ChainEntityHead>();
   private entityVersions = new Map<string, Map<number, { metadataHash: string; hashSchema: number }>>();
   private credentials = new Map<string, ChainCredential>();
+  private v2Scopes = new Map<string, string>();
   private tokenCounter = 0;
   private businessKeys = new Map<string, string>();
   private pending = new Map<string, { status: 'PENDING' | 'SUCCESS' | 'FAILED'; ledger: number }>();
@@ -70,6 +76,19 @@ export class InMemoryChainTransport implements SorobanTransport {
   public nextSubmissionStaysPending = false;
   /** Test hook: make the next poll return SUCCESS with a null ledger. */
   public nextPollReturnsNullLedger = false;
+  /** Test hook: corrupt the metadata_hash returned by the next get_credential readback. */
+  public nextReadbackCorruptMetadataHash: string | null = null;
+  /** Counters for verifying retry/reconciliation behavior without duplicate submissions. */
+  public submitCallCount = 0;
+  public pollCallCount = 0;
+
+  /** Test helper: transitions a previously PENDING txHash to SUCCESS so reconciliation can confirm it. */
+  public settlePendingTransaction(txHash: string, status: 'SUCCESS' | 'FAILED' = 'SUCCESS'): void {
+    const entry = this.pending.get(txHash);
+    if (entry) {
+      entry.status = status;
+    }
+  }
 
   async simulate(spec: ContractCallSpec): Promise<SimulationOutcome> {
     const error = this.validate(spec);
@@ -82,6 +101,7 @@ export class InMemoryChainTransport implements SorobanTransport {
   }
 
   async submit(signedXdr: string): Promise<{ txHash: string }> {
+    this.submitCallCount += 1;
     const { spec, signature } = this.decodeEnvelope(signedXdr);
     if (!signature) {
       throw domainError('INVALID_INPUT', 'submitted payload is not signed');
@@ -101,6 +121,7 @@ export class InMemoryChainTransport implements SorobanTransport {
   }
 
   async pollTransaction(txHash: string): Promise<TransactionStatusResult> {
+    this.pollCallCount += 1;
     const entry = this.pending.get(txHash);
     if (!entry) return { status: 'NOT_FOUND' };
     if (entry.status === 'PENDING') return { status: 'PENDING' };
@@ -146,6 +167,11 @@ export class InMemoryChainTransport implements SorobanTransport {
     if (spec.method === 'get_credential') {
       const record = this.credentials.get(key);
       if (!record) return null;
+      let metadataHash = record.metadataHash;
+      if (this.nextReadbackCorruptMetadataHash !== null) {
+        metadataHash = this.nextReadbackCorruptMetadataHash;
+        this.nextReadbackCorruptMetadataHash = null;
+      }
       return {
         credential_id: record.credentialId,
         token_id: record.tokenId,
@@ -154,7 +180,7 @@ export class InMemoryChainTransport implements SorobanTransport {
         subject_id: record.subjectId,
         event_id: record.eventId,
         credential_type: record.credentialType,
-        metadata_hash: record.metadataHash,
+        metadata_hash: metadataHash,
         hash_schema: record.hashSchema,
         revoked: record.revoked,
         issued_ledger: record.issuedLedger,
@@ -162,6 +188,12 @@ export class InMemoryChainTransport implements SorobanTransport {
         revoked_reason_hash: record.revokedReasonHash,
         matches: true,
       };
+    }
+
+    if (spec.method === 'get_v2_scope') {
+      const scope = this.v2Scopes.get(key);
+      if (!scope) return null;
+      return Buffer.from(scope, 'hex');
     }
 
     if (spec.method === 'verify_credential') {
@@ -242,6 +274,46 @@ export class InMemoryChainTransport implements SorobanTransport {
         if (this.businessKeys.has(bk)) return 'ALREADY_EXISTS';
         return null;
       }
+      case 'issue_credential_v2': {
+        const credentialId = hexOf(spec.args[1]);
+        const issuerId = hexOf(spec.args[2]);
+        const subjectId = hexOf(spec.args[3]);
+        const eventId = hexOf(spec.args[4]);
+        const credentialType = u32Of(spec.args[5]);
+        const scopeId = hexOf(spec.args[6]);
+        const metadataHash = hexOf(spec.args[7]);
+        if (credentialType < 101 || credentialType > 103) return 'UNKNOWN_CREDENTIAL_TYPE';
+        if (
+          (credentialType === 103 && scopeId !== ZERO_BYTES32_HEX) ||
+          (credentialType !== 103 && scopeId === ZERO_BYTES32_HEX)
+        ) {
+          return 'INVALID_INPUT';
+        }
+        const bk = computeV2BusinessKeyHex({
+          subjectIdHex: subjectId,
+          eventIdHex: eventId,
+          familyCode: credentialType as V2ContractFamilyCode,
+          scopeIdHex: scopeId,
+        });
+        const existingId = this.businessKeys.get(bk);
+        if (existingId) {
+          const existing = this.credentials.get(existingId);
+          if (
+            existing &&
+            existing.issuerId === issuerId &&
+            existing.credentialId === credentialId &&
+            existing.metadataHash === metadataHash &&
+            existing.hashSchema === 2
+          ) {
+            return null; // idempotent resend
+          }
+          if (existing && !existing.revoked) {
+            return 'ALREADY_EXISTS';
+          }
+        }
+        if (this.credentials.has(credentialId)) return 'ALREADY_EXISTS';
+        return null;
+      }
       case 'revoke_credential': {
         const credentialId = hexOf(spec.args[1]);
         const reasonHex = optHexOf(spec.args[2]);
@@ -294,6 +366,40 @@ export class InMemoryChainTransport implements SorobanTransport {
           credentialType,
           metadataHash: hexOf(spec.args[6]),
           hashSchema: u32Of(spec.args[7]),
+          revoked: false,
+          revokedReasonHash: null,
+          revokedLedger: null,
+          issuedLedger: this.ledger,
+          issuedBy: (spec.args[0] as { kind: 'address'; address: string }).address,
+        });
+        return;
+      }
+      case 'issue_credential_v2': {
+        const cid = hexOf(spec.args[1]);
+        if (this.credentials.has(cid)) return;
+        const issuerId = hexOf(spec.args[2]);
+        const subjectId = hexOf(spec.args[3]);
+        const eventId = hexOf(spec.args[4]);
+        const credentialType = u32Of(spec.args[5]) as V2ContractFamilyCode;
+        const scopeId = hexOf(spec.args[6]);
+        const metadataHash = hexOf(spec.args[7]);
+        const bk = computeV2BusinessKeyHex({
+          subjectIdHex: subjectId,
+          eventIdHex: eventId,
+          familyCode: credentialType,
+          scopeIdHex: scopeId,
+        });
+        this.businessKeys.set(bk, cid);
+        this.v2Scopes.set(cid, scopeId);
+        this.credentials.set(cid, {
+          credentialId: cid,
+          tokenId: ++this.tokenCounter,
+          issuerId,
+          subjectId,
+          eventId,
+          credentialType,
+          metadataHash,
+          hashSchema: 2,
           revoked: false,
           revokedReasonHash: null,
           revokedLedger: null,

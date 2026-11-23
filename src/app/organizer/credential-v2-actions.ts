@@ -14,6 +14,11 @@ import {
   SimulatedCredentialV2Gateway,
   type SimulatedV2GatewayResult,
 } from '@/infrastructure/credentials/v2/SimulatedCredentialV2Gateway';
+import {
+  executeCredentialV2Gateway,
+  type CredentialV2GatewayResult,
+  type RealV2GatewayResult,
+} from '@/infrastructure/credentials/v2/SorobanCredentialV2Gateway';
 
 export interface ConfirmedParticipationOption {
   participationId: string;
@@ -28,6 +33,7 @@ export interface ConfirmedParticipationOption {
   eventYear: number | null;
   presentationCode: string | null;
   existingV2PublicId: string | null;
+  existingV2StellarConfirmed?: boolean;
 }
 
 export interface IssueParticipantV2OrganizerInput {
@@ -40,10 +46,12 @@ export interface IssueParticipantV2OrganizerInput {
 
 export interface IssueParticipantV2OrganizerResult {
   credential: CredentialV2Record;
-  gateway: SimulatedV2GatewayResult;
+  gateway: CredentialV2GatewayResult;
   passportHref: string;
   credentialHref: string;
-  publicStatusLabel: 'Registro local — sin confirmación Stellar';
+  publicStatusLabel:
+    | 'Confirmada en Stellar'
+    | 'Registro local — sin confirmación Stellar';
   simulationNotice: string;
 }
 
@@ -77,6 +85,58 @@ export async function issueCredentialV2WithSimulatedGateway(
 }
 
 /**
+ * D2 vertical entry with explicit real Soroban V2 gateway requirement:
+ * derives the operator actor from the validated server session, persists (or
+ * reuses on retry) the V2 credential after verifying operator scope and
+ * participation evidence, and anchors it on Soroban via `issue_credential_v2`.
+ */
+export async function issueCredentialV2WithRealGateway(
+  input: Omit<IssueCredentialV2Params, 'actor'>
+): Promise<{
+  credential: CredentialV2Record;
+  gateway: RealV2GatewayResult;
+}> {
+  const actor = await requireActorFromSession();
+  const service = new CredentialV2Service();
+  let credential: CredentialV2Record | null = null;
+
+  if (
+    (input.credentialFamily === 'participant' ||
+      input.credentialFamily === 'guest') &&
+    input.participationId
+  ) {
+    credential = await service.findActiveCredentialForParticipation({
+      actor,
+      issuerEntityId: input.issuerEntityId,
+      subjectEntityId: input.subjectEntityId,
+      eventEntityId: input.eventEntityId,
+      credentialFamily: input.credentialFamily,
+      participationId: input.participationId,
+    });
+  }
+
+  if (!credential) {
+    credential = await service.issueCredential({
+      ...input,
+      actor,
+    });
+  }
+
+  const gateway = (await executeCredentialV2Gateway(credential, {
+    requireReal: true,
+  })) as RealV2GatewayResult;
+
+  if (gateway.onChainConfirmed && gateway.ledger !== null) {
+    credential = {
+      ...credential,
+      issuedLedger: gateway.ledger,
+    };
+  }
+
+  return { credential, gateway };
+}
+
+/**
  * Lists confirmed participations scoped strictly to the session operator's linked
  * issuer(s) for the `/organizer` panel.
  */
@@ -103,6 +163,8 @@ export async function listConfirmedParticipationsForOperator(): Promise<
     event_year: number | null;
     presentation_code: string | null;
     existing_v2_public_id: string | null;
+    existing_v2_issued_ledger: number | null;
+    existing_v2_stellar_phase: string | null;
   }>(
     `SELECT
        p.id AS participation_id,
@@ -116,15 +178,19 @@ export async function listConfirmedParticipationsForOperator(): Promise<
        ev.name AS event_name,
        ev.year AS event_year,
        p.presentation_code,
-       existing_cred.public_id AS existing_v2_public_id
+       existing_cred.public_id AS existing_v2_public_id,
+       existing_cred.issued_ledger AS existing_v2_issued_ledger,
+       existing_cred.stellar_phase AS existing_v2_stellar_phase
      FROM participations p
      JOIN entities se ON se.id = p.subject_entity_id
      LEFT JOIN people pe ON pe.entity_id = se.id
      JOIN events ev ON ev.entity_id = p.event_id
      JOIN entities iss ON iss.id = ev.organizer_entity_id
      LEFT JOIN LATERAL (
-       SELECT c.public_id
+       SELECT c.public_id, c.issued_ledger, so.phase AS stellar_phase
        FROM credentials c
+       LEFT JOIN stellar_operations so
+         ON so.idempotency_key = 'issue_v2:' || c.public_id
        WHERE c.participation_id = p.id
          AND c.schema_version = 'culturago.credential.v2'
          AND c.status != 'revoked'
@@ -152,6 +218,11 @@ export async function listConfirmedParticipationsForOperator(): Promise<
     eventYear: r.event_year,
     presentationCode: r.presentation_code,
     existingV2PublicId: r.existing_v2_public_id,
+    existingV2StellarConfirmed: Boolean(
+      r.existing_v2_public_id &&
+        r.existing_v2_issued_ledger !== null &&
+        r.existing_v2_stellar_phase === 'confirmed'
+    ),
   }));
 }
 
@@ -229,35 +300,65 @@ export async function issueParticipantCredentialV2FromOrganizer(
   const evidenceRole =
     mode === 'group' ? 'confirmed_group_performance' : 'confirmed_solo_performance';
 
-  const { credential, gateway } = await issueCredentialV2WithSimulatedGateway({
+  const service = new CredentialV2Service();
+  let credential = await service.findActiveCredentialForParticipation({
+    actor,
     issuerEntityId: input.issuerEntityId,
     subjectEntityId: input.subjectEntityId,
     eventEntityId: input.eventEntityId,
     credentialFamily: 'participant',
-    participationMode: mode,
     participationId: input.participationId,
-    displayLabel: 'Participante',
-    displaySubtitle,
-    presentationCode: part.presentation_code ?? undefined,
-    organizationName: part.issuer_display_name,
-    roles: ['dancer'],
-    evidences: [
-      {
-        sourceType: 'participation',
-        sourceId: input.participationId,
-        evidenceRole,
-      },
-    ],
   });
+
+  if (!credential) {
+    credential = await service.issueCredential({
+      actor,
+      issuerEntityId: input.issuerEntityId,
+      subjectEntityId: input.subjectEntityId,
+      eventEntityId: input.eventEntityId,
+      credentialFamily: 'participant',
+      participationMode: mode,
+      participationId: input.participationId,
+      displayLabel: 'Participante',
+      displaySubtitle,
+      presentationCode: part.presentation_code ?? undefined,
+      organizationName: part.issuer_display_name,
+      roles: ['dancer'],
+      evidences: [
+        {
+          sourceType: 'participation',
+          sourceId: input.participationId,
+          evidenceRole,
+        },
+      ],
+    });
+  }
+
+  const gateway = await executeCredentialV2Gateway(credential, {
+    operatorAddressFallback:
+      actor.walletAddress ?? `simulated-operator:${actor.accountId}`,
+  });
+
+  if (!gateway.simulated && gateway.onChainConfirmed && gateway.ledger !== null) {
+    credential = {
+      ...credential,
+      issuedLedger: gateway.ledger,
+    };
+  }
+
+  const simulationNotice = gateway.simulated
+    ? 'Simulación D1 en memoria (gatewayMode: simulated_d1, onChainConfirmed: false) — este resultado es una simulación y no constituye confirmación en Stellar.'
+    : gateway.onChainConfirmed
+      ? `Transacción confirmada en Stellar Testnet (gatewayMode: soroban_v2, ledger: ${gateway.ledger}, onChainConfirmed: true) con coincidencia byte a byte del digest canónico de 32 bytes.`
+      : `Registro local persistido; operación Soroban en fase ${gateway.phase} (gatewayMode: soroban_v2, onChainConfirmed: false). Podés reintentar para consultar y reconciliar la transacción sin duplicar la emisión.`;
 
   return {
     credential,
     gateway,
     passportHref: `/p/${encodeURIComponent(part.subject_slug)}`,
     credentialHref: `/credentials/${encodeURIComponent(credential.publicId)}`,
-    publicStatusLabel: 'Registro local — sin confirmación Stellar',
-    simulationNotice:
-      'Simulación D1 en memoria (gatewayMode: simulated_d1, onChainConfirmed: false) — este resultado es una simulación y no constituye confirmación en Stellar.',
+    publicStatusLabel: gateway.publicStatusLabel,
+    simulationNotice,
   };
 }
 

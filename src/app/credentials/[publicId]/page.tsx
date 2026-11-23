@@ -99,6 +99,11 @@ export default async function CredentialV2PublicPage({ params }: PageProps) {
                 <XCircle className="w-5 h-5 text-rose-600" />
                 <span>Credencial Revocada</span>
               </div>
+            ) : cred.stellar?.confirmed ? (
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-semibold text-sm">
+                <ShieldCheck className="w-5 h-5 text-emerald-600" />
+                <span>Confirmada en Stellar</span>
+              </div>
             ) : (
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-stone-100 border border-stone-300 text-stone-700 font-medium text-sm">
                 <Clock className="w-5 h-5 text-stone-500" />
@@ -321,6 +326,42 @@ export default async function CredentialV2PublicPage({ params }: PageProps) {
                 {cred.payloadDigest}
               </div>
             </div>
+
+            {cred.stellar?.confirmed && (
+              <div className="p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200 space-y-2">
+                <div className="font-semibold text-emerald-900">
+                  Anclaje Soroban Confirmado (Stellar Testnet)
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-stone-800">
+                  <div>
+                    <span className="text-stone-600 font-medium">Ledger Confirmado:</span>{' '}
+                    <span className="font-mono font-semibold">{cred.stellar.ledger}</span>
+                  </div>
+                  {cred.stellar.contractId && (
+                    <div className="break-all">
+                      <span className="text-stone-600 font-medium">Contrato:</span>{' '}
+                      <span className="font-mono">{cred.stellar.contractId}</span>
+                    </div>
+                  )}
+                </div>
+                {cred.stellar.txHash && (
+                  <div className="break-all">
+                    <span className="text-stone-600 font-medium">Tx Hash:</span>{' '}
+                    <span className="font-mono text-stone-900">{cred.stellar.txHash}</span>
+                  </div>
+                )}
+                {cred.stellar.readbackDigest && (
+                  <div className="break-all">
+                    <span className="text-stone-600 font-medium">
+                      Digest leído del contrato (32 bytes):
+                    </span>{' '}
+                    <span className="font-mono text-stone-900">
+                      {cred.stellar.readbackDigest}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div>
               <span className="text-stone-600 font-medium">

@@ -86,13 +86,15 @@ export default function IssueCredentialV2Form({ participations, disabled }: Prop
                   ? ` ("${p.subjectArtisticName}")`
                   : '';
                 const issuedSuffix = p.existingV2PublicId
-                  ? ` — [Emitida: ${p.existingV2PublicId}]`
+                  ? p.existingV2StellarConfirmed
+                    ? ` — [Confirmada en Stellar: ${p.existingV2PublicId}]`
+                    : ` — [Emitida: ${p.existingV2PublicId}]`
                   : '';
                 return (
                   <option
                     key={p.participationId}
                     value={p.participationId}
-                    disabled={Boolean(p.existingV2PublicId)}
+                    disabled={Boolean(p.existingV2PublicId && p.existingV2StellarConfirmed)}
                   >
                     {labelCode}
                     {p.subjectDisplayName}
@@ -172,12 +174,57 @@ export default function IssueCredentialV2Form({ participations, disabled }: Prop
             </div>
           </div>
 
-          <div className="p-2.5 rounded bg-slate-900 border border-amber-800/60 text-amber-200/90 space-y-1">
-            <div className="font-semibold">
-              Gateway Simulado ({result.gateway.gatewayMode} · red: {result.gateway.network})
+          {result.gateway.simulated ? (
+            <div className="p-2.5 rounded bg-slate-900 border border-amber-800/60 text-amber-200/90 space-y-1">
+              <div className="font-semibold">
+                Gateway Simulado ({result.gateway.gatewayMode} · red: {result.gateway.network})
+              </div>
+              <div>{result.simulationNotice}</div>
             </div>
-            <div>{result.simulationNotice}</div>
-          </div>
+          ) : (
+            <div
+              data-testid="v2-soroban-gateway-details"
+              className="p-2.5 rounded bg-slate-900 border border-emerald-800/60 text-slate-200 space-y-1"
+            >
+              <div className="font-semibold text-emerald-300">
+                Gateway Soroban V2 ({result.gateway.gatewayMode} · red: {result.gateway.network} · fase: {result.gateway.phase})
+              </div>
+              <div>
+                Contrato:{' '}
+                <code className="font-mono text-slate-300">{result.gateway.contractId}</code>
+              </div>
+              {result.gateway.txHash && (
+                <div className="break-all">
+                  Tx Hash:{' '}
+                  <code className="font-mono text-slate-300">{result.gateway.txHash}</code>
+                </div>
+              )}
+              {result.gateway.ledger !== null && (
+                <div>
+                  Ledger confirmado:{' '}
+                  <code className="font-mono text-emerald-300">{result.gateway.ledger}</code>
+                </div>
+              )}
+              {result.gateway.readbackDigest && (
+                <div className="break-all">
+                  Digest leído del contrato:{' '}
+                  <code className="font-mono text-slate-300">{result.gateway.readbackDigest}</code>
+                </div>
+              )}
+              <div>
+                Coincidencia byte a byte (32 bytes):{' '}
+                <span className="font-semibold">
+                  {result.gateway.digestMatches ? 'Verificada (32/32 bytes)' : 'Pendiente / No verificada'}
+                </span>
+              </div>
+              {result.gateway.reconciledFromExistingOperation && (
+                <div className="text-emerald-300 font-medium">
+                  Reconciliado sobre transacción previa sin reenvío duplicado
+                </div>
+              )}
+              <div className="text-slate-400">{result.simulationNotice}</div>
+            </div>
+          )}
 
           <div className="flex flex-wrap gap-3 pt-1">
             <a
