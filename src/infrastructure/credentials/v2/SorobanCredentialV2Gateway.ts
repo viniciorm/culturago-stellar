@@ -258,8 +258,12 @@ export async function executeCredentialV2Gateway(
     return testGatewayOverride.anchorCredential(credential);
   }
 
+  const isUnitTestEnv =
+    process.env.VITEST === 'true' &&
+    process.env.CULTURAGO_TEST_LIVE_SOROBAN !== 'true';
+
   const readiness = inspectTestnetV2SigningReadiness();
-  if (readiness.ready || options?.requireReal) {
+  if ((readiness.ready && !isUnitTestEnv) || options?.requireReal) {
     const realGateway = createRealCredentialV2Gateway();
     return realGateway.anchorCredential(credential);
   }

@@ -1,0 +1,31 @@
+{
+  "environment": "testnet",
+  "observedAt": "2026-11-23T19:01:23.789Z",
+  "rpcUrl": "https://soroban-testnet.stellar.org",
+  "contractId": "CBKX6WIZ25IKKPHIDSTEPLLLMQMRK3DFO5UD3H5YZVXJZ452JNIYHYW6",
+  "wasmSha256": "263e95eec2f6eaacff362267bd2cdd4c1c55bc4584dac044c9049e33b1cb9f21",
+  "deployedWasmMatches": true,
+  "adminAddress": "GBXGC46MI24BK4A4MMCLBVOB5ZJHTLGN37EJWBJB26M2UTCRZKJMMTXL",
+  "operatorAddress": "GA5PR7FSYR3U4UQEMAFHBZ5VASPIXZLUKCGCURP6V3SGIJJLW2XB7NGL",
+  "accountsDistinct": true,
+  "issuerEntityId": "d1000001-0000-4000-8000-000000000001",
+  "issuerIdHex": "52e41ff0dbdf47573f9743c586363426126b458ee8471cf32069abd87c9bb96f",
+  "isIssuerOperatorLinked": true,
+  "transactions": [
+    {
+      "label": "upload-v2-wasm",
+      "hash": "4c2f8883667fd05f0f5f38c1626e7f26f045b3d39dd41aed1074dd0e079e7274",
+      "ledger": 5887366
+    },
+    {
+      "label": "deploy-v2-contract",
+      "hash": "026d577dad4a249dcde77f6fd23b314197cf04f9b570a76a7d31fe4512119931",
+      "ledger": 5887367
+    },
+    {
+      "label": "link-issuer-operator",
+      "hash": "e496a4e6a22a182bd6ef8d0693d1928ef321229294f607aaad597b328bbee500",
+      "ledger": 5887368
+    }
+  ]
+}
