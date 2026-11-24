@@ -114,7 +114,7 @@ export class PasskeyService {
             transports: c.transports as AuthenticatorTransportFuture[] | undefined,
           }))
         : undefined,
-      userVerification: 'required',
+      userVerification: 'preferred',
     });
 
     await this.store.createChallenge({
@@ -145,6 +145,7 @@ export class PasskeyService {
         expectedChallenge: extractedChallenge,
         expectedOrigin: [...this.expectedOrigins],
         expectedRPID: this.rpId,
+        requireUserVerification: false,
         credential: {
           id: passkey.credentialId,
           publicKey: Uint8Array.from(passkey.publicKey),
