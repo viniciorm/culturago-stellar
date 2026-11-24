@@ -520,3 +520,108 @@ describe('credentialRecordMatches readback validation', () => {
     expect(credentialRecordMatches(record, expected, 1002, 'revoke_credential')).toBe(false);
   });
 });
+
+describe('StellarGateway V2 contract (issue_credential_v2, 32-byte digest readback & retry reconciliation)', () => {
+  function v2Command(overrides: Partial<Parameters<StellarGateway['issueCredentialV2']>[0]> = {}) {
+    return {
+      idempotencyKey: 'issue_v2:cg2_test000000000001',
+      actorAddress: ACTOR,
+      publicId: 'cg2_test000000000001',
+      issuerEntityId: 'd1000001-0000-4000-8000-000000000001',
+      subjectEntityId: 'd1000003-0000-4000-8000-000000000003',
+      eventEntityId: 'd1000002-0000-4000-8000-000000000002',
+      familyCode: 101 as const,
+      participationId: 'd1000004-0000-4000-8000-000000000004',
+      payloadDigest: 'e2c62cea41b41bf9dbccdf7a9d6b8f3b8a1d02d24ffa8fbc7886a819e29681b7',
+      ...overrides,
+    };
+  }
+
+  it('confirms V2 issuance only after ledger inclusion and byte-for-byte 32-byte digest + scope readback', async () => {
+    const bundle = createMockStellarGateway();
+    const cmd = v2Command();
+    const state = await bundle.gateway.issueCredentialV2(cmd);
+
+    expect(state.phase).toBe('confirmed');
+    expect(state.txHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(state.ledger).toBeGreaterThan(1000);
+    expect(state.errorCode).toBeNull();
+
+    const verified = await bundle.gateway.verifyCredentialV2({
+      publicId: cmd.publicId,
+      payloadDigest: cmd.payloadDigest,
+      participationId: cmd.participationId,
+      familyCode: cmd.familyCode,
+    });
+    expect(verified.exists).toBe(true);
+    expect(verified.matches).toBe(true);
+    expect(verified.scopeMatches).toBe(true);
+    expect(verified.revoked).toBe(false);
+    expect(verified.hashSchema).toBe(2);
+    expect(verified.familyCode).toBe(101);
+    expect(verified.readbackDigest).toBe(cmd.payloadDigest);
+    expect(verified.ledger).toBe(state.ledger);
+
+    // 1-byte difference in local digest must report mismatch
+    const alteredDigest =
+      cmd.payloadDigest.slice(0, 62) +
+      (cmd.payloadDigest.endsWith('b7') ? 'b8' : 'b7');
+    const mismatched = await bundle.gateway.verifyCredentialV2({
+      publicId: cmd.publicId,
+      payloadDigest: alteredDigest,
+      participationId: cmd.participationId,
+      familyCode: cmd.familyCode,
+    });
+    expect(mismatched.exists).toBe(true);
+    expect(mismatched.matches).toBe(false);
+  });
+
+  it('fails terminally with READBACK_MISMATCH if the 32-byte digest read from the contract differs from local digest', async () => {
+    const bundle = createMockStellarGateway();
+    const cmd = v2Command({
+      idempotencyKey: 'issue_v2:cg2_corrupt_digest_01',
+      publicId: 'cg2_corrupt_digest_01',
+    });
+
+    // Corrupt 1 byte of the metadata_hash returned during post-ledger readback
+    bundle.transport.nextReadbackCorruptMetadataHash =
+      'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
+
+    const state = await bundle.gateway.issueCredentialV2(cmd);
+    expect(state.phase).toBe('failed_terminal');
+    expect(state.errorCode).toBe('READBACK_MISMATCH');
+  });
+
+  it('queries transaction status before re-sending when initial submission is uncertain (PENDING -> unknown) and does not duplicate submission on retry', async () => {
+    const bundle = createMockStellarGateway();
+    bundle.transport.nextSubmissionStaysPending = true;
+    const cmd = v2Command({
+      idempotencyKey: 'issue_v2:cg2_retry_pending_01',
+      publicId: 'cg2_retry_pending_01',
+    });
+
+    // 1. First attempt: submitted, but poll returns PENDING -> operation becomes 'unknown'
+    const first = await bundle.gateway.issueCredentialV2(cmd);
+    expect(first.phase).toBe('unknown');
+    expect(first.txHash).not.toBeNull();
+    expect(bundle.transport.submitCallCount).toBe(1);
+    expect(bundle.transport.pollCallCount).toBe(1);
+
+    // 2. Retry while still PENDING on network -> polls status first, sees PENDING, does NOT re-submit
+    const stillPending = await bundle.gateway.issueCredentialV2(cmd);
+    expect(stillPending.operationId).toBe(first.operationId);
+    expect(stillPending.phase).toBe('unknown');
+    expect(bundle.transport.submitCallCount).toBe(1);
+    expect(bundle.transport.pollCallCount).toBe(2);
+
+    // 3. Transaction settles on network; retry polls status first, reads back 32-byte digest, and confirms without re-submitting
+    bundle.transport.settlePendingTransaction(first.txHash!, 'SUCCESS');
+    const confirmed = await bundle.gateway.issueCredentialV2(cmd);
+    expect(confirmed.operationId).toBe(first.operationId);
+    expect(confirmed.txHash).toBe(first.txHash);
+    expect(confirmed.phase).toBe('confirmed');
+    expect(confirmed.ledger).toBeGreaterThan(1000);
+    expect(bundle.transport.submitCallCount).toBe(1);
+    expect(bundle.transport.pollCallCount).toBe(3);
+  });
+});

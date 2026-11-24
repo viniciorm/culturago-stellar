@@ -1,0 +1,15 @@
+
+> culturago-stellar@0.1.0 test C:\Users\marco\.gemini\antigravity\scratch\culturago-stellar
+> vitest run
+
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - `__dirname` (vitest.config.mts:7:25). Use `import.meta.dirname` instead
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.10 C:/Users/marco/.gemini/antigravity/scratch/culturago-stellar
+
+
+ Test Files  38 passed | 2 skipped (40)
+      Tests  304 passed | 3 skipped (307)
+   Start at  16:48:15
+   Duration  12.46s (transform 2.97s, setup 0ms, import 44.19s, tests 4.00s, environment 6.65s)

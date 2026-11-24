@@ -2,13 +2,25 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, develop]
   pull_request:
-    branches: [main, master]
+    branches: [main, master, develop]
 
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: culturago_test
+        ports: ['5433:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:test@127.0.0.1:5433/culturago_test
+      DATABASE_URL: postgresql://postgres:test@127.0.0.1:5433/culturago_test
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,6 +36,12 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Exact Rust toolchain
+        run: rustup show
+
+      - name: Migrate isolated test database
+        run: pnpm migrate
 
       - name: Type check
         run: pnpm typecheck

@@ -18,9 +18,11 @@ export default async function VerifyPage({ params }: PageProps) {
 
   const statusLabel =
     result?.status === 'issued'
-      ? 'Vigente'
+      ? 'Confirmada en Stellar (Vigente)'
       : result?.status === 'revoked'
       ? 'Revocada'
+      : result?.status === 'unverified'
+      ? 'Sin confirmación en Stellar (registro local)'
       : 'No encontrada';
 
   return (
@@ -36,7 +38,7 @@ export default async function VerifyPage({ params }: PageProps) {
           <div className="bg-slate-900 rounded-lg p-6 space-y-4">
             <div>
               <p className="text-sm text-slate-400">Credencial</p>
-              <p className="font-mono break-all">{credentialId}</p>
+              <p className="font-mono break-all">{result.credentialId || credentialId}</p>
             </div>
             <div>
               <p className="text-sm text-slate-400">Estado en contrato</p>
@@ -46,12 +48,20 @@ export default async function VerifyPage({ params }: PageProps) {
                     ? 'text-emerald-400'
                     : result.status === 'revoked'
                     ? 'text-rose-400'
+                    : result.status === 'unverified'
+                    ? 'text-amber-400'
                     : 'text-stone-400'
                 }`}
               >
                 {statusLabel}
               </p>
             </div>
+            {result.dbStatus ? (
+              <div>
+                <p className="text-sm text-slate-400">Estado en base de datos local</p>
+                <p className="font-mono">{result.dbStatus}</p>
+              </div>
+            ) : null}
             <div>
               <p className="text-sm text-slate-400">Registrada en Stellar</p>
               <p>{result.exists ? 'Sí' : 'No'}</p>
@@ -78,25 +88,25 @@ export default async function VerifyPage({ params }: PageProps) {
             ) : null}
             <div className="flex gap-4 pt-4 border-t border-slate-800">
               <a
-                href={`/api/verify/${credentialId}`}
+                href={`/api/verify/${result.credentialId || credentialId}`}
                 className="px-4 py-2 bg-slate-800 rounded hover:bg-slate-700"
               >
                 Ver JSON
               </a>
               <a
-                href={`/api/export/${credentialId}/json`}
+                href={`/api/export/${result.credentialId || credentialId}/json`}
                 className="px-4 py-2 bg-slate-800 rounded hover:bg-slate-700"
               >
                 Exportar JSON
               </a>
               <a
-                href={`/api/export/${credentialId}/qr`}
+                href={`/api/export/${result.credentialId || credentialId}/qr`}
                 className="px-4 py-2 bg-slate-800 rounded hover:bg-slate-700"
               >
                 QR
               </a>
               <a
-                href={`/api/export/${credentialId}/pdf`}
+                href={`/api/export/${result.credentialId || credentialId}/pdf`}
                 className="px-4 py-2 bg-slate-800 rounded hover:bg-slate-700"
               >
                 PDF

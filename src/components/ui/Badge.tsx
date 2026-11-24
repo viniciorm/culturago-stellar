@@ -111,9 +111,9 @@ export const WalletStatusBadge: React.FC<WalletStatusBadgeProps> = ({ status }) 
 // --- Small Simple Verification Badge ---
 export const VerificationBadge: React.FC = () => {
   return (
-    <span className="inline-flex items-center text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg px-2 py-0.5">
-      <CheckCircle2 className="w-3 h-3 mr-1 text-emerald-600 fill-emerald-100" />
-      Verificado FDVC
+    <span className="inline-flex items-center text-xs font-medium text-stone-700 bg-stone-100 border border-stone-200 rounded-lg px-2 py-0.5">
+      <Clock className="w-3 h-3 mr-1 text-stone-500" />
+      Registro local
     </span>
   );
 };

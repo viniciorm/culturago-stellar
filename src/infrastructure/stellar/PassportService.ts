@@ -3,9 +3,14 @@ import { IndexedEvent } from '../../ports/StellarIndexer';
 import { query, translatePgError } from '../database/pool';
 
 interface IndexedEventRow {
+  network: string;
+  contract_id: string;
   ledger: number;
+  event_index: number;
   event_type: string;
+  entity_id: string | null;
   credential_id: string | null;
+  subject_id: string | null;
   issuer_id: string | null;
   event_entity_id: string | null;
   data: Record<string, unknown>;
@@ -24,8 +29,15 @@ export interface PassportEntry {
 
 export interface PublicCredentialView {
   credentialId: string;
-  status: 'issued' | 'revoked';
-  ledger: number;
+  status: 'issued' | 'revoked' | 'unverified';
+  verifiedOnChain: boolean;
+  onChain: {
+    exists: boolean;
+    matches: boolean;
+    revoked: boolean;
+    ledger: number | null;
+  };
+  ledger: number | null;
   network: string;
   contractId: string;
   canonical: {
@@ -35,9 +47,17 @@ export interface PublicCredentialView {
 }
 
 export function toPublicCredentialView(event: IndexedEvent): PublicCredentialView {
+  const revoked = event.eventType === 'CredentialRevoked';
   return {
     credentialId: event.credentialId ?? '',
-    status: event.eventType === 'CredentialRevoked' ? 'revoked' : 'issued',
+    status: revoked ? 'revoked' : 'issued',
+    verifiedOnChain: true,
+    onChain: {
+      exists: true,
+      matches: true,
+      revoked,
+      ledger: event.ledger,
+    },
     ledger: event.ledger,
     network: event.network,
     contractId: event.contractId,
@@ -56,10 +76,23 @@ export function toPublicCredentialView(event: IndexedEvent): PublicCredentialVie
 export class PassportService {
   async getPassport(subjectId: string, eventId: string): Promise<PassportEntry[]> {
     const result = await query<IndexedEventRow>(
-      `SELECT ledger, event_type, credential_id, issuer_id, event_entity_id, data, recorded_at
-       FROM stellar_indexed_events
-       WHERE subject_id = $1 AND event_entity_id = $2
-       ORDER BY ledger, event_index`,
+      `SELECT
+         sie.network,
+         sie.contract_id,
+         sie.ledger,
+         COALESCE(se.event_index, 0) AS event_index,
+         sie.event_type,
+         sie.entity_id,
+         sie.credential_id,
+         sie.subject_id,
+         sie.issuer_id,
+         sie.event_entity_id,
+         sie.data,
+         sie.recorded_at
+       FROM stellar_indexed_events sie
+       LEFT JOIN stellar_events se ON se.id = sie.source_event_id
+       WHERE sie.subject_id = $1 AND sie.event_entity_id = $2
+       ORDER BY sie.ledger ASC, COALESCE(se.event_index, 0) ASC, sie.recorded_at ASC`,
       [subjectId, eventId]
     ).catch(translatePgError);
 
@@ -82,23 +115,38 @@ export class PassportService {
   /** Verify a credential against the indexed events (not the live chain). */
   async verifyIndexedCredential(credentialId: string): Promise<IndexedEvent | null> {
     const result = await query<IndexedEventRow>(
-      `SELECT * FROM stellar_indexed_events
-       WHERE credential_id = $1
-       ORDER BY ledger DESC, event_index DESC
+      `SELECT
+         sie.network,
+         sie.contract_id,
+         sie.ledger,
+         COALESCE(se.event_index, 0) AS event_index,
+         sie.event_type,
+         sie.entity_id,
+         sie.credential_id,
+         sie.subject_id,
+         sie.issuer_id,
+         sie.event_entity_id,
+         sie.data,
+         sie.recorded_at
+       FROM stellar_indexed_events sie
+       LEFT JOIN stellar_events se ON se.id = sie.source_event_id
+       WHERE sie.credential_id = $1
+          OR sie.credential_id = culturago_canonical_hash('culturago.credential.v1', to_json($1::text)::text)
+       ORDER BY sie.ledger DESC, COALESCE(se.event_index, 0) DESC, sie.recorded_at DESC
        LIMIT 1`,
       [credentialId]
     ).catch(translatePgError);
     if (!result.rows[0]) return null;
     const row = result.rows[0];
     return {
-      network: 'testnet',
-      contractId: 'CCRED',
+      network: row.network,
+      contractId: row.contract_id,
       ledger: row.ledger,
-      eventIndex: 0,
+      eventIndex: row.event_index ?? 0,
       eventType: row.event_type,
-      entityId: null,
+      entityId: row.entity_id,
       credentialId: row.credential_id,
-      subjectId: (row.data.subject_id as string | undefined) ?? null,
+      subjectId: row.subject_id ?? (row.data.subject_id as string | undefined) ?? null,
       issuerId: row.issuer_id,
       eventEntityId: row.event_entity_id,
       data: row.data,

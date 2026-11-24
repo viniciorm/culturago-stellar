@@ -13,6 +13,7 @@ COPY --from=base /app/node_modules ./node_modules
 COPY . .
 
 ARG NEXT_PUBLIC_CULTURAGO_ENV
+ARG NEXT_PUBLIC_ENVIRONMENT
 ARG NEXT_PUBLIC_APP_URL
 ARG NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE
 ARG NEXT_PUBLIC_STELLAR_RPC_URL
@@ -23,6 +24,7 @@ ARG NEXT_PUBLIC_SMART_WALLET_WASM_HASH
 ARG NEXT_PUBLIC_SMART_WALLET_ACCEPTED_WASM_HASHES
 
 ENV NEXT_PUBLIC_CULTURAGO_ENV="$NEXT_PUBLIC_CULTURAGO_ENV"
+ENV NEXT_PUBLIC_ENVIRONMENT="$NEXT_PUBLIC_ENVIRONMENT"
 ENV NEXT_PUBLIC_APP_URL="$NEXT_PUBLIC_APP_URL"
 ENV NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE="$NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE"
 ENV NEXT_PUBLIC_STELLAR_RPC_URL="$NEXT_PUBLIC_STELLAR_RPC_URL"
@@ -57,6 +59,6 @@ USER nextjs
 EXPOSE 3080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-  CMD node -e "fetch('http://localhost:3080/api/health').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1));"
+  CMD node -e "fetch('http://127.0.0.1:3080/api/health').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1));"
 
 CMD ["node", "server.js"]

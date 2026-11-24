@@ -31,6 +31,8 @@ export interface RegisterEntityCommand {
   hashSchema: number;
 }
 
+export type V2ContractFamilyCode = 101 | 102 | 103;
+
 export interface IssueCredentialCommand {
   idempotencyKey: string;
   /** On-chain address of the issuing operator, linked to `issuerId`. */
@@ -42,6 +44,26 @@ export interface IssueCredentialCommand {
   credentialType: number;
   metadataHash: string;
   hashSchema: number;
+}
+
+export interface IssueCredentialV2Command {
+  idempotencyKey: string;
+  /** On-chain address of the issuing operator, linked to `issuerEntityId`. */
+  actorAddress: string;
+  /** V2 public_id (e.g. `cg2_...`), hashed with domain `culturago.credential.v2.id\0`. */
+  publicId: string;
+  /** Domain UUID of the issuer entity. */
+  issuerEntityId: string;
+  /** Domain UUID of the subject entity. */
+  subjectEntityId: string;
+  /** Domain UUID of the event entity. */
+  eventEntityId: string;
+  /** V2 family code on contract: 101 (participant), 102 (guest), 103 (staff). */
+  familyCode: V2ContractFamilyCode;
+  /** Domain UUID of the participation for 101/102, or null for 103 (staff -> zero scope). */
+  participationId: string | null;
+  /** 32-byte lowercase hex canonical payload_digest (SHA-256 of CULTURAGO\0culturago.credential.v2\0 || canonicalJson). */
+  payloadDigest: string;
 }
 
 export interface RevokeCredentialCommand {
@@ -59,22 +81,34 @@ export interface ChainVerification {
   ledger: number | null;
 }
 
+export interface ChainVerificationV2 extends ChainVerification {
+  credentialIdHex: string;
+  scopeIdHex: string | null;
+  readbackDigest: string | null;
+  hashSchema: number | null;
+  familyCode: number | null;
+  tokenId: string | null;
+  scopeMatches: boolean;
+}
+
 /**
  * Two-phase chain gateway. The one-shot convenience methods
- * (registerEntity/issueCredential/revokeCredential) run the full pipeline
- * with an injected SignerPort (fixture testnet only). Interactive flows use
- * the prepare/submitSigned pair: the server prepares up to the signing
- * limit and the returned payload goes to the user's signer.
+ * (registerEntity/issueCredential/issueCredentialV2/revokeCredential) run the
+ * full pipeline with an injected SignerPort. Interactive flows use the
+ * prepare/submitSigned pair: the server prepares up to the signing limit and
+ * the returned payload goes to the signer.
  */
 export interface StellarGateway {
-  /** Full pipeline with injected signer. NOT for user flows. */
+  /** Full pipeline with injected signer. */
   registerEntity(command: RegisterEntityCommand): Promise<OperationState>;
   issueCredential(command: IssueCredentialCommand): Promise<OperationState>;
+  issueCredentialV2(command: IssueCredentialV2Command): Promise<OperationState>;
   revokeCredential(command: RevokeCredentialCommand): Promise<OperationState>;
 
   /** Interactive flow: build intent, simulate, detect restore, prepare. */
   prepareRegisterEntity(command: RegisterEntityCommand): Promise<OperationState>;
   prepareIssueCredential(command: IssueCredentialCommand): Promise<OperationState>;
+  prepareIssueCredentialV2(command: IssueCredentialV2Command): Promise<OperationState>;
   prepareRevokeCredential(command: RevokeCredentialCommand): Promise<OperationState>;
 
   /** Accept a signed payload, verify it matches the stored intent, submit,
@@ -89,6 +123,13 @@ export interface StellarGateway {
     metadataHash: string;
     hashSchema: number;
   }): Promise<ChainVerification>;
+  verifyCredentialV2(query: {
+    publicId: string;
+    payloadDigest: string;
+    participationId?: string | null;
+    familyCode?: V2ContractFamilyCode;
+    actorAddress?: string;
+  }): Promise<ChainVerificationV2>;
   /**
    * Reconciler: poll + readback for an existing operation that is
    * submitted, confirming, unknown or restoring. Idempotent.

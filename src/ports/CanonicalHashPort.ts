@@ -6,9 +6,15 @@
 export type HashSchemaId =
   | 'culturago.entity.v1'
   | 'culturago.credential.v1'
+  | 'culturago.credential.v2'
   | 'culturago.fingerprint.v1';
 
-export const HASH_SCHEMA_CODES: Readonly<Record<HashSchemaId, number>> = {
+/**
+ * Numeric schema codes used strictly by legacy V1 Soroban contracts.
+ * Credential V2 does NOT have a numeric hash schema code and must never
+ * be mapped to legacy credential_type or hash_schema columns.
+ */
+export const HASH_SCHEMA_CODES: Readonly<Partial<Record<HashSchemaId, number>>> = {
   'culturago.entity.v1': 1,
   'culturago.credential.v1': 2,
   'culturago.fingerprint.v1': 0,

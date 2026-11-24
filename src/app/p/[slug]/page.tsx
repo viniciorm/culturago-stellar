@@ -110,7 +110,7 @@ export default function PersonPublicPassportPage() {
         {/* Left Column: Visual Passport Card */}
         <div className="md:col-span-2 space-y-6">
           <h2 className="font-serif text-2xl font-bold text-[#1C1A17] border-b border-stone-200 pb-2">
-            Pasaporte Cultural Oficial
+            Pasaporte Cultural
           </h2>
 
           <PassportCard
@@ -145,11 +145,11 @@ export default function PersonPublicPassportPage() {
         <div className="space-y-8">
           <div>
             <h2 className="font-serif text-xl font-bold text-[#1C1A17] border-b border-stone-200 pb-2 mb-4">
-              Verificación QR
+              Código QR de consulta
             </h2>
             <QRCodeBlock
               value={passportUrl}
-              label="Escanea para verificar la validez de este pasaporte en vivo."
+              label="Escanea para consultar este pasaporte cultural."
             />
           </div>
 
@@ -160,28 +160,54 @@ export default function PersonPublicPassportPage() {
 
             {credentials.length === 0 ? (
               <div className="text-xs text-stone-400 italic py-4">
-                No hay credenciales verificadas vigentes para esta persona.
+                No hay credenciales registradas vigentes para esta persona.
               </div>
             ) : (
               <div className="space-y-4">
                 {credentials.map(c => {
-                  // We'll render a smaller interactive preview that redirects to the validation page
+                  const isV2 = c.schema_version === 'culturago.credential.v2';
+                  const targetHref =
+                    c.href ??
+                    (isV2 && c.public_id
+                      ? `/credentials/${encodeURIComponent(c.public_id)}`
+                      : `/credencial/${encodeURIComponent(c.credential_code)}`);
+                  const displayLabel = isV2 ? (c.display_label || c.title) : c.title;
+                  const displaySubtitle = isV2 ? c.display_subtitle : c.description;
+                  const codeLabel = isV2 ? (c.public_id || c.credential_code) : c.credential_code;
+                  const publicStatusLabel =
+                    c.public_status_label ??
+                    (c.stellar_status === 'registered'
+                      ? 'Confirmada en Stellar'
+                      : 'Registro local — sin confirmación Stellar');
+
                   return (
-                    <div 
+                    <a
                       key={c.id}
-                      onClick={() => router.push(`/credencial/${c.credential_code}`)}
-                      className="border border-stone-200/60 rounded-xl p-4 bg-white hover:border-[#C5A880]/60 transition-all cursor-pointer flex items-center justify-between group text-left"
+                      href={targetHref}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        router.push(targetHref);
+                      }}
+                      className="border border-stone-200/60 rounded-xl p-4 bg-white hover:border-[#C5A880]/60 transition-all cursor-pointer flex items-center justify-between group text-left block"
                     >
-                      <div>
+                      <div className="space-y-1">
                         <h4 className="text-xs font-bold text-stone-800 group-hover:text-[#5C061E] transition-colors leading-tight">
-                          {c.title}
+                          {displayLabel}
                         </h4>
-                        <span className="text-[9px] font-mono text-stone-400 block mt-1">
-                          {c.credential_code}
+                        {displaySubtitle && (
+                          <p className="text-[11px] text-stone-600 leading-snug">
+                            {displaySubtitle}
+                          </p>
+                        )}
+                        <span className="text-[10px] font-medium text-stone-700 bg-stone-100 border border-stone-200 rounded px-1.5 py-0.5 inline-block">
+                          {publicStatusLabel}
+                        </span>
+                        <span className="text-[9px] font-mono text-stone-400 block">
+                          {codeLabel}
                         </span>
                       </div>
                       <Award className="w-5 h-5 text-[#C5A880] shrink-0" />
-                    </div>
+                    </a>
                   );
                 })}
               </div>

@@ -33,6 +33,7 @@ export interface StoredOperation {
       subjectId?: string;
       eventId?: string;
       credentialType?: number;
+      scopeId?: string;
       issuedBy?: string;
       tokenId?: number;
       revokedLedger?: number;

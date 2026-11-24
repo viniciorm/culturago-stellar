@@ -13,6 +13,7 @@ const eslintConfig = defineConfig([
       "next-env.d.ts",
       "src/generated/**",
       "contracts/**",
+      ".agents/**",
     ],
   },
   {

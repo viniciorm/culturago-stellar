@@ -73,7 +73,15 @@ export default function CredentialValidationPage() {
 
   const credentialUrl = typeof window !== 'undefined' 
     ? window.location.href 
-    : `https://culturago.stellar.app/credencial/${credential.credential_code}`;
+    : `https://culturago.cl/credencial/${credential.credential_code}`;
+
+  const isRevoked = credential.status === 'revoked' || Boolean(verification?.revoked);
+  const isConfirmedOnChain = Boolean(
+    credential.status === 'issued' &&
+    verification?.exists &&
+    verification?.matches &&
+    !verification?.revoked
+  );
 
   return (
     <PublicLayout>
@@ -88,37 +96,49 @@ export default function CredentialValidationPage() {
 
       {/* Verification Status Banner */}
       <div className={`max-w-3xl mx-auto rounded-2xl p-5 border mb-8 flex items-center gap-4 text-left
-        ${credential.status === 'issued' 
-          ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
-          : credential.status === 'revoked' 
-          ? 'bg-rose-50 text-rose-800 border-rose-200' 
+        ${isRevoked
+          ? 'bg-rose-50 text-rose-800 border-rose-200'
+          : isConfirmedOnChain
+          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+          : credential.status === 'issued'
+          ? 'bg-amber-50 text-amber-900 border-amber-200'
           : 'bg-stone-50 text-stone-800 border-stone-200'}`}
       >
         <div className={`p-2.5 rounded-xl border
-          ${credential.status === 'issued' 
-            ? 'bg-emerald-100/50 border-emerald-300 text-emerald-700' 
-            : credential.status === 'revoked' 
-            ? 'bg-rose-100/50 border-rose-300 text-rose-700' 
+          ${isRevoked
+            ? 'bg-rose-100/50 border-rose-300 text-rose-700'
+            : isConfirmedOnChain
+            ? 'bg-emerald-100/50 border-emerald-300 text-emerald-700'
+            : credential.status === 'issued'
+            ? 'bg-amber-100/50 border-amber-300 text-amber-700'
             : 'bg-stone-200/50 border-stone-300 text-stone-600'}`}
         >
-          {credential.status === 'issued' ? (
-            <CheckCircle2 className="w-6 h-6" />
-          ) : credential.status === 'revoked' ? (
+          {isRevoked ? (
             <XCircle className="w-6 h-6" />
+          ) : isConfirmedOnChain ? (
+            <CheckCircle2 className="w-6 h-6" />
           ) : (
             <Clock className="w-6 h-6" />
           )}
         </div>
         <div className="flex-1">
           <h3 className="text-sm font-bold uppercase tracking-wider">
-            {credential.status === 'issued' ? 'Credencial Válida' 
-             : credential.status === 'revoked' ? 'Credencial Revocada' 
-             : 'Acreditación Pendiente'}
+            {isRevoked
+              ? 'Credencial Revocada'
+              : isConfirmedOnChain
+              ? 'Credencial Verificada en Stellar'
+              : credential.status === 'issued'
+              ? 'Registro Local — Sin Confirmación en Stellar'
+              : 'Acreditación Pendiente'}
           </h3>
           <p className="text-xs opacity-90 mt-1">
-            {credential.status === 'issued' ? 'Esta acreditación cultural se encuentra vigente y debidamente autenticada.' 
-             : credential.status === 'revoked' ? 'Esta credencial ha sido invalidada y revocada por la organización emisora.' 
-             : 'Esta acreditación se encuentra registrada en borrador y aún no está emitida.'}
+            {isRevoked
+              ? 'Esta credencial ha sido invalidada y revocada por la organización emisora.'
+              : isConfirmedOnChain
+              ? 'Esta acreditación cultural se encuentra vigente y su hash está confirmado en el contrato Stellar.'
+              : credential.status === 'issued'
+              ? 'Esta acreditación está registrada en la base de datos de CulturaGO, pero aún no cuenta con confirmación verificable en el contrato Stellar.'
+              : 'Esta acreditación se encuentra registrada en borrador y aún no está emitida.'}
           </p>
         </div>
       </div>
@@ -185,11 +205,21 @@ export default function CredentialValidationPage() {
                 <div className="border-t border-stone-200/50 pt-3">
                   <span className="font-semibold text-stone-500 block mb-1">Verificación en contrato:</span>
                   <div className="flex flex-wrap gap-2 text-[10px]">
-                    <span className={`px-2 py-1 rounded border ${verification.exists && verification.matches ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
-                      {verification.exists && verification.matches ? 'Hash verificado' : 'No verificado'}
+                    <span className={`px-2 py-1 rounded border ${verification.exists && verification.matches ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-800 border-amber-200'}`}>
+                      {verification.exists && verification.matches ? 'Hash verificado en Stellar' : 'Sin hash confirmado en Stellar'}
                     </span>
-                    <span className={`px-2 py-1 rounded border ${verification.revoked ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
-                      {verification.revoked ? 'Revocada on-chain' : 'Vigente on-chain'}
+                    <span className={`px-2 py-1 rounded border ${
+                      verification.revoked
+                        ? 'bg-rose-50 text-rose-700 border-rose-200'
+                        : verification.exists && verification.matches
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : 'bg-stone-100 text-stone-700 border-stone-300'
+                    }`}>
+                      {verification.revoked
+                        ? 'Revocada on-chain'
+                        : verification.exists && verification.matches
+                        ? 'Vigente on-chain'
+                        : 'No registrada on-chain'}
                     </span>
                     {verification.ledger ? (
                       <span className="px-2 py-1 rounded border bg-stone-50 text-stone-600 border-stone-200">
@@ -211,7 +241,7 @@ export default function CredentialValidationPage() {
           
           <QRCodeBlock
             value={credentialUrl}
-            label="Cualquier inspector cultural puede escanear este QR en el acceso para verificar la vigencia de la credencial en tiempo real."
+            label="Cualquier inspector cultural puede escanear este QR en el acceso para verificar el estado de registro de la credencial en tiempo real."
           />
         </div>
       </div>

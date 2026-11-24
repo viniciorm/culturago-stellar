@@ -202,3 +202,170 @@ export function getFixtureSignerSecret(): string {
   }
   return secret;
 }
+
+export interface TestnetOperatorSignerConfig {
+  operatorAddress: string;
+  operatorSecret: string;
+}
+
+/**
+ * Project-controlled Testnet operator signer configuration for D2 Soroban anchoring.
+ * The operator's WebAuthn passkey authenticates the HTTP application session;
+ * the project-controlled operator account signs the Soroban transaction on Testnet.
+ * Hard-fails on mainnet and demo, and never logs or exposes the secret seed.
+ */
+export function getTestnetOperatorSignerConfig(): TestnetOperatorSignerConfig {
+  const publicConfig = getPublicConfig();
+
+  if (publicConfig.environment !== 'testnet') {
+    throw domainError(
+      'INVALID_INPUT',
+      `${publicConfig.environment} does not support the project Testnet operator signer`
+    );
+  }
+
+  const mutationsAllowed =
+    process.env.CULTURAGO_ALLOW_TESTNET_MUTATIONS === 'true' ||
+    process.env.CULTURAGO_ALLOW_TESTNET_FIXTURE_SIGNER === 'true';
+
+  if (!mutationsAllowed) {
+    throw domainError(
+      'UNAUTHORIZED',
+      'Testnet operator signer requires CULTURAGO_ALLOW_TESTNET_MUTATIONS=true'
+    );
+  }
+
+  const operatorSecret = (
+    process.env.STELLAR_TESTNET_OPERATOR_SECRET ??
+    process.env.STELLAR_TESTNET_FIXTURE_SECRET
+  )?.trim();
+
+  if (!operatorSecret) {
+    throw domainError(
+      'INVALID_INPUT',
+      'STELLAR_TESTNET_OPERATOR_SECRET is required for Testnet V2 credential signing'
+    );
+  }
+
+  let derivedAddress: string;
+  try {
+    derivedAddress = Keypair.fromSecret(operatorSecret).publicKey();
+  } catch {
+    throw domainError(
+      'INVALID_INPUT',
+      'STELLAR_TESTNET_OPERATOR_SECRET is not a valid Stellar Ed25519 secret seed'
+    );
+  }
+
+  const configuredAddress = (
+    process.env.STELLAR_TESTNET_OPERATOR_ADDRESS ??
+    process.env.STELLAR_TESTNET_ISSUER_OPERATOR_ADDRESS
+  )?.trim();
+
+  if (configuredAddress && derivedAddress !== configuredAddress) {
+    throw domainError(
+      'INVALID_INPUT',
+      'STELLAR_TESTNET_OPERATOR_SECRET does not match STELLAR_TESTNET_OPERATOR_ADDRESS'
+    );
+  }
+
+  const adminAddress = process.env.STELLAR_TESTNET_ADMIN_ADDRESS?.trim();
+  if (adminAddress && derivedAddress === adminAddress) {
+    throw domainError(
+      'INVALID_INPUT',
+      'STELLAR_TESTNET_OPERATOR_ADDRESS must be distinct from STELLAR_TESTNET_ADMIN_ADDRESS'
+    );
+  }
+
+  return {
+    operatorAddress: derivedAddress,
+    operatorSecret,
+  };
+}
+
+export interface TestnetV2SigningReadiness {
+  ready: boolean;
+  environment: CulturaGoEnvironment;
+  contractId: string | null;
+  operatorAddress: string | null;
+  missingRequirements: string[];
+}
+
+/**
+ * Inspects whether all environment prerequisites for real Testnet V2 Soroban
+ * anchoring are configured. Never exposes or logs secret values.
+ */
+export function inspectTestnetV2SigningReadiness(): TestnetV2SigningReadiness {
+  const missing: string[] = [];
+  let environment: CulturaGoEnvironment = 'demo';
+  let contractId: string | null = null;
+  let operatorAddress: string | null = null;
+
+  try {
+    const pub = getPublicConfig();
+    environment = pub.environment;
+    contractId = pub.credentialRegistryContractId;
+    if (pub.environment !== 'testnet') {
+      missing.push('NEXT_PUBLIC_CULTURAGO_ENV=testnet');
+    }
+    if (!pub.stellarNetworkPassphrase) {
+      missing.push('NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE');
+    }
+    if (!pub.stellarRpcUrl) {
+      missing.push('NEXT_PUBLIC_STELLAR_RPC_URL');
+    }
+    if (!pub.entityRegistryContractId) {
+      missing.push('NEXT_PUBLIC_ENTITY_REGISTRY_CONTRACT_ID');
+    }
+    if (!pub.credentialRegistryContractId) {
+      missing.push('NEXT_PUBLIC_CREDENTIAL_REGISTRY_CONTRACT_ID');
+    }
+  } catch {
+    missing.push('NEXT_PUBLIC_CULTURAGO_ENV / NEXT_PUBLIC_STELLAR_* valid configuration');
+  }
+
+  const mutationsAllowed =
+    process.env.CULTURAGO_ALLOW_TESTNET_MUTATIONS === 'true' ||
+    process.env.CULTURAGO_ALLOW_TESTNET_FIXTURE_SIGNER === 'true';
+  if (!mutationsAllowed) {
+    missing.push('CULTURAGO_ALLOW_TESTNET_MUTATIONS=true');
+  }
+
+  const operatorSecret = (
+    process.env.STELLAR_TESTNET_OPERATOR_SECRET ??
+    process.env.STELLAR_TESTNET_FIXTURE_SECRET
+  )?.trim();
+
+  if (!operatorSecret) {
+    missing.push('STELLAR_TESTNET_OPERATOR_SECRET');
+  } else {
+    try {
+      operatorAddress = Keypair.fromSecret(operatorSecret).publicKey();
+      const configuredAddress = (
+        process.env.STELLAR_TESTNET_OPERATOR_ADDRESS ??
+        process.env.STELLAR_TESTNET_ISSUER_OPERATOR_ADDRESS
+      )?.trim();
+      if (configuredAddress && operatorAddress !== configuredAddress) {
+        missing.push(
+          'STELLAR_TESTNET_OPERATOR_SECRET must match STELLAR_TESTNET_OPERATOR_ADDRESS'
+        );
+      }
+      const adminAddress = process.env.STELLAR_TESTNET_ADMIN_ADDRESS?.trim();
+      if (adminAddress && operatorAddress === adminAddress) {
+        missing.push(
+          'STELLAR_TESTNET_OPERATOR_ADDRESS must differ from STELLAR_TESTNET_ADMIN_ADDRESS'
+        );
+      }
+    } catch {
+      missing.push('STELLAR_TESTNET_OPERATOR_SECRET (valid S... secret seed)');
+    }
+  }
+
+  return {
+    ready: missing.length === 0,
+    environment,
+    contractId,
+    operatorAddress,
+    missingRequirements: missing,
+  };
+}

@@ -1,7 +1,11 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { Keypair } from '@stellar/stellar-sdk';
 import { getPublicConfig } from '@/infrastructure/config/env';
-import { getStellarNetworkConfig } from '@/infrastructure/stellar/networkConfig';
+import {
+  getStellarNetworkConfig,
+  getTestnetOperatorSignerConfig,
+  inspectTestnetV2SigningReadiness,
+} from '@/infrastructure/stellar/networkConfig';
 
 describe('public secret gate', () => {
   beforeEach(() => {
@@ -27,6 +31,22 @@ describe('public secret gate', () => {
     vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://example.com');
     expect(() => getPublicConfig()).not.toThrow();
   });
+
+  it('rejects NEXT_PUBLIC_CULTURAGO_ENV="development" with descriptive DomainError', () => {
+    vi.stubEnv('NEXT_PUBLIC_CULTURAGO_ENV', 'development');
+    expect(() => getPublicConfig()).toThrow(
+      /NEXT_PUBLIC_CULTURAGO_ENV must be one of demo\|testnet\|mainnet, got "development"/
+    );
+  });
+
+  it('accepts dev deployment with NEXT_PUBLIC_ENVIRONMENT="development" and NEXT_PUBLIC_CULTURAGO_ENV="testnet"', () => {
+    vi.stubEnv('NEXT_PUBLIC_ENVIRONMENT', 'development');
+    vi.stubEnv('NEXT_PUBLIC_CULTURAGO_ENV', 'testnet');
+    vi.stubEnv('NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE', 'Test SDF Network ; September 2015');
+    vi.stubEnv('NEXT_PUBLIC_STELLAR_RPC_URL', 'https://soroban-testnet.stellar.org');
+    const config = getPublicConfig();
+    expect(config.environment).toBe('testnet');
+  });
 });
 
 describe('stellar key role separation', () => {
@@ -40,6 +60,12 @@ describe('stellar key role separation', () => {
     vi.stubEnv('NEXT_PUBLIC_STELLAR_RPC_URL', 'https://soroban-testnet.stellar.org');
     vi.stubEnv('NEXT_PUBLIC_ENTITY_REGISTRY_CONTRACT_ID', 'CBUUMXY77DF4QG5KY5H37SEV63HOLPIVEUZGP2UEQ4PGBNWC2JYFJQGO');
     vi.stubEnv('NEXT_PUBLIC_CREDENTIAL_REGISTRY_CONTRACT_ID', 'CBQPZU6O2HTURYQBMYYZ3DDZBTT67AYCXMT5YUYOSVQU5PUCBW642RJ6');
+    vi.stubEnv('CULTURAGO_ALLOW_TESTNET_MUTATIONS', 'false');
+    vi.stubEnv('CULTURAGO_ALLOW_TESTNET_FIXTURE_SIGNER', 'false');
+    vi.stubEnv('STELLAR_TESTNET_ADMIN_ADDRESS', '');
+    vi.stubEnv('STELLAR_TESTNET_OPERATOR_ADDRESS', '');
+    vi.stubEnv('STELLAR_TESTNET_OPERATOR_SECRET', '');
+    vi.stubEnv('STELLAR_TESTNET_FIXTURE_SECRET', '');
   });
 
   afterEach(() => {
@@ -81,5 +107,39 @@ describe('stellar key role separation', () => {
     vi.stubEnv('STELLAR_FEEPAYER_SECRET', fee.secret());
     vi.stubEnv('STELLAR_MAX_FEE_STROKES', 'not-a-number');
     expect(() => getStellarNetworkConfig()).toThrow(/STELLAR_MAX_FEE_STROKES must be a positive integer/);
+  });
+
+  it('validates project-controlled Testnet operator signer and enforces role separation from admin', () => {
+    const operator = Keypair.random();
+    vi.stubEnv('CULTURAGO_ALLOW_TESTNET_MUTATIONS', 'true');
+    vi.stubEnv('STELLAR_TESTNET_OPERATOR_SECRET', operator.secret());
+    vi.stubEnv('STELLAR_TESTNET_OPERATOR_ADDRESS', operator.publicKey());
+    vi.stubEnv('STELLAR_TESTNET_ADMIN_ADDRESS', admin.publicKey());
+
+    const cfg = getTestnetOperatorSignerConfig();
+    expect(cfg.operatorAddress).toBe(operator.publicKey());
+
+    const readiness = inspectTestnetV2SigningReadiness();
+    expect(readiness.ready).toBe(true);
+    expect(readiness.missingRequirements).toEqual([]);
+    expect(readiness.operatorAddress).toBe(operator.publicKey());
+
+    // Operator address must never equal admin address
+    vi.stubEnv('STELLAR_TESTNET_ADMIN_ADDRESS', operator.publicKey());
+    expect(() => getTestnetOperatorSignerConfig()).toThrow(
+      /STELLAR_TESTNET_OPERATOR_ADDRESS must be distinct from STELLAR_TESTNET_ADMIN_ADDRESS/
+    );
+  });
+
+  it('reports exact missing requirements when Testnet operator signer is not configured', () => {
+    vi.stubEnv('CULTURAGO_ALLOW_TESTNET_MUTATIONS', 'false');
+    vi.stubEnv('STELLAR_TESTNET_OPERATOR_SECRET', '');
+    vi.stubEnv('NEXT_PUBLIC_CREDENTIAL_REGISTRY_CONTRACT_ID', '');
+
+    const readiness = inspectTestnetV2SigningReadiness();
+    expect(readiness.ready).toBe(false);
+    expect(readiness.missingRequirements).toContain('NEXT_PUBLIC_CREDENTIAL_REGISTRY_CONTRACT_ID');
+    expect(readiness.missingRequirements).toContain('CULTURAGO_ALLOW_TESTNET_MUTATIONS=true');
+    expect(readiness.missingRequirements).toContain('STELLAR_TESTNET_OPERATOR_SECRET');
   });
 });
