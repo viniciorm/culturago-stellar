@@ -65,7 +65,7 @@ function validateTestDatabaseUrl(connectionString) {
 
 export async function seedD1SyntheticDemo(
   connectionString,
-  options = { preserveIssuedOnParticipation2: true }
+  options = { preserveIssuedOnParticipation2: true, preserveIssuedOnParticipation3: false }
 ) {
   const expectedDbName = validateTestDatabaseUrl(connectionString);
   const client = new Client({ connectionString });
@@ -88,20 +88,26 @@ export async function seedD1SyntheticDemo(
 
     // NEVER delete or modify historical credentials on participationId (D1-SINT-001)!
     // Only reset credentials on participation2Id/participation3Id when requested.
-    const resettableParticipationIds = options.preserveIssuedOnParticipation2
-      ? [D1_DEMO_FIXTURES.participation3Id]
-      : [D1_DEMO_FIXTURES.participation2Id, D1_DEMO_FIXTURES.participation3Id];
+    const resettableParticipationIds = [];
+    if (!options.preserveIssuedOnParticipation2) {
+      resettableParticipationIds.push(D1_DEMO_FIXTURES.participation2Id);
+    }
+    if (!options.preserveIssuedOnParticipation3) {
+      resettableParticipationIds.push(D1_DEMO_FIXTURES.participation3Id);
+    }
 
-    await client.query(
-      `DELETE FROM credential_evidence WHERE credential_id IN (
-         SELECT id FROM credentials WHERE participation_id = ANY($1::uuid[])
-       )`,
-      [resettableParticipationIds]
-    );
-    await client.query(
-      `DELETE FROM credentials WHERE participation_id = ANY($1::uuid[])`,
-      [resettableParticipationIds]
-    );
+    if (resettableParticipationIds.length > 0) {
+      await client.query(
+        `DELETE FROM credential_evidence WHERE credential_id IN (
+           SELECT id FROM credentials WHERE participation_id = ANY($1::uuid[])
+         )`,
+        [resettableParticipationIds]
+      );
+      await client.query(
+        `DELETE FROM credentials WHERE participation_id = ANY($1::uuid[])`,
+        [resettableParticipationIds]
+      );
+    }
 
     await client.query(`DELETE FROM sessions WHERE account_id = $1`, [
       D1_DEMO_FIXTURES.operatorAccountId,

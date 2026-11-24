@@ -9,7 +9,10 @@ import {
   EvidenceSourceType,
   ParticipationMode,
   buildCanonicalPayloadV2,
+  compareDigests32ByteForByte,
   computePayloadDigestV2,
+  computeV2CredentialIdHex,
+  computeV2ScopeIdHex,
   generatePublicIdV2,
   validateCredentialV2Input,
 } from '../../../domain/credentials/v2';
@@ -66,10 +69,26 @@ export interface CredentialV2Record {
   payloadDigest: string;
   status: 'draft' | 'issued' | 'revoked';
   issuedAt: string;
+  issuedLedger?: number | null;
   revokedAt: string | null;
   createdAt: string;
   updatedAt: string;
   evidences: CredentialEvidenceRecord[];
+}
+
+export interface PublicCredentialStellarView {
+  confirmed: boolean;
+  phase: string | null;
+  txHash: string | null;
+  ledger: number | null;
+  contractId: string | null;
+  credentialIdHex: string;
+  scopeIdHex: string | null;
+  readbackDigest: string | null;
+  digestMatches: boolean;
+  publicStatusLabel:
+    | 'Confirmada en Stellar'
+    | 'Registro local — sin confirmación Stellar';
 }
 
 export interface PublicCredentialView {
@@ -85,9 +104,11 @@ export interface PublicCredentialView {
   organizationName?: string | null;
   roles: string[];
   issuedAt: string;
+  issuedLedger?: number | null;
   revokedAt?: string | null;
   payloadDigest: string;
   canonicalPayload: CanonicalPayloadV2;
+  stellar?: PublicCredentialStellarView;
   issuer: {
     id: string;
     displayName: string;
@@ -511,6 +532,122 @@ export class CredentialV2Service {
   }
 
   /**
+   * Finds an existing non-revoked V2 credential for a given participation so
+   * that retrying `/organizer` issuance after an uncertain or failed Stellar
+   * transaction reuses the persisted credential rather than duplicating it.
+   */
+  async findActiveCredentialForParticipation(params: {
+    actor: ActorContext;
+    issuerEntityId: string;
+    subjectEntityId: string;
+    eventEntityId: string;
+    credentialFamily: 'participant' | 'guest';
+    participationId: string;
+  }): Promise<CredentialV2Record | null> {
+    this.assertOperator(params.actor, params.issuerEntityId);
+    const credRes = await query<{
+      id: string;
+      public_id: string;
+      issuer_entity_id: string;
+      subject_entity_id: string;
+      event_id: string;
+      credential_family: CredentialFamily;
+      participation_mode: ParticipationMode;
+      participation_id: string | null;
+      schema_version: 'culturago.credential.v2';
+      display_label: string;
+      display_subtitle: string;
+      canonical_payload: CanonicalPayloadV2;
+      payload_digest: string;
+      status: 'draft' | 'issued' | 'revoked';
+      issued_at: string;
+      issued_ledger: number | null;
+      revoked_at: string | null;
+      created_at: string;
+      updated_at: string;
+    }>(
+      `SELECT *
+       FROM credentials
+       WHERE subject_entity_id = $1
+         AND event_id = $2
+         AND credential_family = $3
+         AND participation_id = $4
+         AND schema_version = 'culturago.credential.v2'
+         AND status != 'revoked'
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [
+        params.subjectEntityId,
+        params.eventEntityId,
+        params.credentialFamily,
+        params.participationId,
+      ]
+    );
+
+    if (credRes.rows.length === 0) {
+      return null;
+    }
+
+    const row = credRes.rows[0];
+    if (row.issuer_entity_id !== params.issuerEntityId) {
+      throw domainError(
+        'UNAUTHORIZED',
+        'Active credential for this participation belongs to a different issuer'
+      );
+    }
+
+    const evRes = await query<{
+      id: string;
+      credential_id: string;
+      source_type: EvidenceSourceType;
+      source_id: string;
+      evidence_role: string;
+      notes: string | null;
+      created_at: string;
+    }>(
+      `SELECT id, credential_id, source_type, source_id, evidence_role, notes, created_at
+       FROM credential_evidence
+       WHERE credential_id = $1
+       ORDER BY created_at ASC`,
+      [row.id]
+    );
+
+    return {
+      id: row.id,
+      publicId: row.public_id,
+      issuerEntityId: row.issuer_entity_id,
+      subjectEntityId: row.subject_entity_id,
+      eventEntityId: row.event_id,
+      credentialFamily: row.credential_family,
+      participationMode: row.participation_mode,
+      participationId: row.participation_id,
+      schemaVersion: row.schema_version,
+      displayLabel: row.display_label,
+      displaySubtitle: row.display_subtitle,
+      canonicalPayload:
+        typeof row.canonical_payload === 'string'
+          ? JSON.parse(row.canonical_payload)
+          : row.canonical_payload,
+      payloadDigest: row.payload_digest,
+      status: row.status,
+      issuedAt: row.issued_at,
+      issuedLedger: row.issued_ledger,
+      revokedAt: row.revoked_at,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      evidences: evRes.rows.map((e) => ({
+        id: e.id,
+        credentialId: e.credential_id,
+        sourceType: e.source_type,
+        sourceId: e.source_id,
+        evidenceRole: e.evidence_role,
+        notes: e.notes,
+        createdAt: e.created_at,
+      })),
+    };
+  }
+
+  /**
    * Retrieves a credential by its public_id for public verification.
    * Returns null if not found.
    */
@@ -522,11 +659,13 @@ export class CredentialV2Service {
       schema_version: 'culturago.credential.v2';
       credential_family: CredentialFamily;
       participation_mode: ParticipationMode;
+      participation_id: string | null;
       display_label: string;
       display_subtitle: string;
       canonical_payload: CanonicalPayloadV2;
       payload_digest: string;
       issued_at: string;
+      issued_ledger: number | null;
       revoked_at: string | null;
       issuer_id: string;
       issuer_name: string;
@@ -551,11 +690,13 @@ export class CredentialV2Service {
         c.schema_version,
         c.credential_family,
         c.participation_mode,
+        c.participation_id,
         c.display_label,
         c.display_subtitle,
         c.canonical_payload,
         c.payload_digest,
         c.issued_at,
+        c.issued_ledger,
         c.revoked_at,
         iss.id AS issuer_id,
         iss.display_name AS issuer_name,
@@ -601,6 +742,69 @@ export class CredentialV2Service {
       [row.id]
     );
 
+    const credentialIdHex = computeV2CredentialIdHex(row.public_id);
+    const scopeIdHex =
+      row.credential_family === 'staff' || row.participation_id
+        ? computeV2ScopeIdHex(row.credential_family, row.participation_id)
+        : null;
+
+    const opRes = await query<{
+      phase: string;
+      tx_hash: string | null;
+      ledger: number | null;
+      payload: {
+        expected?: {
+          metadataHash?: string;
+        };
+      } | null;
+    }>(
+      `SELECT phase, tx_hash, ledger, payload
+       FROM stellar_operations
+       WHERE idempotency_key = $1
+          OR (subject_key = $2 AND operation_type = 'issue_credential')
+       ORDER BY
+         CASE phase WHEN 'confirmed' THEN 0 ELSE 1 END,
+         created_at DESC
+       LIMIT 1`,
+      [`issue_v2:${row.public_id}`, credentialIdHex]
+    );
+
+    const opRow = opRes.rows[0] ?? null;
+    const expectedDigest = opRow?.payload?.expected?.metadataHash ?? null;
+    const confirmedLedger = opRow?.ledger ?? row.issued_ledger ?? null;
+    const digestMatches = Boolean(
+      opRow &&
+        opRow.phase === 'confirmed' &&
+        expectedDigest &&
+        compareDigests32ByteForByte(row.payload_digest, expectedDigest)
+    );
+    const isConfirmedOnChain = Boolean(
+      row.status === 'issued' &&
+        opRow &&
+        opRow.phase === 'confirmed' &&
+        confirmedLedger !== null &&
+        opRow.tx_hash &&
+        digestMatches
+    );
+
+    const contractId =
+      process.env.NEXT_PUBLIC_CREDENTIAL_REGISTRY_CONTRACT_ID?.trim() || null;
+
+    const stellarView: PublicCredentialStellarView = {
+      confirmed: isConfirmedOnChain,
+      phase: opRow?.phase ?? null,
+      txHash: isConfirmedOnChain ? opRow.tx_hash : opRow?.tx_hash ?? null,
+      ledger: isConfirmedOnChain ? confirmedLedger : null,
+      contractId: isConfirmedOnChain ? contractId : null,
+      credentialIdHex,
+      scopeIdHex,
+      readbackDigest: isConfirmedOnChain ? expectedDigest : null,
+      digestMatches: isConfirmedOnChain,
+      publicStatusLabel: isConfirmedOnChain
+        ? 'Confirmada en Stellar'
+        : 'Registro local — sin confirmación Stellar',
+    };
+
     const payload = typeof row.canonical_payload === 'string'
       ? JSON.parse(row.canonical_payload)
       : row.canonical_payload;
@@ -618,9 +822,11 @@ export class CredentialV2Service {
       organizationName: payload?.claim?.organization_name ?? null,
       roles: payload?.claim?.roles ?? [],
       issuedAt: row.issued_at,
+      issuedLedger: isConfirmedOnChain ? confirmedLedger : row.issued_ledger,
       revokedAt: row.revoked_at,
       payloadDigest: row.payload_digest,
       canonicalPayload: payload,
+      stellar: stellarView,
       issuer: {
         id: row.issuer_id,
         displayName: row.issuer_name,

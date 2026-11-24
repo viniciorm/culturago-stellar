@@ -78,6 +78,7 @@ export function buildCredentialV2Pdf(
     : cred.subject.displayName;
 
   const isRevoked = cred.status === 'revoked';
+  const isStellarConfirmed = Boolean(!isRevoked && cred.stellar?.confirmed && cred.stellar?.ledger != null);
 
   const blocks: PdfTextBlock[] = [
     { text: '========================================================', size: 10, y: 760 },
@@ -111,7 +112,9 @@ export function buildCredentialV2Pdf(
           ? 'REVOCADA (REGISTRO LOCAL)'
           : cred.status === 'draft'
             ? 'BORRADOR — SIN CONFIRMACIÓN STELLAR'
-            : 'REGISTRO LOCAL — SIN CONFIRMACIÓN STELLAR'
+            : isStellarConfirmed
+              ? `CONFIRMADA EN STELLAR (LEDGER ${cred.stellar!.ledger})`
+              : 'REGISTRO LOCAL — SIN CONFIRMACIÓN STELLAR'
       }`,
       size: 11,
       y: 415,
@@ -135,12 +138,27 @@ export function buildCredentialV2Pdf(
     { text: `Esquema: ${cred.schemaVersion} (RFC 8785 JCS)`, size: 9, y: 315 },
     { text: `Digest SHA-256: ${cred.payloadDigest}`, size: 8, y: 300 },
     { text: `URL de Consulta: ${verificationUrl}`, size: 9, y: 280 },
-    { text: '--------------------------------------------------------', size: 10, y: 265 },
-    {
-      text: 'Registro local — sin confirmación Stellar: este documento no confirma un anclaje en Stellar.',
-      size: 8,
-      y: 245,
-    }
+    ...(isStellarConfirmed
+      ? [
+          {
+            text: `Tx Hash Stellar: ${cred.stellar!.txHash ?? ''}`,
+            size: 8,
+            y: 265,
+          },
+          {
+            text: `Digest Contrato (32 bytes): ${cred.stellar!.readbackDigest ?? cred.payloadDigest} (Ledger ${cred.stellar!.ledger})`,
+            size: 8,
+            y: 250,
+          },
+        ]
+      : [
+          { text: '--------------------------------------------------------', size: 10, y: 265 },
+          {
+            text: 'Registro local — sin confirmación Stellar: este documento no confirma un anclaje en Stellar.',
+            size: 8,
+            y: 245,
+          },
+        ])
   );
 
   const textStreams = blocks

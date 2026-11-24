@@ -2,6 +2,14 @@ import 'server-only';
 import { randomUUID } from 'crypto';
 import { Address, Keypair, Transaction, TransactionBuilder, scValToNative, xdr } from '@stellar/stellar-sdk';
 import { domainError } from '../../domain/errors';
+import {
+  compareDigests32ByteForByte,
+  computeV2CredentialIdHex,
+  computeV2EntityIdHex,
+  computeV2ScopeIdHex,
+  V2_CONTRACT_HASH_SCHEMA,
+  type V2ContractFamilyCode,
+} from '../../domain/credentials/v2';
 import { assertTransition, mustNotResubmit } from '../../domain/operations/operationState';
 import { OperationStore, StoredOperation } from '../../ports/OperationStore';
 import { SignerPort } from '../../ports/SignerPort';
@@ -12,7 +20,9 @@ import {
 } from '../../ports/SorobanTransport';
 import {
   ChainVerification,
+  ChainVerificationV2,
   IssueCredentialCommand,
+  IssueCredentialV2Command,
   OperationState,
   RegisterEntityCommand,
   RevokeCredentialCommand,
@@ -76,7 +86,15 @@ export function credentialRecordMatches(
   if (expected.subjectId !== undefined && toHexString(record.subject_id) !== expected.subjectId) return false;
   if (expected.eventId !== undefined && toHexString(record.event_id) !== expected.eventId) return false;
   if (expected.credentialType !== undefined && toNumber(record.credential_type) !== expected.credentialType) return false;
-  if (expected.metadataHash !== undefined && toHexString(record.metadata_hash) !== expected.metadataHash) return false;
+  if (
+    expected.metadataHash !== undefined &&
+    !compareDigests32ByteForByte(
+      expected.metadataHash,
+      record.metadata_hash as string | Buffer | Uint8Array | null | undefined
+    )
+  ) {
+    return false;
+  }
   if (expected.hashSchema !== undefined && toNumber(record.hash_schema) !== expected.hashSchema) return false;
   if (expected.issuedBy !== undefined && toAddressString(record.issued_by) !== expected.issuedBy) return false;
 
@@ -121,7 +139,7 @@ export class SorobanStellarGateway implements StellarGateway {
     private readonly canonicalHash: CanonicalHashPort = new CanonicalHashService()
   ) {}
 
-  // ---------- full pipeline (fixture signer only) ----------
+  // ---------- full pipeline (fixture / project operator signer) ----------
 
   async registerEntity(command: RegisterEntityCommand): Promise<OperationState> {
     return this.runFullPipeline(command, 'register_entity');
@@ -129,6 +147,10 @@ export class SorobanStellarGateway implements StellarGateway {
 
   async issueCredential(command: IssueCredentialCommand): Promise<OperationState> {
     return this.runFullPipeline(command, 'issue_credential');
+  }
+
+  async issueCredentialV2(command: IssueCredentialV2Command): Promise<OperationState> {
+    return this.runFullPipelineV2(command);
   }
 
   async revokeCredential(command: RevokeCredentialCommand): Promise<OperationState> {
@@ -143,6 +165,10 @@ export class SorobanStellarGateway implements StellarGateway {
 
   async prepareIssueCredential(command: IssueCredentialCommand): Promise<OperationState> {
     return this.prepare(command, 'issue_credential');
+  }
+
+  async prepareIssueCredentialV2(command: IssueCredentialV2Command): Promise<OperationState> {
+    return this.prepareV2(command);
   }
 
   async prepareRevokeCredential(command: RevokeCredentialCommand): Promise<OperationState> {
@@ -325,7 +351,393 @@ export class SorobanStellarGateway implements StellarGateway {
     };
   }
 
+  async verifyCredentialV2(query: {
+    publicId: string;
+    payloadDigest: string;
+    participationId?: string | null;
+    familyCode?: V2ContractFamilyCode;
+    actorAddress?: string;
+  }): Promise<ChainVerificationV2> {
+    assertHex32(query.payloadDigest, 'payloadDigest');
+    const credentialIdHex = computeV2CredentialIdHex(query.publicId);
+    const signerPublicKey =
+      (this.signer as { publicKey?: string; address?: string } | null)?.publicKey ??
+      (this.signer as { publicKey?: string; address?: string } | null)?.address ??
+      null;
+    const actorAddress =
+      query.actorAddress?.trim() ||
+      this.config.feePayerAddress ||
+      signerPublicKey ||
+      process.env.STELLAR_TESTNET_OPERATOR_ADDRESS?.trim() ||
+      process.env.STELLAR_TESTNET_ADMIN_ADDRESS?.trim() ||
+      query.publicId;
+
+    const raw = await this.transport.readback({
+      contractId: this.config.credentialRegistryContractId,
+      method: 'get_credential',
+      args: [bytes32(credentialIdHex)],
+      actorAddress,
+    });
+
+    if (raw === null || typeof raw !== 'object') {
+      return {
+        exists: false,
+        matches: false,
+        revoked: false,
+        ledger: null,
+        credentialIdHex,
+        scopeIdHex: null,
+        readbackDigest: null,
+        hashSchema: null,
+        familyCode: null,
+        tokenId: null,
+        scopeMatches: false,
+      };
+    }
+
+    const record = raw as Record<string, unknown>;
+    const scopeRaw = await this.transport.readback({
+      contractId: this.config.credentialRegistryContractId,
+      method: 'get_v2_scope',
+      args: [bytes32(credentialIdHex)],
+      actorAddress,
+    });
+
+    const readbackDigest = toHexString(record.metadata_hash);
+    const scopeIdHex = toHexString(scopeRaw);
+    const hashSchema = toNumber(record.hash_schema);
+    const familyCode = toNumber(record.credential_type);
+    const revoked = Boolean(toBool(record.revoked));
+    const ledger = toNumber(record.issued_ledger);
+    const tokenId =
+      record.token_id !== null && record.token_id !== undefined
+        ? String(record.token_id)
+        : null;
+
+    const digestMatches = compareDigests32ByteForByte(
+      query.payloadDigest,
+      record.metadata_hash as string | Buffer | Uint8Array | null | undefined
+    );
+
+    let scopeMatches = scopeIdHex !== null;
+    if (query.familyCode !== undefined) {
+      const expectedScopeHex = computeV2ScopeIdHex(
+        query.familyCode,
+        query.participationId
+      );
+      scopeMatches =
+        scopeIdHex !== null &&
+        compareDigests32ByteForByte(expectedScopeHex, scopeIdHex);
+    }
+
+    const familyMatches =
+      query.familyCode === undefined || familyCode === query.familyCode;
+    const schemaMatches = hashSchema === V2_CONTRACT_HASH_SCHEMA;
+
+    return {
+      exists: true,
+      matches: digestMatches && schemaMatches && scopeMatches && familyMatches,
+      revoked,
+      ledger,
+      credentialIdHex,
+      scopeIdHex,
+      readbackDigest,
+      hashSchema,
+      familyCode,
+      tokenId,
+      scopeMatches,
+    };
+  }
+
   // ---------- pipeline internals ----------
+
+  private async runFullPipelineV2(command: IssueCredentialV2Command): Promise<OperationState> {
+    if (!this.signer) {
+      throw domainError(
+        'UNAUTHORIZED',
+        'no signer configured; interactive flows must use prepareIssueCredentialV2/submitSigned'
+      );
+    }
+
+    const idempotencyKey = this.canonicalV2IdempotencyKey(command);
+    const fingerprint = await this.fingerprintOfV2Command(command);
+    const existing = await this.store.findByIdempotencyKey(idempotencyKey);
+
+    if (existing) {
+      if (existing.intent.fingerprint !== fingerprint) {
+        throw domainError(
+          'ALREADY_EXISTS',
+          'idempotency key reused with a different payload'
+        );
+      }
+
+      if (existing.state.phase === 'confirmed' || existing.state.phase === 'failed_terminal') {
+        return existing.state;
+      }
+
+      // Criterion 4: If previous submission is uncertain or expired, query transaction
+      // status via reconcile BEFORE attempting any re-submission.
+      if (
+        existing.state.txHash &&
+        (existing.state.phase === 'submitted' ||
+          existing.state.phase === 'confirming' ||
+          existing.state.phase === 'unknown' ||
+          existing.state.phase === 'restoring' ||
+          existing.state.phase === 'failed_retryable')
+      ) {
+        const prevTxHash = existing.state.txHash;
+        const pollStatus = await this.transport.pollTransaction(prevTxHash);
+        this.log.info('v2_retry_check_existing_tx', {
+          operationId: existing.state.operationId,
+          txHash: prevTxHash,
+          status: pollStatus.status,
+        });
+
+        if (pollStatus.status === 'SUCCESS') {
+          if (pollStatus.ledger === null || pollStatus.ledger === undefined) {
+            this.markUnknown(existing);
+            existing.state.errorCode = 'MISSING_LEDGER';
+            await this.store.save(existing);
+            return existing.state;
+          }
+          existing.state.ledger = pollStatus.ledger;
+          const ok = await this.readbackMatches(existing);
+          existing.state.phase = ok ? 'confirmed' : 'failed_terminal';
+          existing.state.errorCode = ok ? null : 'READBACK_MISMATCH';
+          await this.store.save(existing);
+          return existing.state;
+        }
+
+        if (pollStatus.status === 'FAILED') {
+          existing.state.phase = 'failed_terminal';
+          existing.state.errorCode = pollStatus.contractError ?? 'CONTRACT_FAILED';
+          existing.nextRetryAt = null;
+          await this.store.save(existing);
+          return existing.state;
+        }
+
+        if (pollStatus.status === 'PENDING') {
+          // Still pending on network: do NOT re-submit blind.
+          this.markUnknown(existing);
+          await this.store.save(existing);
+          return existing.state;
+        }
+
+        // pollStatus.status === 'NOT_FOUND': transaction expired or was dropped.
+        // Check contract readback first in case it settled outside RPC tx retention.
+        const alreadyOnChain = await this.readbackMatches(existing);
+        if (alreadyOnChain) {
+          existing.state.phase = 'confirmed';
+          existing.state.errorCode = null;
+          await this.store.save(existing);
+          return existing.state;
+        }
+
+        // Transaction genuinely expired (NOT_FOUND and not on-chain): re-submit
+        // the existing signed envelope (or re-prepare if needed) under the same operationId.
+        if (existing.intent.signed) {
+          const { txHash } = await this.transport.submit(existing.intent.signed.signedXdr);
+          existing.state.txHash = txHash;
+          existing.state.phase = 'submitted';
+          await this.store.save(existing);
+          return this.pollAndConfirm(existing);
+        }
+      }
+
+      if (existing.state.phase === 'signed' && existing.intent.signed) {
+        return this.submitSigned(
+          existing.state.operationId,
+          existing.intent.signed.signedXdr,
+          existing.intent.signed.signerAddress
+        );
+      }
+
+      if (existing.state.phase === 'awaiting_signature') {
+        const payload = await this.getPreparedPayload(existing.state.operationId);
+        const signed = await this.signer.sign(payload);
+        return this.submitSigned(
+          existing.state.operationId,
+          signed.signedXdr,
+          signed.signerAddress
+        );
+      }
+    }
+
+    const preparedState = await this.prepareV2(command);
+    if (preparedState.phase !== 'awaiting_signature') return preparedState;
+    const payload = await this.getPreparedPayload(preparedState.operationId);
+    const signed = await this.signer.sign(payload);
+    return this.submitSigned(preparedState.operationId, signed.signedXdr, signed.signerAddress);
+  }
+
+  private async prepareV2(command: IssueCredentialV2Command): Promise<OperationState> {
+    assertHex32(command.payloadDigest, 'payloadDigest');
+    const idempotencyKey = this.canonicalV2IdempotencyKey(command);
+    const fingerprint = await this.fingerprintOfV2Command(command);
+
+    const existing = await this.store.findByIdempotencyKey(idempotencyKey);
+    if (existing) {
+      if (existing.intent.fingerprint === fingerprint) {
+        return existing.state;
+      }
+      throw domainError(
+        'ALREADY_EXISTS',
+        'idempotency key reused with a different payload'
+      );
+    }
+
+    const credentialIdHex = computeV2CredentialIdHex(command.publicId);
+    const issuerIdHex = computeV2EntityIdHex(command.issuerEntityId);
+    const subjectIdHex = computeV2EntityIdHex(command.subjectEntityId);
+    const eventIdHex = computeV2EntityIdHex(command.eventEntityId);
+    const scopeIdHex = computeV2ScopeIdHex(command.familyCode, command.participationId);
+
+    const contractCall: ContractCallSpec = {
+      contractId: this.config.credentialRegistryContractId,
+      method: 'issue_credential_v2',
+      args: [
+        addr(command.actorAddress),
+        bytes32(credentialIdHex),
+        bytes32(issuerIdHex),
+        bytes32(subjectIdHex),
+        bytes32(eventIdHex),
+        u32(command.familyCode),
+        bytes32(scopeIdHex),
+        bytes32(command.payloadDigest),
+      ],
+      actorAddress: command.actorAddress,
+      feePayerAddress: this.config.feePayerAddress ?? undefined,
+    };
+
+    const sim = await this.transport.simulate(contractCall);
+    const operationId = this.newId();
+
+    this.log.info('prepare_v2', {
+      operationId,
+      publicId: command.publicId,
+      needsRestore: sim.needsRestore,
+      contractError: sim.contractError,
+    });
+
+    const expected: StoredOperation['intent']['expected'] = {
+      credentialId: credentialIdHex,
+      issuerId: issuerIdHex,
+      subjectId: subjectIdHex,
+      eventId: eventIdHex,
+      credentialType: command.familyCode,
+      scopeId: scopeIdHex,
+      metadataHash: command.payloadDigest,
+      hashSchema: V2_CONTRACT_HASH_SCHEMA,
+      issuedBy: command.actorAddress,
+      revoked: false,
+    };
+
+    if (sim.contractError) {
+      const state: OperationState = {
+        operationId,
+        idempotencyKey,
+        phase: 'failed_terminal',
+        txHash: null,
+        ledger: null,
+        errorCode: sim.contractError,
+      };
+      await this.store.create({
+        state,
+        intent: {
+          kind: 'issue_credential',
+          actorAddress: command.actorAddress,
+          fingerprint,
+          subjectKey: credentialIdHex,
+          prepared: null,
+          signed: null,
+          expected,
+        },
+      });
+      return state;
+    }
+
+    let unsignedXdr = sim.preparedXdr;
+    let preparedAtLedger = sim.latestLedger;
+    let phase: OperationState['phase'] = sim.needsRestore ? 'restoring' : 'awaiting_signature';
+
+    if (sim.needsRestore && this.config.feePayerSecret) {
+      const signed = this.signWithFeePayer(unsignedXdr);
+      const { txHash } = await this.transport.submit(signed);
+      await this.waitForSuccess(txHash);
+      const sim2 = await this.transport.simulate(contractCall);
+      if (sim2.contractError) {
+        const state2: OperationState = {
+          operationId,
+          idempotencyKey,
+          phase: 'failed_terminal',
+          txHash,
+          ledger: null,
+          errorCode: sim2.contractError,
+        };
+        await this.store.create({
+          state: state2,
+          intent: {
+            kind: 'issue_credential',
+            actorAddress: command.actorAddress,
+            fingerprint,
+            subjectKey: credentialIdHex,
+            prepared: null,
+            signed: null,
+            expected,
+          },
+        });
+        return state2;
+      }
+      if (sim2.needsRestore) {
+        throw domainError('INVALID_STATE_TRANSITION', 'restore did not clear TTL requirement');
+      }
+      unsignedXdr = sim2.preparedXdr;
+      preparedAtLedger = sim2.latestLedger;
+      phase = 'awaiting_signature';
+    }
+
+    const state: OperationState = {
+      operationId,
+      idempotencyKey,
+      phase,
+      txHash: null,
+      ledger: null,
+      errorCode: null,
+    };
+    const prepared = {
+      operationId,
+      networkPassphrase: this.config.networkPassphrase,
+      unsignedXdr,
+      preparedAtLedger,
+      intentFingerprint: fingerprint,
+    };
+    await this.store.create({
+      state,
+      intent: {
+        kind: 'issue_credential',
+        actorAddress: command.actorAddress,
+        fingerprint,
+        subjectKey: credentialIdHex,
+        prepared,
+        signed: null,
+        expected,
+      },
+    });
+    return state;
+  }
+
+  private canonicalV2IdempotencyKey(command: IssueCredentialV2Command): string {
+    return command.idempotencyKey?.trim() || `issue_v2:${command.publicId}`;
+  }
+
+  private async fingerprintOfV2Command(command: IssueCredentialV2Command): Promise<string> {
+    const commandWithoutId = { ...command } as { idempotencyKey?: unknown };
+    delete commandWithoutId.idempotencyKey;
+    return this.canonicalHash.hashDocument('culturago.fingerprint.v1', {
+      kind: 'issue_credential_v2',
+      command: commandWithoutId,
+    });
+  }
 
   private async runFullPipeline(
     command: RegisterEntityCommand | IssueCredentialCommand | RevokeCredentialCommand,
@@ -547,7 +959,32 @@ export class SorobanStellarGateway implements StellarGateway {
       }
       case 'issue_credential': {
         if (!op.intent.expected) return false;
-        return credentialRecordMatches(raw, op.intent.expected, op.state.ledger, 'issue_credential');
+        const recordOk = credentialRecordMatches(
+          raw,
+          op.intent.expected,
+          op.state.ledger,
+          'issue_credential'
+        );
+        if (!recordOk) return false;
+        if (op.intent.expected.scopeId !== undefined) {
+          const scopeRaw = await this.transport.readback({
+            contractId: this.config.credentialRegistryContractId,
+            method: 'get_v2_scope',
+            args: [bytes32(op.intent.subjectKey)],
+            actorAddress: op.intent.actorAddress,
+            feePayerAddress: this.config.feePayerAddress ?? undefined,
+          });
+          if (
+            scopeRaw === null ||
+            !compareDigests32ByteForByte(
+              op.intent.expected.scopeId,
+              scopeRaw as string | Buffer | Uint8Array
+            )
+          ) {
+            return false;
+          }
+        }
+        return true;
       }
       case 'revoke_credential': {
         if (!op.intent.expected) return false;

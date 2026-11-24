@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { canonicalizeJson, buildDigestInput } from '../../infrastructure/hashing/canonicalize';
 import { domainError } from '../errors';
 
@@ -6,6 +6,198 @@ export type CredentialFamily = 'participant' | 'guest' | 'staff';
 export type ParticipationMode = 'solo' | 'group' | 'not_applicable';
 export type EvidenceSourceType = 'participation' | 'relationship';
 export type CredentialStatus = 'draft' | 'issued' | 'revoked';
+export type V2ContractFamilyCode = 101 | 102 | 103;
+
+export const V2_CONTRACT_HASH_SCHEMA = 2 as const;
+export const ZERO_BYTES32_HEX = '0'.repeat(64);
+
+const FAMILY_TO_CONTRACT_CODE: Record<CredentialFamily, V2ContractFamilyCode> = {
+  participant: 101,
+  guest: 102,
+  staff: 103,
+};
+
+const CONTRACT_CODE_TO_FAMILY: Record<V2ContractFamilyCode, CredentialFamily> = {
+  101: 'participant',
+  102: 'guest',
+  103: 'staff',
+};
+
+function sha256HexParts(parts: (string | Buffer)[]): string {
+  const hash = createHash('sha256');
+  for (const part of parts) {
+    hash.update(typeof part === 'string' ? Buffer.from(part, 'utf8') : part);
+  }
+  return hash.digest('hex');
+}
+
+function u32BeBuffer(val: number): Buffer {
+  const buf = Buffer.alloc(4);
+  buf.writeUInt32BE(val, 0);
+  return buf;
+}
+
+export function credentialFamilyToContractCode(
+  family: CredentialFamily
+): V2ContractFamilyCode {
+  const code = FAMILY_TO_CONTRACT_CODE[family];
+  if (!code) {
+    throw domainError('INVALID_CREDENTIAL', `Unsupported V2 credential family '${family}'`);
+  }
+  return code;
+}
+
+export function contractCodeToCredentialFamily(
+  code: number
+): CredentialFamily {
+  const family = CONTRACT_CODE_TO_FAMILY[code as V2ContractFamilyCode];
+  if (!family) {
+    throw domainError('INVALID_CREDENTIAL', `Unsupported V2 contract family code '${code}'`);
+  }
+  return family;
+}
+
+export function computeV2CredentialIdHex(publicId: string): string {
+  if (!publicId || typeof publicId !== 'string') {
+    throw domainError('INVALID_CREDENTIAL', 'publicId is required to derive V2 credential_id');
+  }
+  return sha256HexParts([`culturago.credential.v2.id\0${publicId}`]);
+}
+
+export function computeV2EntityIdHex(entityId: string): string {
+  if (!entityId || typeof entityId !== 'string') {
+    throw domainError('INVALID_CREDENTIAL', 'entityId is required to derive V2 entity hash');
+  }
+  return sha256HexParts([`culturago.entity.v1\0${entityId}`]);
+}
+
+export function computeV2ScopeIdHex(
+  familyOrCode: CredentialFamily | V2ContractFamilyCode,
+  participationId?: string | null
+): string {
+  const family =
+    typeof familyOrCode === 'number'
+      ? contractCodeToCredentialFamily(familyOrCode)
+      : familyOrCode;
+
+  if (family === 'staff') {
+    if (participationId != null) {
+      throw domainError(
+        'INVALID_CREDENTIAL',
+        `Family 'staff' requires null participationId (zero scope)`
+      );
+    }
+    return ZERO_BYTES32_HEX;
+  }
+
+  if (!participationId) {
+    throw domainError(
+      'INVALID_CREDENTIAL',
+      `Family '${family}' requires participationId for V2 scope`
+    );
+  }
+  return sha256HexParts([`culturago.participation.v2\0${participationId}`]);
+}
+
+export function computeV2BusinessKeyHex(params: {
+  subjectIdHex: string;
+  eventIdHex: string;
+  familyCode: V2ContractFamilyCode;
+  scopeIdHex: string;
+}): string {
+  return sha256HexParts([
+    'culturago.registry.v2\0',
+    Buffer.from(params.subjectIdHex, 'hex'),
+    Buffer.from(params.eventIdHex, 'hex'),
+    u32BeBuffer(params.familyCode),
+    Buffer.from(params.scopeIdHex, 'hex'),
+  ]);
+}
+
+export interface V2OnChainIdentifiers {
+  familyCode: V2ContractFamilyCode;
+  hashSchema: 2;
+  credentialIdHex: string;
+  issuerIdHex: string;
+  subjectIdHex: string;
+  eventIdHex: string;
+  scopeIdHex: string;
+  businessKeyHex: string;
+}
+
+export function deriveV2OnChainIdentifiers(params: {
+  publicId: string;
+  issuerEntityId: string;
+  subjectEntityId: string;
+  eventEntityId: string;
+  credentialFamily: CredentialFamily;
+  participationId?: string | null;
+}): V2OnChainIdentifiers {
+  const familyCode = credentialFamilyToContractCode(params.credentialFamily);
+  const credentialIdHex = computeV2CredentialIdHex(params.publicId);
+  const issuerIdHex = computeV2EntityIdHex(params.issuerEntityId);
+  const subjectIdHex = computeV2EntityIdHex(params.subjectEntityId);
+  const eventIdHex = computeV2EntityIdHex(params.eventEntityId);
+  const scopeIdHex = computeV2ScopeIdHex(params.credentialFamily, params.participationId);
+  const businessKeyHex = computeV2BusinessKeyHex({
+    subjectIdHex,
+    eventIdHex,
+    familyCode,
+    scopeIdHex,
+  });
+
+  return {
+    familyCode,
+    hashSchema: V2_CONTRACT_HASH_SCHEMA,
+    credentialIdHex,
+    issuerIdHex,
+    subjectIdHex,
+    eventIdHex,
+    scopeIdHex,
+    businessKeyHex,
+  };
+}
+
+/**
+ * Compares the 32-byte canonical digest persisted locally by the application
+ * against the 32-byte digest read back from the Soroban contract byte-for-byte.
+ */
+export function compareDigests32ByteForByte(
+  localDigestHex: string,
+  contractDigest: string | Buffer | Uint8Array | null | undefined
+): boolean {
+  if (typeof localDigestHex !== 'string' || !/^[0-9a-f]{64}$/.test(localDigestHex)) {
+    return false;
+  }
+  const localBytes = Buffer.from(localDigestHex, 'hex');
+  if (localBytes.byteLength !== 32) {
+    return false;
+  }
+
+  let contractBytes: Buffer;
+  if (Buffer.isBuffer(contractDigest)) {
+    contractBytes = contractDigest;
+  } else if (ArrayBuffer.isView(contractDigest)) {
+    contractBytes = Buffer.from(
+      contractDigest.buffer,
+      contractDigest.byteOffset,
+      contractDigest.byteLength
+    );
+  } else if (typeof contractDigest === 'string' && /^[0-9a-fA-F]{64}$/.test(contractDigest)) {
+    contractBytes = Buffer.from(contractDigest.toLowerCase(), 'hex');
+  } else {
+    return false;
+  }
+
+  if (contractBytes.byteLength !== 32) {
+    return false;
+  }
+
+  return (
+    Buffer.compare(localBytes, contractBytes) === 0 &&
+    timingSafeEqual(localBytes, contractBytes)
+  );
+}
 
 export interface CanonicalIssuer {
   id: string;

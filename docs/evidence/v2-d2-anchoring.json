@@ -1,0 +1,44 @@
+{
+  "observedAt": "2026-11-23T19:26:41.945Z",
+  "environment": "testnet",
+  "synthetic": true,
+  "contractId": "CBKX6WIZ25IKKPHIDSTEPLLLMQMRK3DFO5UD3H5YZVXJZ452JNIYHYW6",
+  "operatorAddress": "GA5PR7FSYR3U4UQEMAFHBZ5VASPIXZLUKCGCURP6V3SGIJJLW2XB7NGL",
+  "publicId": "cg2_5bjYVuqiWWw0JEWP",
+  "participationId": "d100000a-0000-4000-8000-000000000010",
+  "presentationCode": "D1-SINT-003",
+  "credentialIdHex": "8b41670d50335d0cf8d6b1d53c2d16091f277f13a727f8a9ccd109d970500969",
+  "scopeIdHex": "b5afa8e04cd182f1822074b41f48001d387d50199afb17573fe241b896424560",
+  "transactionHash": "a11f5c4c81ae80db6fb7b9d6f73290fb3cb82085606568ce25954f35db1073f1",
+  "ledger": 5887587,
+  "localDigest": "b6cb7b4e2eb15aedd2c5142dfc5c176947fa924df541bd0d9cdf811cd18177ac",
+  "contractReadbackDigest": "b6cb7b4e2eb15aedd2c5142dfc5c176947fa924df541bd0d9cdf811cd18177ac",
+  "digestsMatchByteForByte": true,
+  "hashSchema": 2,
+  "familyCode": 101,
+  "revoked": false,
+  "tokenId": "1",
+  "viewsVerified": {
+    "organizerStatusLabel": "Confirmada en Stellar",
+    "passportPath": "/p/camila-danzante-sintetica",
+    "passportStatusLabel": "Confirmada en Stellar",
+    "historicalCredentialsPreserved": [
+      {
+        "publicId": "cg2_HSHtLAutuMlHh4Cr",
+        "digest": "4fef5c6554179629c2e0f56eee83fac0c537e861289c96fe8ecc5491348834a5",
+        "statusLabel": "Registro local — sin confirmación Stellar"
+      },
+      {
+        "publicId": "cg2_28sPqyDWcYAETPcq",
+        "digest": "e2c62cea41b41bf9dbccdf7a9d6b8f3b8a1d02d24ffa8fbc7886a819e29681b7",
+        "statusLabel": "Registro local — sin confirmación Stellar"
+      }
+    ],
+    "publicCredentialPath": "/credentials/cg2_5bjYVuqiWWw0JEWP",
+    "publicCredentialStatusLabel": "Confirmada en Stellar",
+    "pdfPath": "/api/credentials/cg2_5bjYVuqiWWw0JEWP/pdf",
+    "pdfStatusText": "CONFIRMADA EN STELLAR (LEDGER 5887587)",
+    "qrPath": "/api/credentials/cg2_5bjYVuqiWWw0JEWP/qr",
+    "qrMatchesExpectedUrl": true
+  }
+}

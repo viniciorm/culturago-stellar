@@ -1,31 +1,11 @@
-import { createHash } from 'node:crypto';
 import { domainError } from '@/domain/errors';
-import type { CredentialFamily } from '@/domain/credentials/v2';
+import {
+  deriveV2OnChainIdentifiers,
+  type V2ContractFamilyCode,
+} from '@/domain/credentials/v2';
 import type { CredentialV2Record } from './CredentialV2Service';
 
-export type V2ContractFamilyCode = 101 | 102 | 103;
-
-const FAMILY_TO_CODE: Record<CredentialFamily, V2ContractFamilyCode> = {
-  participant: 101,
-  guest: 102,
-  staff: 103,
-};
-
-const ZERO_BYTES32_HEX = '0'.repeat(64);
-
-function sha256Hex(parts: (string | Buffer)[]): string {
-  const hash = createHash('sha256');
-  for (const part of parts) {
-    hash.update(typeof part === 'string' ? Buffer.from(part, 'utf8') : part);
-  }
-  return hash.digest('hex');
-}
-
-function u32BeBuffer(val: number): Buffer {
-  const buf = Buffer.alloc(4);
-  buf.writeUInt32BE(val, 0);
-  return buf;
-}
+export type { V2ContractFamilyCode };
 
 export interface SimulatedV2ChainRecord {
   credentialIdHex: string;
@@ -83,58 +63,22 @@ export class SimulatedCredentialV2Gateway {
   ): SimulatedV2GatewayResult {
     const operatorAddress =
       options?.operatorAddress?.trim() || 'G_SIMULATED_D1_OPERATOR';
-    const familyCode = FAMILY_TO_CODE[credential.credentialFamily];
-    if (!familyCode) {
-      throw domainError(
-        'INVALID_CREDENTIAL',
-        `Unsupported V2 credential family '${credential.credentialFamily}'`
-      );
-    }
-
-    if (
-      (credential.credentialFamily === 'participant' ||
-        credential.credentialFamily === 'guest') &&
-      !credential.participationId
-    ) {
-      throw domainError(
-        'INVALID_CREDENTIAL',
-        `Family '${credential.credentialFamily}' requires participationId for V2 scope`
-      );
-    }
-
-    if (credential.credentialFamily === 'staff' && credential.participationId != null) {
-      throw domainError(
-        'INVALID_CREDENTIAL',
-        `Family 'staff' requires null participationId (zero scope)`
-      );
-    }
-
-    const credentialIdHex = sha256Hex([
-      `culturago.credential.v2.id\0${credential.publicId}`,
-    ]);
-    const issuerIdHex = sha256Hex([
-      `culturago.entity.v1\0${credential.issuerEntityId}`,
-    ]);
-    const subjectIdHex = sha256Hex([
-      `culturago.entity.v1\0${credential.subjectEntityId}`,
-    ]);
-    const eventIdHex = sha256Hex([
-      `culturago.entity.v1\0${credential.eventEntityId}`,
-    ]);
-    const scopeIdHex =
-      credential.credentialFamily === 'staff'
-        ? ZERO_BYTES32_HEX
-        : sha256Hex([
-            `culturago.participation.v2\0${credential.participationId!}`,
-          ]);
-
-    const businessKeyHex = sha256Hex([
-      'culturago.registry.v2\0',
-      Buffer.from(subjectIdHex, 'hex'),
-      Buffer.from(eventIdHex, 'hex'),
-      u32BeBuffer(familyCode),
-      Buffer.from(scopeIdHex, 'hex'),
-    ]);
+    const {
+      familyCode,
+      credentialIdHex,
+      issuerIdHex,
+      subjectIdHex,
+      eventIdHex,
+      scopeIdHex,
+      businessKeyHex,
+    } = deriveV2OnChainIdentifiers({
+      publicId: credential.publicId,
+      issuerEntityId: credential.issuerEntityId,
+      subjectEntityId: credential.subjectEntityId,
+      eventEntityId: credential.eventEntityId,
+      credentialFamily: credential.credentialFamily,
+      participationId: credential.participationId,
+    });
 
     const existingId = this.activeByBusinessKey.get(businessKeyHex);
     if (existingId) {

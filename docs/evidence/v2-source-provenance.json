@@ -26,5 +26,33 @@
       "src/app/credentials/[publicId]/page.tsx": "bd8d27fa38bdf26bd9bfcf7c52db268aee0695cead25388126ff3453f389028d",
       "src/app/api/credentials/[publicId]/pdf/route.ts": "f16f67e6112ddc585545880f9982ce2f62eb4d29d7fbed3c583bad8339a1949a"
     }
+  },
+  "week2D2Current": {
+    "baseCommit": "5ba9432ab5f553adeec5eda12f2d05f0fcc3b7cf",
+    "branch": "feat/week-2-v2-stellar-anchoring",
+    "operationalContractId": "CBKX6WIZ25IKKPHIDSTEPLLLMQMRK3DFO5UD3H5YZVXJZ452JNIYHYW6",
+    "sourceSha256": {
+      "src/domain/credentials/v2.ts": "92e0ff94bd8cd567ad87f8f203c14fb7c298907a938e99671ff55d1fbd668542",
+      "src/ports/StellarGateway.ts": "5b6a2c4081651e3586d3e3062aea7f31a4e28cd3a2c070cf82f4759a06737326",
+      "src/ports/OperationStore.ts": "ccd04f1df1b903dbe3fd2072afa06b14740c01f9ea589cc11584ecacf8c8c476",
+      "src/infrastructure/stellar/SorobanStellarGateway.ts": "b45c0de018f727800bde2344a3eb79331caf2f63d7ae262e85b5e29741775806",
+      "src/infrastructure/stellar/SdkSorobanTransport.ts": "35b10036d28a6dc9d8329e5b3426853581546953e9ee8c58b322767e48f5717d",
+      "src/infrastructure/stellar/InMemoryChainTransport.ts": "7f89a83cc384d37847cb6358198a6eb0a8bae2167fffd3af548e8855b05b8618",
+      "src/infrastructure/stellar/networkConfig.ts": "51c789c2866414b4b25efa489b83ad1a9a4a7b9eac41a407b71ec16787df6132",
+      "src/infrastructure/credentials/v2/CredentialV2Service.ts": "83afdfaf96451a51c2d69364520e06a78ff1c9bb8eb128f81e4fcc5d03264514",
+      "src/infrastructure/credentials/v2/SorobanCredentialV2Gateway.ts": "42e6d0b6bd757bf3c7c57565ef5380b77c8ec2d783a2a2a05687db05edd84670",
+      "src/infrastructure/credentials/v2/SimulatedCredentialV2Gateway.ts": "18473fc26e0cc597c98de33d6dd66f0d72c2db57a1d0d4916414d11f2fc73c07",
+      "src/infrastructure/credentials/v2/pdfCertificate.ts": "855f641f765029a2eb56dfee57b54ef482aa5d75093cb05fe68dc84a821d13ee",
+      "src/app/actions.ts": "2ac3bae6ea0106bf57135c24dfbe307820dd4a084eecfff449dbbaf72fa92b31",
+      "src/app/organizer/credential-v2-actions.ts": "7c89f8337ba967e142c295e9b8221c64805f3cf5f18de48bd60421a549476fd2",
+      "src/app/organizer/IssueCredentialV2Form.tsx": "7f6672f1e1045f39855ee5e0dc17c2808f38dceb4f73a7bb82ff0bcb3afeffa2",
+      "src/app/credentials/[publicId]/page.tsx": "f1e7c85f55ca401a054920d838fc550bdc72e4c506d9dc813f5f41824ee5f344",
+      "scripts/seed-d1-synthetic-demo.mjs": "870573c6ea3c4b09891dd052e3a6e42af2c280bc68707c29bd1ec72eaae183e3",
+      "scripts/deploy-testnet-v2-operational.mjs": "9158f7fbb81a2e3168e7a38ca09161fc9087c05a27f8d1ae0b75baca3c789c76",
+      "scripts/verify-d2-testnet-anchoring.mjs": "cf1a431f999df07aff84dd6cad1b6154925186e18d43138f2f6fb705d8095029",
+      "tests/infrastructure/credential-v2-vertical-d2.test.tsx": "c35499959a8cdb02075e4d17098ac1173928879b0006d7575413c833e4ac7ee8",
+      "docs/evidence/v2-d2-contract-deployment.json": "2a026cde4656ba1d9e581079092f64d22c24d98aad0a0a090539510001d7f438",
+      "docs/evidence/v2-d2-anchoring.json": "b5e2568e92214c1b9e683755ee53114a62e76bf0fbba1da09db08235ae8ad119"
+    }
   }
 }
