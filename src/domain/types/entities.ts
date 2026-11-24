@@ -144,6 +144,14 @@ export interface Relationship {
 export interface Credential {
   id: string;
   credential_code: string;
+  public_id?: string | null;
+  schema_version?: string | null;
+  credential_family?: 'participant' | 'guest' | 'staff' | null;
+  participation_mode?: 'solo' | 'group' | 'not_applicable' | null;
+  display_label?: string | null;
+  display_subtitle?: string | null;
+  public_status_label?: string;
+  href?: string;
   issuer_entity_id: string;
   subject_entity_id: string;
   event_id?: string | null;
