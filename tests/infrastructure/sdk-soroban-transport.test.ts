@@ -141,4 +141,80 @@ describe('SdkSorobanTransport fee cap', () => {
       transport.enforcingSimulateAndAssemble(signedXdr)
     ).rejects.toSatisfy((e: unknown) => isDomainError(e, 'INVALID_INPUT'));
   });
+
+  it('performs keyless readback without calling getAccount and returns null only on valid scvVoid absence', async () => {
+    const actor = makeActor();
+    const { server } = fakeServer(500, actor);
+    const transport = makeTransport(server, 10_000);
+
+    const absent = await transport.readback({
+      contractId: makeContractId(),
+      method: 'get_credential',
+      args: [{ kind: 'bytes32', hex: 'b2'.repeat(32) }],
+      actorAddress: 'cg2_no_onchain_account_needed',
+    });
+
+    expect(absent).toBeNull();
+    expect(server.getAccount).not.toHaveBeenCalled();
+    expect(server.simulateTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('distinguishes simulation errors, restore requirements, network failures, and missing retvals from valid absence in readback', async () => {
+    const actor = makeActor();
+    const { server } = fakeServer(500, actor);
+    const transport = makeTransport(server, 10_000);
+    const spec = makeSpec(actor);
+
+    // 1. Simulation error -> STELLAR_UNAVAILABLE (not null)
+    server.simulateTransaction = vi.fn(async () => ({
+      _parsed: true,
+      id: '2',
+      latestLedger: 1001,
+      error: 'HostError: Error(Storage, MissingValue)',
+      events: [],
+    })) as any;
+    await expect(transport.readback(spec)).rejects.toSatisfy((e: unknown) =>
+      isDomainError(e, 'STELLAR_UNAVAILABLE')
+    );
+
+    // 2. Restore required -> STELLAR_UNAVAILABLE (not null)
+    const sorobanData = new SorobanDataBuilder().setResourceFee(500).build();
+    server.simulateTransaction = vi.fn(async () => ({
+      _parsed: true,
+      id: '3',
+      latestLedger: 1002,
+      transactionData: new SorobanDataBuilder(sorobanData),
+      minResourceFee: '500',
+      result: { auth: [], retval: xdr.ScVal.scvVoid() },
+      restorePreamble: {
+        minResourceFee: '1000',
+        transactionData: new SorobanDataBuilder(sorobanData),
+      },
+      events: [],
+    })) as any;
+    await expect(transport.readback(spec)).rejects.toSatisfy((e: unknown) =>
+      isDomainError(e, 'STELLAR_UNAVAILABLE')
+    );
+
+    // 3. Network failure -> STELLAR_UNAVAILABLE
+    server.simulateTransaction = vi.fn(async () => {
+      throw new Error('fetch failed: ECONNREFUSED');
+    }) as any;
+    await expect(transport.readback(spec)).rejects.toSatisfy((e: unknown) =>
+      isDomainError(e, 'STELLAR_UNAVAILABLE')
+    );
+
+    // 4. Malformed simulation response missing retval -> INVALID_CHAIN_RESPONSE
+    server.simulateTransaction = vi.fn(async () => ({
+      _parsed: true,
+      id: '4',
+      latestLedger: 1003,
+      transactionData: new SorobanDataBuilder(sorobanData),
+      minResourceFee: '500',
+      events: [],
+    })) as any;
+    await expect(transport.readback(spec)).rejects.toSatisfy((e: unknown) =>
+      isDomainError(e, 'INVALID_CHAIN_RESPONSE')
+    );
+  });
 });

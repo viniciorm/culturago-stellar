@@ -77,7 +77,7 @@ export function buildCredentialV2Pdf(
     ? `${cred.subject.displayName} ("${cred.subject.artisticName}")`
     : cred.subject.displayName;
 
-  const isRevoked = cred.status === 'revoked';
+  const isRevoked = cred.status === 'revoked' || Boolean(cred.stellar?.revokedOnChain);
   const isStellarConfirmed = Boolean(!isRevoked && cred.stellar?.confirmed && cred.stellar?.ledger != null);
 
   const blocks: PdfTextBlock[] = [

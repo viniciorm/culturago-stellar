@@ -9,13 +9,16 @@ import {
   EvidenceSourceType,
   ParticipationMode,
   buildCanonicalPayloadV2,
-  compareDigests32ByteForByte,
   computePayloadDigestV2,
   computeV2CredentialIdHex,
-  computeV2ScopeIdHex,
   generatePublicIdV2,
   validateCredentialV2Input,
 } from '../../../domain/credentials/v2';
+import {
+  HistoricalIssuanceOperationAuditRef,
+  PublicCredentialStellarVerificationV2,
+  verifyPresentedCredentialV2,
+} from './publicVerification';
 
 export interface EvidenceInputParam {
   sourceType: EvidenceSourceType;
@@ -76,20 +79,7 @@ export interface CredentialV2Record {
   evidences: CredentialEvidenceRecord[];
 }
 
-export interface PublicCredentialStellarView {
-  confirmed: boolean;
-  phase: string | null;
-  txHash: string | null;
-  ledger: number | null;
-  contractId: string | null;
-  credentialIdHex: string;
-  scopeIdHex: string | null;
-  readbackDigest: string | null;
-  digestMatches: boolean;
-  publicStatusLabel:
-    | 'Confirmada en Stellar'
-    | 'Registro local — sin confirmación Stellar';
-}
+export type PublicCredentialStellarView = PublicCredentialStellarVerificationV2;
 
 export interface PublicCredentialView {
   id: string;
@@ -98,6 +88,7 @@ export interface PublicCredentialView {
   schemaVersion: 'culturago.credential.v2';
   credentialFamily: CredentialFamily;
   participationMode: ParticipationMode;
+  participationId?: string | null;
   displayLabel: string;
   displaySubtitle: string;
   presentationCode?: string | null;
@@ -108,6 +99,7 @@ export interface PublicCredentialView {
   revokedAt?: string | null;
   payloadDigest: string;
   canonicalPayload: CanonicalPayloadV2;
+  historicalOperation?: HistoricalIssuanceOperationAuditRef | null;
   stellar?: PublicCredentialStellarView;
   issuer: {
     id: string;
@@ -742,11 +734,12 @@ export class CredentialV2Service {
       [row.id]
     );
 
+    const storedPayload: CanonicalPayloadV2 =
+      typeof row.canonical_payload === 'string'
+        ? JSON.parse(row.canonical_payload)
+        : row.canonical_payload;
+
     const credentialIdHex = computeV2CredentialIdHex(row.public_id);
-    const scopeIdHex =
-      row.credential_family === 'staff' || row.participation_id
-        ? computeV2ScopeIdHex(row.credential_family, row.participation_id)
-        : null;
 
     const opRes = await query<{
       phase: string;
@@ -770,91 +763,144 @@ export class CredentialV2Service {
     );
 
     const opRow = opRes.rows[0] ?? null;
-    const expectedDigest = opRow?.payload?.expected?.metadataHash ?? null;
-    const confirmedLedger = opRow?.ledger ?? row.issued_ledger ?? null;
-    const digestMatches = Boolean(
-      opRow &&
-        opRow.phase === 'confirmed' &&
-        expectedDigest &&
-        compareDigests32ByteForByte(row.payload_digest, expectedDigest)
-    );
-    const isConfirmedOnChain = Boolean(
-      row.status === 'issued' &&
-        opRow &&
-        opRow.phase === 'confirmed' &&
-        confirmedLedger !== null &&
-        opRow.tx_hash &&
-        digestMatches
-    );
+    const historicalOperation: HistoricalIssuanceOperationAuditRef | null = opRow
+      ? {
+          phase: opRow.phase,
+          txHash: opRow.tx_hash,
+          ledger: opRow.ledger,
+          expectedDigest: opRow.payload?.expected?.metadataHash ?? null,
+        }
+      : null;
 
-    const contractId =
-      process.env.NEXT_PUBLIC_CREDENTIAL_REGISTRY_CONTRACT_ID?.trim() || null;
+    // Normalize issued_at: preserve the exact ISO format from canonical_payload when it represents
+    // the identical instant as credentials.issued_at; otherwise reflect credentials.issued_at.
+    const rowIssuedIso =
+      (row.issued_at as unknown) instanceof Date
+        ? ((row.issued_at as unknown) as Date).toISOString()
+        : String(row.issued_at ?? '');
+    const payloadIssuedIso = storedPayload?.issued_at ?? rowIssuedIso;
+    const resolvedIssuedAt =
+      payloadIssuedIso &&
+      !Number.isNaN(Date.parse(payloadIssuedIso)) &&
+      !Number.isNaN(Date.parse(rowIssuedIso)) &&
+      Date.parse(payloadIssuedIso) === Date.parse(rowIssuedIso)
+        ? payloadIssuedIso
+        : rowIssuedIso || payloadIssuedIso;
 
-    const stellarView: PublicCredentialStellarView = {
-      confirmed: isConfirmedOnChain,
-      phase: opRow?.phase ?? null,
-      txHash: isConfirmedOnChain ? opRow.tx_hash : opRow?.tx_hash ?? null,
-      ledger: isConfirmedOnChain ? confirmedLedger : null,
-      contractId: isConfirmedOnChain ? contractId : null,
-      credentialIdHex,
-      scopeIdHex,
-      readbackDigest: isConfirmedOnChain ? expectedDigest : null,
-      digestMatches: isConfirmedOnChain,
-      publicStatusLabel: isConfirmedOnChain
-        ? 'Confirmada en Stellar'
-        : 'Registro local — sin confirmación Stellar',
-    };
+    const resolvedRevokedAt =
+      row.revoked_at == null
+        ? null
+        : (row.revoked_at as unknown) instanceof Date
+          ? ((row.revoked_at as unknown) as Date).toISOString()
+          : String(row.revoked_at);
 
-    const payload = typeof row.canonical_payload === 'string'
-      ? JSON.parse(row.canonical_payload)
-      : row.canonical_payload;
+    // Single source for covered fields: use canonical_payload for entity/event/claim snapshots
+    // so unrelated directory edits in `entities` / `people` / `events` never silently diverge
+    // from the attested credential, while still reflecting direct edits on `credentials` columns
+    // or `credential_evidence` rows. Non-covered `notes` and `id` are attached explicitly.
+    const canonicalIssuer = storedPayload?.issuer;
+    const canonicalSubject = storedPayload?.subject;
+    const canonicalEvent = storedPayload?.event;
+    const canonicalClaim = storedPayload?.claim;
 
-    return {
+    const evidencesView =
+      evidenceRes.rows.length > 0
+        ? evidenceRes.rows.map((ev) => ({
+            id: ev.id,
+            sourceType: ev.source_type,
+            sourceId: ev.source_id,
+            evidenceRole: ev.evidence_role,
+            notes: ev.notes,
+          }))
+        : (canonicalClaim?.evidences ?? []).map((ev, idx) => ({
+            id: `canonical-ev-${idx}`,
+            sourceType: ev.source_type,
+            sourceId: ev.source_id,
+            evidenceRole: ev.evidence_role,
+            notes: null,
+          }));
+
+    const baseView = {
       id: row.id,
       publicId: row.public_id,
       status: row.status,
       schemaVersion: row.schema_version,
       credentialFamily: row.credential_family,
       participationMode: row.participation_mode,
-      displayLabel: row.display_label,
-      displaySubtitle: row.display_subtitle,
-      presentationCode: payload?.claim?.presentation_code ?? null,
-      organizationName: payload?.claim?.organization_name ?? null,
-      roles: payload?.claim?.roles ?? [],
-      issuedAt: row.issued_at,
-      issuedLedger: isConfirmedOnChain ? confirmedLedger : row.issued_ledger,
-      revokedAt: row.revoked_at,
+      participationId: row.participation_id,
+      displayLabel:
+        row.display_label !== canonicalClaim?.display_label
+          ? row.display_label
+          : (canonicalClaim?.display_label ?? row.display_label),
+      displaySubtitle:
+        row.display_subtitle !== canonicalClaim?.display_subtitle
+          ? row.display_subtitle
+          : (canonicalClaim?.display_subtitle ?? row.display_subtitle),
+      presentationCode: canonicalClaim?.presentation_code ?? null,
+      organizationName: canonicalClaim?.organization_name ?? null,
+      roles: [...(canonicalClaim?.roles ?? [])],
+      issuedAt: resolvedIssuedAt,
+      issuedLedger: row.issued_ledger,
+      revokedAt: resolvedRevokedAt,
       payloadDigest: row.payload_digest,
-      canonicalPayload: payload,
-      stellar: stellarView,
       issuer: {
-        id: row.issuer_id,
-        displayName: row.issuer_name,
-        kind: row.issuer_kind,
-        ...(row.issuer_slug ? { slug: row.issuer_slug } : {}),
+        id: canonicalIssuer?.id ?? row.issuer_id,
+        displayName: canonicalIssuer?.display_name ?? row.issuer_name,
+        kind: canonicalIssuer?.kind ?? row.issuer_kind,
+        ...(canonicalIssuer?.slug
+          ? { slug: canonicalIssuer.slug }
+          : row.issuer_slug
+            ? { slug: row.issuer_slug }
+            : {}),
       },
       subject: {
-        id: row.subject_id,
-        displayName: row.subject_name,
-        kind: row.subject_kind,
-        artisticName: row.subject_artistic_name,
-        ...(row.subject_slug ? { slug: row.subject_slug } : {}),
+        id: canonicalSubject?.id ?? row.subject_id,
+        displayName: canonicalSubject?.display_name ?? row.subject_name,
+        kind: canonicalSubject?.kind ?? row.subject_kind,
+        artisticName:
+          canonicalSubject !== undefined
+            ? (canonicalSubject.artistic_name ?? null)
+            : row.subject_artistic_name,
+        ...(canonicalSubject?.slug
+          ? { slug: canonicalSubject.slug }
+          : row.subject_slug
+            ? { slug: row.subject_slug }
+            : {}),
       },
       event: {
-        id: row.event_id,
-        name: row.event_name,
-        year: row.event_year,
-        startDate: row.event_start_date,
-        endDate: row.event_end_date,
-        location: row.event_location,
+        id: canonicalEvent?.id ?? row.event_id,
+        name: canonicalEvent?.name ?? row.event_name,
+        year:
+          canonicalEvent !== undefined
+            ? (canonicalEvent.year ?? null)
+            : row.event_year,
+        startDate:
+          canonicalEvent !== undefined
+            ? (canonicalEvent.start_date ?? null)
+            : normalizeCalendarDateV2(row.event_start_date),
+        endDate:
+          canonicalEvent !== undefined
+            ? (canonicalEvent.end_date ?? null)
+            : normalizeCalendarDateV2(row.event_end_date),
+        location:
+          canonicalEvent !== undefined
+            ? (canonicalEvent.location ?? null)
+            : row.event_location,
       },
-      evidences: evidenceRes.rows.map((ev) => ({
-        id: ev.id,
-        sourceType: ev.source_type,
-        sourceId: ev.source_id,
-        evidenceRole: ev.evidence_role,
-        notes: ev.notes,
-      })),
+      evidences: evidencesView,
+    };
+
+    const { stellar } = await verifyPresentedCredentialV2(
+      baseView,
+      historicalOperation
+    );
+
+    return {
+      ...baseView,
+      issuedLedger: stellar.confirmed ? stellar.ledger : row.issued_ledger,
+      canonicalPayload: storedPayload,
+      historicalOperation,
+      stellar,
     };
   }
 

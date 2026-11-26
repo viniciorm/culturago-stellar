@@ -1,0 +1,72 @@
+{
+  "observedAt": "2026-11-26T20:31:45.581Z",
+  "environment": "testnet",
+  "devBaseUrl": "https://dev.culturago.cl",
+  "synthetic": true,
+  "contractId": "CBKX6WIZ25IKKPHIDSTEPLLLMQMRK3DFO5UD3H5YZVXJZ452JNIYHYW6",
+  "rpcUrl": "https://soroban-testnet.stellar.org",
+  "organizerIssuance": {
+    "participationId": "d3000002-0000-4000-8000-000000000002",
+    "presentationCode": "D3-SINT-001",
+    "eventName": "Muestra Sintética D3 Verificación Pública 2026",
+    "issuerDisplayName": "Agrupación Danza Viva Sintética",
+    "subjectDisplayName": "Camila Danzante Sintética",
+    "subjectArtisticName": "Kamila Nur",
+    "passportUrl": "https://dev.culturago.cl/p/camila-danzante-sintetica",
+    "publicId": "cg2_qrxLiD7HACX_RFd7",
+    "credentialIdHex": "7b83577505e0df84f71e16f9069839057680121ba6fe5fae6ffea364c73cc243",
+    "scopeIdHex": "a82f4bb9c76d11152448c0f5411f6c8cac4ba2b466d1e4da4d0b80b5ab1398cf",
+    "transactionHash": "50b9132ce5adfe4f699814e332067863756d45efc7e3f5b511736bd6c1e5654a",
+    "ledger": 5940289,
+    "operatorAddress": "GA5PR7FSYR3U4UQEMAFHBZ5VASPIXZLUKCGCURP6V3SGIJJLW2XB7NGL",
+    "tokenId": "2",
+    "hashSchema": 2,
+    "familyCode": 101,
+    "revoked": false,
+    "contractReadbackDigest": "4709179726d359a6cc041594836c22eb812884da940fcf77bc786bf0a74701e7"
+  },
+  "d2ReferenceCheckOnDev": {
+    "url": "https://dev.culturago.cl/credentials/cg2_5bjYVuqiWWw0JEWP",
+    "publicId": "cg2_5bjYVuqiWWw0JEWP",
+    "statusLabel": "Integridad confirmada en Stellar Testnet",
+    "recomputedDigest": "b6cb7b4e2eb15aedd2c5142dfc5c176947fa924df541bd0d9cdf811cd18177ac",
+    "contractReadbackDigest": "b6cb7b4e2eb15aedd2c5142dfc5c176947fa924df541bd0d9cdf811cd18177ac",
+    "digestsMatch32Bytes": true
+  },
+  "publicDemoCasesWithoutSession": {
+    "case1Match": {
+      "url": "https://dev.culturago.cl/credentials/cg2_qrxLiD7HACX_RFd7",
+      "sessionAuthenticated": false,
+      "statusLabel": "Integridad confirmada en Stellar Testnet",
+      "presentedSubtitle": "Solista",
+      "recomputedDigest": "4709179726d359a6cc041594836c22eb812884da940fcf77bc786bf0a74701e7",
+      "contractReadbackDigest": "4709179726d359a6cc041594836c22eb812884da940fcf77bc786bf0a74701e7",
+      "persistedAuditDigest": "4709179726d359a6cc041594836c22eb812884da940fcf77bc786bf0a74701e7",
+      "digestsMatchByteForByte": true,
+      "ledger": 5940289,
+      "transactionHash": "50b9132ce5adfe4f699814e332067863756d45efc7e3f5b511736bd6c1e5654a",
+      "contractId": "CBKX6WIZ25IKKPHIDSTEPLLLMQMRK3DFO5UD3H5YZVXJZ452JNIYHYW6"
+    },
+    "case2Mismatch": {
+      "url": "https://dev.culturago.cl/credentials/cg2_qrxLiD7HACX_RFd7?demo=mismatch",
+      "sessionAuthenticated": false,
+      "statusLabel": "El contenido no coincide con el registro en Stellar",
+      "alteredField": "claim.display_subtitle",
+      "originalValue": "Solista",
+      "alteredValue": "Solista — Variante sintética alterada (D3)",
+      "recomputedDigest": "910c9e32b4bb68b2ce8ffe47a3ddad30686db3967a8b005258d8e0000a96e2d7",
+      "contractReadbackDigest": "4709179726d359a6cc041594836c22eb812884da940fcf77bc786bf0a74701e7",
+      "persistedAuditDigest": "4709179726d359a6cc041594836c22eb812884da940fcf77bc786bf0a74701e7",
+      "digestsMatchByteForByte": false,
+      "referenceCredentialPreserved": true
+    },
+    "case3Unavailable": {
+      "url": "https://dev.culturago.cl/credentials/cg2_qrxLiD7HACX_RFd7?demo=unavailable",
+      "sessionAuthenticated": false,
+      "statusLabel": "No fue posible consultar Stellar; intenta nuevamente",
+      "recomputedDigest": "4709179726d359a6cc041594836c22eb812884da940fcf77bc786bf0a74701e7",
+      "scopedFaultOnly": true,
+      "case1NormalAfterFaultStatusLabel": "Integridad confirmada en Stellar Testnet"
+    }
+  }
+}

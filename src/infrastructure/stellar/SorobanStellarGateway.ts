@@ -356,6 +356,9 @@ export class SorobanStellarGateway implements StellarGateway {
     payloadDigest: string;
     participationId?: string | null;
     familyCode?: V2ContractFamilyCode;
+    issuerEntityId?: string;
+    subjectEntityId?: string;
+    eventEntityId?: string;
     actorAddress?: string;
   }): Promise<ChainVerificationV2> {
     assertHex32(query.payloadDigest, 'payloadDigest');
@@ -379,7 +382,7 @@ export class SorobanStellarGateway implements StellarGateway {
       actorAddress,
     });
 
-    if (raw === null || typeof raw !== 'object') {
+    if (raw === null) {
       return {
         exists: false,
         matches: false,
@@ -392,10 +395,71 @@ export class SorobanStellarGateway implements StellarGateway {
         familyCode: null,
         tokenId: null,
         scopeMatches: false,
+        credentialIdMatches: false,
+        issuerMatches: false,
+        subjectMatches: false,
+        eventMatches: false,
+        familyMatches: false,
+        schemaMatches: false,
+        digestMatches: false,
+        revokedLedger: null,
       };
     }
 
+    if (typeof raw !== 'object' || Array.isArray(raw)) {
+      throw domainError(
+        'INVALID_CHAIN_RESPONSE',
+        'Contract get_credential returned a malformed non-object payload'
+      );
+    }
+
     const record = raw as Record<string, unknown>;
+    const isHex32 = (val: string | null): val is string =>
+      typeof val === 'string' && /^[0-9a-f]{64}$/.test(val);
+
+    const recordCredentialIdHex = toHexString(record.credential_id);
+    const readbackDigest = toHexString(record.metadata_hash);
+    const recordIssuerIdHex = toHexString(record.issuer_id);
+    const recordSubjectIdHex = toHexString(record.subject_id);
+    const recordEventIdHex = toHexString(record.event_id);
+    const hashSchema = toNumber(record.hash_schema);
+    const familyCode = toNumber(record.credential_type);
+    const revokedBool = toBool(record.revoked);
+    const ledger = toNumber(record.issued_ledger);
+    const revokedLedger = toNumber(record.revoked_ledger);
+
+    if (
+      !isHex32(recordCredentialIdHex) ||
+      !isHex32(readbackDigest) ||
+      !isHex32(recordIssuerIdHex) ||
+      !isHex32(recordSubjectIdHex) ||
+      !isHex32(recordEventIdHex) ||
+      hashSchema === null ||
+      !Number.isInteger(hashSchema) ||
+      familyCode === null ||
+      !Number.isInteger(familyCode) ||
+      revokedBool === null ||
+      ledger === null ||
+      !Number.isInteger(ledger) ||
+      ledger <= 0
+    ) {
+      throw domainError(
+        'INVALID_CHAIN_RESPONSE',
+        'Contract get_credential returned incomplete or malformed CredentialRecord fields'
+      );
+    }
+
+    const credentialIdMatches = compareDigests32ByteForByte(
+      credentialIdHex,
+      recordCredentialIdHex
+    );
+    if (!credentialIdMatches) {
+      throw domainError(
+        'INVALID_CHAIN_RESPONSE',
+        'Contract CredentialRecord credential_id does not match queried V2 identifier'
+      );
+    }
+
     const scopeRaw = await this.transport.readback({
       contractId: this.config.credentialRegistryContractId,
       method: 'get_v2_scope',
@@ -403,12 +467,14 @@ export class SorobanStellarGateway implements StellarGateway {
       actorAddress,
     });
 
-    const readbackDigest = toHexString(record.metadata_hash);
     const scopeIdHex = toHexString(scopeRaw);
-    const hashSchema = toNumber(record.hash_schema);
-    const familyCode = toNumber(record.credential_type);
-    const revoked = Boolean(toBool(record.revoked));
-    const ledger = toNumber(record.issued_ledger);
+    if (scopeRaw !== null && !isHex32(scopeIdHex)) {
+      throw domainError(
+        'INVALID_CHAIN_RESPONSE',
+        'Contract get_v2_scope returned malformed scope bytes'
+      );
+    }
+
     const tokenId =
       record.token_id !== null && record.token_id !== undefined
         ? String(record.token_id)
@@ -433,11 +499,37 @@ export class SorobanStellarGateway implements StellarGateway {
     const familyMatches =
       query.familyCode === undefined || familyCode === query.familyCode;
     const schemaMatches = hashSchema === V2_CONTRACT_HASH_SCHEMA;
+    const issuerMatches = query.issuerEntityId
+      ? compareDigests32ByteForByte(
+          computeV2EntityIdHex(query.issuerEntityId),
+          recordIssuerIdHex
+        )
+      : true;
+    const subjectMatches = query.subjectEntityId
+      ? compareDigests32ByteForByte(
+          computeV2EntityIdHex(query.subjectEntityId),
+          recordSubjectIdHex
+        )
+      : true;
+    const eventMatches = query.eventEntityId
+      ? compareDigests32ByteForByte(
+          computeV2EntityIdHex(query.eventEntityId),
+          recordEventIdHex
+        )
+      : true;
 
     return {
       exists: true,
-      matches: digestMatches && schemaMatches && scopeMatches && familyMatches,
-      revoked,
+      matches:
+        credentialIdMatches &&
+        digestMatches &&
+        schemaMatches &&
+        scopeMatches &&
+        familyMatches &&
+        issuerMatches &&
+        subjectMatches &&
+        eventMatches,
+      revoked: revokedBool,
       ledger,
       credentialIdHex,
       scopeIdHex,
@@ -446,6 +538,14 @@ export class SorobanStellarGateway implements StellarGateway {
       familyCode,
       tokenId,
       scopeMatches,
+      credentialIdMatches,
+      issuerMatches,
+      subjectMatches,
+      eventMatches,
+      familyMatches,
+      schemaMatches,
+      digestMatches,
+      revokedLedger,
     };
   }
 

@@ -89,6 +89,14 @@ export interface ChainVerificationV2 extends ChainVerification {
   familyCode: number | null;
   tokenId: string | null;
   scopeMatches: boolean;
+  credentialIdMatches?: boolean;
+  issuerMatches?: boolean;
+  subjectMatches?: boolean;
+  eventMatches?: boolean;
+  familyMatches?: boolean;
+  schemaMatches?: boolean;
+  digestMatches?: boolean;
+  revokedLedger?: number | null;
 }
 
 /**
@@ -128,6 +136,9 @@ export interface StellarGateway {
     payloadDigest: string;
     participationId?: string | null;
     familyCode?: V2ContractFamilyCode;
+    issuerEntityId?: string;
+    subjectEntityId?: string;
+    eventEntityId?: string;
     actorAddress?: string;
   }): Promise<ChainVerificationV2>;
   /**
