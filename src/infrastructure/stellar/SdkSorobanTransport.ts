@@ -4,6 +4,7 @@ import {
   BASE_FEE,
   Contract,
   Operation,
+  StrKey,
   Transaction,
   TransactionBuilder,
   nativeToScVal,
@@ -28,12 +29,24 @@ import { StellarNetworkConfig } from './networkConfig';
  * and restore detection) and polls. NEVER signs: signing belongs to
  * SignerPort implementations.
  */
+const READONLY_SIMULATION_PUBLIC_KEY = StrKey.encodeEd25519PublicKey(
+  Buffer.alloc(32, 0)
+);
+
 export class SdkSorobanTransport implements SorobanTransport {
   private readonly server: rpc.Server;
   private readonly log = new Logger('SdkSorobanTransport');
 
-  constructor(private readonly config: StellarNetworkConfig) {
-    this.server = new rpc.Server(config.rpcUrl, { allowHttp: config.rpcUrl.startsWith('http://') });
+  constructor(
+    private readonly config: StellarNetworkConfig,
+    options?: { timeoutInSeconds?: number }
+  ) {
+    this.server = new rpc.Server(config.rpcUrl, {
+      allowHttp: config.rpcUrl.startsWith('http://'),
+      ...(options?.timeoutInSeconds
+        ? { timeoutInSeconds: options.timeoutInSeconds }
+        : {}),
+    });
   }
 
   async simulate(spec: ContractCallSpec): Promise<SimulationOutcome> {
@@ -135,12 +148,45 @@ export class SdkSorobanTransport implements SorobanTransport {
   }
 
   async readback(spec: ContractCallSpec): Promise<unknown> {
-    const tx = await this.buildTransaction(spec);
-    const sim = await this.server.simulateTransaction(tx);
-    if (!rpc.Api.isSimulationSuccess(sim) || !sim.result) {
-      return null;
+    const tx = this.buildReadonlyTransaction(spec);
+    let sim: rpc.Api.SimulateTransactionResponse;
+    try {
+      sim = await this.server.simulateTransaction(tx);
+    } catch (error) {
+      throw domainError(
+        'STELLAR_UNAVAILABLE',
+        `RPC readback request failed: ${this.sanitize(error)}`
+      );
     }
-    return scValToNative(sim.result.retval);
+
+    if (rpc.Api.isSimulationError(sim)) {
+      throw domainError(
+        'STELLAR_UNAVAILABLE',
+        `RPC readback simulation failed: ${this.sanitize(sim.error)}`
+      );
+    }
+    if (rpc.Api.isSimulationRestore(sim)) {
+      throw domainError(
+        'STELLAR_UNAVAILABLE',
+        'RPC readback requires contract footprint restoration'
+      );
+    }
+    if (!rpc.Api.isSimulationSuccess(sim) || !sim.result || !sim.result.retval) {
+      throw domainError(
+        'INVALID_CHAIN_RESPONSE',
+        'RPC readback returned an invalid simulation response without return value'
+      );
+    }
+
+    try {
+      const decoded = scValToNative(sim.result.retval);
+      return decoded === undefined ? null : decoded;
+    } catch (error) {
+      throw domainError(
+        'INVALID_CHAIN_RESPONSE',
+        `Failed to decode Soroban contract return value: ${this.sanitize(error)}`
+      );
+    }
   }
 
   async enforcingSimulateAndAssemble(signedXdr: string): Promise<SimulationOutcome> {
@@ -251,6 +297,21 @@ export class SdkSorobanTransport implements SorobanTransport {
     const restoredTx = assembled.build();
     this.assertFeeWithinBudget(restoredTx, this.config.maxFeeStrokes);
     return restoredTx.toXDR();
+  }
+
+  private buildReadonlyTransaction(spec: ContractCallSpec): Transaction {
+    const account = new Account(READONLY_SIMULATION_PUBLIC_KEY, '0');
+    const contract = new Contract(spec.contractId);
+    const args = spec.args.map((a) => this.toScVal(a));
+    const operation = contract.call(spec.method, ...args);
+
+    return new TransactionBuilder(account, {
+      fee: String(BASE_FEE),
+      networkPassphrase: this.config.networkPassphrase,
+    })
+      .addOperation(operation)
+      .setTimeout(60)
+      .build();
   }
 
   private async buildTransaction(spec: ContractCallSpec): Promise<Transaction> {

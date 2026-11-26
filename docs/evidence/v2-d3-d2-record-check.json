@@ -1,0 +1,37 @@
+{
+  "observedAt": "2026-11-26T19:45:45.455Z",
+  "baseMainSha": "1c9de8e8f3286ce7bc0f4ba5a469b7419c6f5187",
+  "network": "Stellar Testnet",
+  "networkPassphrase": "Test SDF Network ; September 2015",
+  "rpcUrl": "https://soroban-testnet.stellar.org",
+  "observedLatestLedger": 5939740,
+  "contractId": "CBKX6WIZ25IKKPHIDSTEPLLLMQMRK3DFO5UD3H5YZVXJZ452JNIYHYW6",
+  "publicId": "cg2_5bjYVuqiWWw0JEWP",
+  "credentialIdHex": "8b41670d50335d0cf8d6b1d53c2d16091f277f13a727f8a9ccd109d970500969",
+  "scopeIdHex": "b5afa8e04cd182f1822074b41f48001d387d50199afb17573fe241b896424560",
+  "archivedD2Reference": {
+    "evidencePath": "docs/evidence/v2-d2-anchoring.json",
+    "archivedCommit": "e156b863ff335e334ca0c2ffb510eb169b03913a",
+    "transactionHash": "a11f5c4c81ae80db6fb7b9d6f73290fb3cb82085606568ce25954f35db1073f1",
+    "ledger": 5887587,
+    "localDigest": "b6cb7b4e2eb15aedd2c5142dfc5c176947fa924df541bd0d9cdf811cd18177ac",
+    "contractReadbackDigest": "b6cb7b4e2eb15aedd2c5142dfc5c176947fa924df541bd0d9cdf811cd18177ac"
+  },
+  "readOnlyQueryOutcome": {
+    "classification": "active_matching_record",
+    "querySucceeded": true,
+    "recordPresent": true,
+    "transactionRpcStatus": "SUCCESS",
+    "transactionLedger": 5887587,
+    "contractReadbackDigest": "b6cb7b4e2eb15aedd2c5142dfc5c176947fa924df541bd0d9cdf811cd18177ac",
+    "matchesArchivedD2DigestByteForByte": true,
+    "matchesArchivedD2ScopeByteForByte": true,
+    "hashSchema": 2,
+    "familyCode": 101,
+    "revoked": false,
+    "tokenId": "1",
+    "issuerIdHex": "52e41ff0dbdf47573f9743c586363426126b458ee8471cf32069abd87c9bb96f",
+    "subjectIdHex": "4f07bd3e09d21c13371c9b98a9b17b0dc1fb315e7debe9d4b256ef673929b21b",
+    "eventIdHex": "0b29c501d7320d309354e17d34058395c7827eaad4ba61926e3cb94ec5af7ecb"
+  }
+}

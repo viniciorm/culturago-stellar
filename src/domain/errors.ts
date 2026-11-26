@@ -14,6 +14,8 @@ export type DomainErrorCode =
   | 'INVALID_EVIDENCE'
   | 'INVALID_RELATIONSHIP'
   | 'RATE_LIMITED'
+  | 'STELLAR_UNAVAILABLE'
+  | 'INVALID_CHAIN_RESPONSE'
   | 'INTERNAL';
 
 export class DomainError extends Error {

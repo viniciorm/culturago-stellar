@@ -78,6 +78,13 @@ export class InMemoryChainTransport implements SorobanTransport {
   public nextPollReturnsNullLedger = false;
   /** Test hook: corrupt the metadata_hash returned by the next get_credential readback. */
   public nextReadbackCorruptMetadataHash: string | null = null;
+  /** Test hook: throw an error on the next readback call (simulates RPC outage). */
+  public nextReadbackError: Error | null = null;
+  /** Test hook: return a custom raw payload on the next readback call (simulates malformed response). */
+  public nextReadbackRawOverride: { active: boolean; value: unknown } = {
+    active: false,
+    value: null,
+  };
   /** Counters for verifying retry/reconciliation behavior without duplicate submissions. */
   public submitCallCount = 0;
   public pollCallCount = 0;
@@ -87,6 +94,25 @@ export class InMemoryChainTransport implements SorobanTransport {
     const entry = this.pending.get(txHash);
     if (entry) {
       entry.status = status;
+    }
+  }
+
+  /** Test helper: removes an on-chain credential entry (simulates expired TTL / absent entry). */
+  public deleteCredentialForTest(credentialIdHex: string): void {
+    this.credentials.delete(credentialIdHex);
+    this.v2Scopes.delete(credentialIdHex);
+  }
+
+  /** Test helper: marks an existing on-chain credential as revoked at the next ledger. */
+  public revokeCredentialByHexForTest(
+    credentialIdHex: string,
+    reasonHash: string | null = null
+  ): void {
+    const record = this.credentials.get(credentialIdHex);
+    if (record && !record.revoked) {
+      record.revoked = true;
+      record.revokedReasonHash = reasonHash;
+      record.revokedLedger = ++this.ledger;
     }
   }
 
@@ -134,6 +160,16 @@ export class InMemoryChainTransport implements SorobanTransport {
   }
 
   async readback(spec: ContractCallSpec): Promise<unknown> {
+    if (this.nextReadbackError) {
+      const err = this.nextReadbackError;
+      this.nextReadbackError = null;
+      throw err;
+    }
+    if (this.nextReadbackRawOverride.active) {
+      const val = this.nextReadbackRawOverride.value;
+      this.nextReadbackRawOverride = { active: false, value: null };
+      return val;
+    }
     const first = spec.args.find((a) => a.kind === 'bytes32');
     const key = first && first.kind === 'bytes32' ? first.hex : null;
     if (!key) return null;

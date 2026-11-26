@@ -428,7 +428,7 @@ describe('D2 Vertical: Soroban V2 Anchoring from /organizer, 32-Byte Digest Read
       params: Promise.resolve({ publicId }),
     });
     render(publicPageJsx);
-    expect(screen.getByText('Confirmada en Stellar')).toBeDefined();
+    expect(screen.getByText('Integridad confirmada en Stellar Testnet')).toBeDefined();
     expect(screen.getByText('Anclaje Soroban Confirmado (Stellar Testnet)')).toBeDefined();
     expect(screen.getByText(dbOp!.state.txHash!)).toBeDefined();
 

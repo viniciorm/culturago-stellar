@@ -4,7 +4,8 @@ import {
   deriveV2OnChainIdentifiers,
   type V2ContractFamilyCode,
 } from '@/domain/credentials/v2';
-import { isPersistenceConfigured } from '@/infrastructure/config/env';
+import { domainError } from '@/domain/errors';
+import { getPublicConfig, isPersistenceConfigured } from '@/infrastructure/config/env';
 import { query } from '@/infrastructure/database/pool';
 import { LocalSigner } from '@/infrastructure/stellar/LocalSigner';
 import {
@@ -81,6 +82,14 @@ export interface SorobanCredentialV2GatewayDeps {
  */
 export class SorobanCredentialV2Gateway {
   constructor(private readonly deps: SorobanCredentialV2GatewayDeps) {}
+
+  getStellarGateway(): StellarGateway {
+    return this.deps.gateway;
+  }
+
+  getContractId(): string {
+    return this.deps.contractId;
+  }
 
   async anchorCredential(
     credential: CredentialV2Record
@@ -191,6 +200,10 @@ export class SorobanCredentialV2Gateway {
 }
 
 let testGatewayOverride: SorobanCredentialV2Gateway | null = null;
+let testPublicReadGatewayOverride: {
+  gateway: StellarGateway;
+  contractId: string;
+} | null = null;
 
 /**
  * Allows D2 integration tests to inject a SorobanCredentialV2Gateway instance
@@ -204,6 +217,100 @@ export function setCredentialV2GatewayOverrideForTests(
 
 export function getCredentialV2GatewayOverrideForTests(): SorobanCredentialV2Gateway | null {
   return testGatewayOverride;
+}
+
+export function setPublicCredentialV2ReadGatewayOverrideForTests(
+  override: { gateway: StellarGateway; contractId: string } | null
+): void {
+  testPublicReadGatewayOverride = override;
+}
+
+export function getPublicCredentialV2ReadGatewayOverrideForTests(): {
+  gateway: StellarGateway;
+  contractId: string;
+} | null {
+  return testPublicReadGatewayOverride;
+}
+
+/**
+ * Constructs a keyless, sessionless read-only `StellarGateway` for D3 public
+ * verification against the configured V2 registry contract. Never reads or
+ * depends on `STELLAR_TESTNET_OPERATOR_SECRET`, `STELLAR_TESTNET_ADMIN_SECRET`,
+ * `STELLAR_FEEPAYER_SECRET`, or `CULTURAGO_ALLOW_TESTNET_MUTATIONS`.
+ */
+export function createReadOnlyPublicV2Gateway(options?: {
+  rpcUrlOverride?: string;
+  timeoutInSeconds?: number;
+}): {
+  gateway: StellarGateway;
+  contractId: string;
+  environment: 'testnet' | 'mainnet' | 'demo';
+} {
+  if (!options?.rpcUrlOverride) {
+    if (testPublicReadGatewayOverride) {
+      return {
+        ...testPublicReadGatewayOverride,
+        environment: 'testnet',
+      };
+    }
+    if (testGatewayOverride) {
+      return {
+        gateway: testGatewayOverride.getStellarGateway(),
+        contractId: testGatewayOverride.getContractId(),
+        environment: 'testnet',
+      };
+    }
+  }
+
+  const publicConfig = getPublicConfig();
+  if (publicConfig.environment === 'demo') {
+    throw domainError(
+      'STELLAR_UNAVAILABLE',
+      'Stellar network is not configured in demo mode'
+    );
+  }
+  if (
+    !publicConfig.stellarNetworkPassphrase ||
+    !publicConfig.stellarRpcUrl ||
+    !publicConfig.credentialRegistryContractId
+  ) {
+    throw domainError(
+      'STELLAR_UNAVAILABLE',
+      'Missing public Stellar RPC or V2 credential registry contract configuration'
+    );
+  }
+
+  const readOnlyConfig = {
+    environment: publicConfig.environment,
+    networkPassphrase: publicConfig.stellarNetworkPassphrase,
+    rpcUrl: options?.rpcUrlOverride ?? publicConfig.stellarRpcUrl,
+    entityRegistryContractId:
+      publicConfig.entityRegistryContractId ??
+      publicConfig.credentialRegistryContractId,
+    credentialRegistryContractId: publicConfig.credentialRegistryContractId,
+    explorerBase: publicConfig.stellarExplorerBase,
+    smartWalletWasmAllowlist: [],
+    feePayerAddress: null,
+    feePayerSecret: null,
+    maxFeeStrokes: 500_000,
+    relayerDailyBudget: 500,
+  };
+
+  const transport = new SdkSorobanTransport(readOnlyConfig, {
+    timeoutInSeconds: options?.timeoutInSeconds ?? 15,
+  });
+  const gateway = new SorobanStellarGateway(
+    readOnlyConfig,
+    transport,
+    fallbackInMemoryStore,
+    null
+  );
+
+  return {
+    gateway,
+    contractId: publicConfig.credentialRegistryContractId,
+    environment: publicConfig.environment,
+  };
 }
 
 const fallbackInMemoryStore = new InMemoryOperationStore();
